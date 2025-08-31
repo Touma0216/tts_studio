@@ -33,30 +33,8 @@ class HelpDialog(QDialog):
         title_label.setFont(QFont("", 14, QFont.Weight.Bold))
         title_label.setStyleSheet("color: #2c3e50;")
         
-        # 閉じるボタン
-        close_button = QPushButton("×")
-        close_button.setFixedSize(30, 30)
-        close_button.setStyleSheet("""
-            QPushButton {
-                background-color: #e74c3c;
-                color: white;
-                border: none;
-                border-radius: 15px;
-                font-size: 16px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #c0392b;
-            }
-            QPushButton:pressed {
-                background-color: #a93226;
-            }
-        """)
-        close_button.clicked.connect(self.close)
-        
         header_layout.addWidget(title_label)
         header_layout.addStretch()
-        header_layout.addWidget(close_button)
         
         # HTML表示用ブラウザ
         self.help_browser = QTextBrowser()
