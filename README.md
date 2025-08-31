@@ -9,7 +9,8 @@ tts_studio/
 │   ├── keyboard_shortcuts.py # キーボードショートカット
 │   ├── multi_text.py # 複数テキスト対応
 │   ├── model_history.py # モデル履歴保持
-│   └── model_loader.py  # モデル選択・読み込みUI
+│   ├── model_loader.py  # モデル選択・読み込みUI
+│   └── operation_instructions.html  # 操作説明
 ├── core/
 │   ├── __init__.py
 │   ├── tts_engine.py    # TTS処理

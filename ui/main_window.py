@@ -14,6 +14,8 @@ from .keyboard_shortcuts import KeyboardShortcutManager
 from .sliding_menu import SlidingMenuWidget
 from core.tts_engine import TTSEngine
 from core.model_manager import ModelManager
+from .help_overlay import HelpOverlayWidget
+
 
 class TTSStudioMainWindow(QMainWindow):
     def __init__(self):
@@ -21,6 +23,8 @@ class TTSStudioMainWindow(QMainWindow):
         self.tts_engine = TTSEngine()
         self.model_manager = ModelManager()
         self.init_ui()
+        self.help_overlay = HelpOverlayWidget(self)
+
         
         # スライド式メニューを作成
         self.sliding_menu = SlidingMenuWidget(self)
@@ -163,6 +167,13 @@ class TTSStudioMainWindow(QMainWindow):
         # ファイルメニューをアクションとして追加（サブメニューなし）
         file_action = menubar.addAction("ファイル(F)")
         file_action.triggered.connect(self.toggle_file_menu)
+
+        help_action = menubar.addAction("説明(H)")
+        help_action.triggered.connect(self.show_help_overlay)
+
+    def show_help_overlay(self):
+        """ヘルプオーバーレイを表示"""
+        self.help_overlay.toggle_overlay()
 
     def toggle_file_menu(self):
         """ファイルメニューの表示/非表示を切り替え"""

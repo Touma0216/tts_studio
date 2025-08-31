@@ -8,10 +8,11 @@ class SingleEmotionControl(QWidget):
     
     parameters_changed = pyqtSignal(str, dict)  # row_id, parameters
     
-    def __init__(self, row_id, parameters=None, parent=None):
+    def __init__(self, row_id, parameters=None, is_master=False, parent=None):
         super().__init__(parent)
         
         self.row_id = row_id
+        self.is_master = is_master
         self.current_params = parameters or {
             'style': 'Neutral',
             'style_weight': 1.0,
@@ -31,6 +32,21 @@ class SingleEmotionControl(QWidget):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(15)
         
+        # マスタータブの場合は説明を追加
+        if self.is_master:
+            info_label = QLabel("★ デフォルトパラメータ - ここを変更すると全てのタブに反映されます")
+            info_label.setStyleSheet("""
+                QLabel {
+                    background-color: #fff3cd;
+                    color: #856404;
+                    border: 1px solid #ffeaa7;
+                    border-radius: 4px;
+                    padding: 8px;
+                    font-weight: bold;
+                }
+            """)
+            layout.addWidget(info_label)
+        
         # 感情制御グループ
         emotion_group = self.create_emotion_group()
         layout.addWidget(emotion_group)
@@ -48,7 +64,7 @@ class SingleEmotionControl(QWidget):
     def create_emotion_group(self):
         """感情制御グループを作成"""
         group = QGroupBox("感情制御")
-        group.setStyleSheet("""
+        group_style = """
             QGroupBox {
                 font-weight: bold;
                 border: 1px solid #ccc;
@@ -62,7 +78,29 @@ class SingleEmotionControl(QWidget):
                 padding: 0 5px 0 5px;
                 background-color: white;
             }
-        """)
+        """
+        
+        # マスタータブの場合は枠を金色に
+        if self.is_master:
+            group_style = """
+                QGroupBox {
+                    font-weight: bold;
+                    border: 2px solid #ffd700;
+                    border-radius: 6px;
+                    margin-top: 10px;
+                    padding-top: 5px;
+                    background-color: #fffef7;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    left: 10px;
+                    padding: 0 5px 0 5px;
+                    background-color: #fffef7;
+                    color: #b8860b;
+                }
+            """
+        
+        group.setStyleSheet(group_style)
         
         layout = QVBoxLayout(group)
         layout.setSpacing(10)
@@ -100,7 +138,7 @@ class SingleEmotionControl(QWidget):
         self.intensity_slider = QSlider(Qt.Orientation.Horizontal)
         self.intensity_slider.setRange(0, 200)
         self.intensity_slider.setValue(100)
-        self.intensity_slider.setStyleSheet("""
+        slider_style = """
             QSlider::groove:horizontal {
                 border: 1px solid #bbb;
                 background: white;
@@ -123,7 +161,36 @@ class SingleEmotionControl(QWidget):
                 margin-bottom: -6px;
                 border-radius: 9px;
             }
-        """)
+        """
+        
+        # マスタータブの場合はスライダーを金色に
+        if self.is_master:
+            slider_style = """
+                QSlider::groove:horizontal {
+                    border: 1px solid #daa520;
+                    background: white;
+                    height: 6px;
+                    border-radius: 3px;
+                }
+                QSlider::sub-page:horizontal {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #ffd700, stop: 1 #ffed4e);
+                    border: 1px solid #daa520;
+                    height: 6px;
+                    border-radius: 3px;
+                }
+                QSlider::handle:horizontal {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 1,
+                        stop: 0 #fff, stop: 1 #ffd700);
+                    border: 1px solid #daa520;
+                    width: 18px;
+                    margin-top: -6px;
+                    margin-bottom: -6px;
+                    border-radius: 9px;
+                }
+            """
+        
+        self.intensity_slider.setStyleSheet(slider_style)
         self.intensity_slider.valueChanged.connect(self.on_intensity_slider_changed)
         
         self.intensity_spinbox = QDoubleSpinBox()
@@ -146,7 +213,7 @@ class SingleEmotionControl(QWidget):
     def create_params_group(self):
         """音声パラメータグループを作成"""
         group = QGroupBox("音声パラメータ")
-        group.setStyleSheet("""
+        group_style = """
             QGroupBox {
                 font-weight: bold;
                 border: 1px solid #ccc;
@@ -160,7 +227,29 @@ class SingleEmotionControl(QWidget):
                 padding: 0 5px 0 5px;
                 background-color: white;
             }
-        """)
+        """
+        
+        # マスタータブの場合は枠を金色に
+        if self.is_master:
+            group_style = """
+                QGroupBox {
+                    font-weight: bold;
+                    border: 2px solid #ffd700;
+                    border-radius: 6px;
+                    margin-top: 10px;
+                    padding-top: 5px;
+                    background-color: #fffef7;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    left: 10px;
+                    padding: 0 5px 0 5px;
+                    background-color: #fffef7;
+                    color: #b8860b;
+                }
+            """
+        
+        group.setStyleSheet(group_style)
         
         layout = QGridLayout(group)
         layout.setSpacing(8)
@@ -177,6 +266,57 @@ class SingleEmotionControl(QWidget):
         self.param_sliders = {}
         self.param_spinboxes = {}
         
+        base_slider_style = """
+            QSlider::groove:horizontal {
+                border: 1px solid #bbb;
+                background: white;
+                height: 6px;
+                border-radius: 3px;
+            }
+            QSlider::sub-page:horizontal {
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #66e, stop: 1 #bbf);
+                border: 1px solid #777;
+                height: 6px;
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 1,
+                    stop: 0 #eee, stop: 1 #ccc);
+                border: 1px solid #777;
+                width: 18px;
+                margin-top: -6px;
+                margin-bottom: -6px;
+                border-radius: 9px;
+            }
+        """
+        
+        # マスター用金色スライダー
+        master_slider_style = """
+            QSlider::groove:horizontal {
+                border: 1px solid #daa520;
+                background: white;
+                height: 6px;
+                border-radius: 3px;
+            }
+            QSlider::sub-page:horizontal {
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #ffd700, stop: 1 #ffed4e);
+                border: 1px solid #daa520;
+                height: 6px;
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 1,
+                    stop: 0 #fff, stop: 1 #ffd700);
+                border: 1px solid #daa520;
+                width: 18px;
+                margin-top: -6px;
+                margin-bottom: -6px;
+                border-radius: 9px;
+            }
+        """
+        
         for i, (name, key, min_val, max_val, default, desc) in enumerate(params):
             label = QLabel(name + ":")
             label.setMinimumWidth(80)
@@ -184,7 +324,7 @@ class SingleEmotionControl(QWidget):
             slider = QSlider(Qt.Orientation.Horizontal)
             slider.setRange(int(min_val * 100), int(max_val * 100))
             slider.setValue(int(default * 100))
-            slider.setStyleSheet(self.intensity_slider.styleSheet())
+            slider.setStyleSheet(master_slider_style if self.is_master else base_slider_style)
             
             spinbox = QDoubleSpinBox()
             spinbox.setRange(min_val, max_val)
@@ -212,7 +352,7 @@ class SingleEmotionControl(QWidget):
     def create_preset_group(self):
         """プリセットボタングループを作成"""
         group = QGroupBox("プリセット")
-        group.setStyleSheet("""
+        group_style = """
             QGroupBox {
                 font-weight: bold;
                 border: 1px solid #ccc;
@@ -226,7 +366,29 @@ class SingleEmotionControl(QWidget):
                 padding: 0 5px 0 5px;
                 background-color: white;
             }
-        """)
+        """
+        
+        # マスタータブの場合は枠を金色に
+        if self.is_master:
+            group_style = """
+                QGroupBox {
+                    font-weight: bold;
+                    border: 2px solid #ffd700;
+                    border-radius: 6px;
+                    margin-top: 10px;
+                    padding-top: 5px;
+                    background-color: #fffef7;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    left: 10px;
+                    padding: 0 5px 0 5px;
+                    background-color: #fffef7;
+                    color: #b8860b;
+                }
+            """
+        
+        group.setStyleSheet(group_style)
         
         layout = QGridLayout(group)
         layout.setSpacing(5)
@@ -252,7 +414,7 @@ class SingleEmotionControl(QWidget):
         
         for i, (name, params) in enumerate(presets):
             btn = QPushButton(name)
-            btn.setStyleSheet("""
+            btn_style = """
                 QPushButton {
                     background-color: #f5f5f5;
                     border: 1px solid #ccc;
@@ -267,7 +429,30 @@ class SingleEmotionControl(QWidget):
                 QPushButton:pressed {
                     background-color: #bbdefb;
                 }
-            """)
+            """
+            
+            # マスター用ボタンスタイル
+            if self.is_master:
+                btn_style = """
+                    QPushButton {
+                        background-color: #fffef7;
+                        border: 1px solid #ffd700;
+                        border-radius: 4px;
+                        padding: 6px 12px;
+                        font-size: 10px;
+                        color: #b8860b;
+                        font-weight: bold;
+                    }
+                    QPushButton:hover {
+                        background-color: #fff9c4;
+                        border-color: #daa520;
+                    }
+                    QPushButton:pressed {
+                        background-color: #ffed4e;
+                    }
+                """
+            
+            btn.setStyleSheet(btn_style)
             btn.clicked.connect(lambda checked, p=params: self.apply_preset(p))
             
             row = i // 2
@@ -363,23 +548,31 @@ class SingleEmotionControl(QWidget):
     def get_current_parameters(self):
         """現在のパラメータを取得"""
         return self.current_params.copy()
+    
+    def update_parameters_from_master(self, master_params):
+        """マスターパラメータから更新（UIも更新）"""
+        self.current_params.update(master_params)
+        self.load_parameters()
 
 class TabbedEmotionControl(QWidget):
-    """タブ式感情制御ウィジェット"""
+    """タブ式感情制御ウィジェット（マスターパラメータ対応）"""
     
     parameters_changed = pyqtSignal(str, dict)  # row_id, parameters
+    master_parameters_changed = pyqtSignal(dict)  # master_parameters
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self.emotion_controls = {}  # row_id -> SingleEmotionControl
+        self.master_control = None  # マスターコントロール
         self.init_ui()
+        self.setup_master_tab()
         
     def init_ui(self):
         """UIを初期化"""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         
-        # タブウィジェット（ヘッダーなし）
+        # タブウィジェット
         self.tab_widget = QTabWidget()
         self.tab_widget.setStyleSheet("""
             QTabWidget::pane {
@@ -403,14 +596,51 @@ class TabbedEmotionControl(QWidget):
             QTabBar::tab:hover:!selected {
                 background-color: #e3f2fd;
             }
+            /* マスタータブ（最初のタブ）用のスタイル */
+            QTabBar::tab:first {
+                background-color: #fffef7;
+                border: 2px solid #ffd700;
+                color: #b8860b;
+                font-weight: bold;
+            }
+            QTabBar::tab:first:selected {
+                background-color: #fffef7;
+                border-bottom: 2px solid #fffef7;
+            }
+            QTabBar::tab:first:hover:!selected {
+                background-color: #fff9c4;
+            }
         """)
         
         layout.addWidget(self.tab_widget)
     
+    def setup_master_tab(self):
+        """マスタータブを設定"""
+        self.master_control = SingleEmotionControl("master", is_master=True)
+        self.master_control.parameters_changed.connect(self.on_master_parameters_changed)
+        
+        # マスタータブを最初に追加
+        self.tab_widget.insertTab(0, self.master_control, "★")
+        self.tab_widget.setTabToolTip(0, "デフォルトパラメータ - ここを変更すると全てのタブに反映されます")
+    
+    def on_master_parameters_changed(self, row_id, parameters):
+        """マスターパラメータが変更された時の処理"""
+        # すべての個別タブに反映
+        for control in self.emotion_controls.values():
+            control.update_parameters_from_master(parameters)
+        
+        # マスターパラメータ変更シグナルを送信
+        self.master_parameters_changed.emit(parameters)
+    
     def add_text_row(self, row_id, row_number, parameters=None):
         """テキスト行に対応するタブを追加"""
         if row_id not in self.emotion_controls:
-            control = SingleEmotionControl(row_id, parameters)
+            # マスターパラメータをベースにする
+            base_params = self.master_control.get_current_parameters() if self.master_control else {}
+            if parameters:
+                base_params.update(parameters)
+            
+            control = SingleEmotionControl(row_id, base_params)
             control.parameters_changed.connect(self.parameters_changed)
             
             self.emotion_controls[row_id] = control
@@ -438,6 +668,15 @@ class TabbedEmotionControl(QWidget):
         """指定行のパラメータを取得"""
         if row_id in self.emotion_controls:
             return self.emotion_controls[row_id].get_current_parameters()
+        # マスターパラメータを返す
+        elif self.master_control:
+            return self.master_control.get_current_parameters()
+        return {}
+    
+    def get_master_parameters(self):
+        """マスターパラメータを取得"""
+        if self.master_control:
+            return self.master_control.get_current_parameters()
         return {}
     
     def set_current_row(self, row_id):

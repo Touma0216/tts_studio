@@ -11,6 +11,7 @@ import logging
 import warnings
 from PyQt6.QtWidgets import QApplication
 
+
 # 標準ログも無効化
 logging.disable(logging.CRITICAL)
 logging.getLogger().disabled = True

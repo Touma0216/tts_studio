@@ -2,7 +2,7 @@ from PyQt6.QtGui import QShortcut, QKeySequence
 from PyQt6.QtCore import Qt, QObject
 
 class KeyboardShortcutManager(QObject):
-    """キーボードショートカット管理クラス"""
+    """キーボードショートカット管理クラス（ヘルプ機能対応）"""
     
     def __init__(self, main_window):
         super().__init__()
@@ -11,32 +11,44 @@ class KeyboardShortcutManager(QObject):
         self.setup_shortcuts()
     
     def setup_shortcuts(self):
-        """全ショートカットを設定"""
+        """全ショートカットを設定（ヘルプ機能追加）"""
         
-        # ファイルメニュー
-        self.add_shortcut("F", self.open_file_menu)
+        # ファイル操作
+        self.add_shortcut("Ctrl+F", self.open_file_menu)
+        
+        # ヘルプ機能（新規追加）
+        self.add_shortcut("Ctrl+H", self.toggle_help_overlay)
         
         # 再生系
-        self.add_shortcut("R", self.play_current_row)
         self.add_shortcut("Ctrl+R", self.play_sequential)
+        self.add_shortcut("Ctrl+P", self.play_current_row)
         
         # テキスト操作
-        self.add_shortcut("N", self.add_text_row)
+        self.add_shortcut("Ctrl+N", self.add_text_row)
         
-        # テキスト行選択（1-9）
-        for i in range(1, 10):
-            self.add_shortcut(str(i), lambda row_num=i: self.focus_text_row(row_num))
+        # タブ切り替え
+        self.add_shortcut("Ctrl+Tab", self.focus_master_tab)
+        self.add_shortcut("Ctrl+1", lambda: self.focus_text_row(1))
+        self.add_shortcut("Ctrl+2", lambda: self.focus_text_row(2))
+        self.add_shortcut("Ctrl+3", lambda: self.focus_text_row(3))
+        self.add_shortcut("Ctrl+4", lambda: self.focus_text_row(4))
+        self.add_shortcut("Ctrl+5", lambda: self.focus_text_row(5))
+        self.add_shortcut("Ctrl+6", lambda: self.focus_text_row(6))
+        self.add_shortcut("Ctrl+7", lambda: self.focus_text_row(7))
+        self.add_shortcut("Ctrl+8", lambda: self.focus_text_row(8))
+        self.add_shortcut("Ctrl+9", lambda: self.focus_text_row(9))
         
         # 感情選択
-        self.add_shortcut("E", self.open_emotion_combo)
+        self.add_shortcut("Ctrl+E", self.open_emotion_combo)
         
         # 保存系
         self.add_shortcut("Ctrl+S", self.save_individual)
         self.add_shortcut("Ctrl+Shift+S", self.save_continuous)
     
     def add_shortcut(self, key_sequence, callback):
-        """ショートカットを追加"""
+        """ショートカットを追加（ApplicationShortcut で全画面有効）"""
         shortcut = QShortcut(QKeySequence(key_sequence), self.main_window)
+        shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
         shortcut.activated.connect(callback)
         self.shortcuts[key_sequence] = shortcut
     
@@ -48,14 +60,24 @@ class KeyboardShortcutManager(QObject):
         """ファイルメニューを開く"""
         self.main_window.toggle_file_menu()
     
+    def toggle_help_overlay(self):
+        """ヘルプオーバーレイを表示/非表示"""
+        if hasattr(self.main_window, 'help_overlay'):
+            self.main_window.help_overlay.toggle_overlay()
+    
     def play_current_row(self):
         """現在フォーカス中の行を再生"""
         # アクティブなタブのIDを取得
         current_tab_index = self.main_window.tabbed_emotion_control.tab_widget.currentIndex()
+        
+        # マスタータブ（★）の場合は何もしない
+        if current_tab_index == 0:
+            return
+            
         if current_tab_index >= 0:
             # タブのrow_idを取得（タブウィジェットから逆引き）
             current_control = self.main_window.tabbed_emotion_control.tab_widget.currentWidget()
-            if current_control and hasattr(current_control, 'row_id'):
+            if current_control and hasattr(current_control, 'row_id') and not getattr(current_control, 'is_master', False):
                 row_id = current_control.row_id
                 # 対応するテキスト行を再生
                 if row_id in self.main_window.multi_text.text_rows:
@@ -73,6 +95,16 @@ class KeyboardShortcutManager(QObject):
             return
         self.main_window.multi_text.add_text_row()
     
+    def focus_master_tab(self):
+        """マスタータブ（★）にフォーカス"""
+        # マスタータブは常にindex 0
+        self.main_window.tabbed_emotion_control.tab_widget.setCurrentIndex(0)
+        
+        # マスタータブ内の最初の入力要素にフォーカス
+        master_control = self.main_window.tabbed_emotion_control.master_control
+        if master_control and hasattr(master_control, 'emotion_combo'):
+            master_control.emotion_combo.setFocus()
+    
     def focus_text_row(self, row_number):
         """指定番号のテキスト行にフォーカス"""
         text_rows = list(self.main_window.multi_text.text_rows.values())
@@ -80,7 +112,7 @@ class KeyboardShortcutManager(QObject):
             target_row = text_rows[row_number - 1]
             target_row.text_input.setFocus()
             
-            # 対応するパラメータタブもアクティブに
+            # 対応するパラメータタブもアクティブに（マスタータブの次のインデックス）
             row_id = target_row.row_id
             self.main_window.tabbed_emotion_control.set_current_row(row_id)
     
