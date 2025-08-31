@@ -576,25 +576,31 @@ class TabbedEmotionControl(QWidget):
         self.tab_widget = QTabWidget()
         self.tab_widget.setStyleSheet("""
             QTabWidget::pane {
-                border: 1px solid #ccc;
+                border: 1px solid #5ba8f2;
                 border-radius: 4px;
                 background-color: white;
             }
             QTabBar::tab {
-                background-color: #f5f5f5;
+                background-color: #f0f0f0;
                 border: 1px solid #ccc;
                 border-bottom: none;
                 border-top-left-radius: 4px;
                 border-top-right-radius: 4px;
                 padding: 6px 12px;
                 margin-right: 2px;
+                margin-bottom: -1px;
             }
             QTabBar::tab:selected {
-                background-color: white;
-                border-bottom: 1px solid white;
+                background-color: #5ba8f2;
+                color: white;
+                border: 1px solid #5ba8f2;
+                border-bottom: none;
+                font-weight: bold;
             }
             QTabBar::tab:hover:!selected {
-                background-color: #e3f2fd;
+                background-color: #e6f2ff;
+                border-color: #5ba8f2;
+                color: #5ba8f2;
             }
             /* マスタータブ（最初のタブ）用のスタイル */
             QTabBar::tab:first {
@@ -604,11 +610,14 @@ class TabbedEmotionControl(QWidget):
                 font-weight: bold;
             }
             QTabBar::tab:first:selected {
-                background-color: #fffef7;
-                border-bottom: 2px solid #fffef7;
+                background-color: #ffd700;
+                color: #b8860b;
+                border: 2px solid #ffd700;
+                border-bottom: none;
             }
             QTabBar::tab:first:hover:!selected {
                 background-color: #fff9c4;
+                border-color: #daa520;
             }
         """)
         

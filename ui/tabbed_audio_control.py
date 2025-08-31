@@ -26,12 +26,10 @@ class TabbedAudioControl(QWidget):
         self.main_tab_widget = QTabWidget()
         self.main_tab_widget.setStyleSheet("""
             QTabWidget::pane {
-                border: 2px solid #2196f3;
                 background-color: white;
-                border-bottom-left-radius: 6px;
-                border-bottom-right-radius: 6px;
+                border: 2px solid #4a90e2;
+                border-radius: 4px;
                 margin-top: 0px;
-                padding-top: 0px;
             }
             QTabWidget::tab-bar {
                 alignment: left;
@@ -40,31 +38,30 @@ class TabbedAudioControl(QWidget):
                 background-color: transparent;
             }
             QTabBar::tab {
-                background-color: #f5f5f5;
-                border: 2px solid #ddd;
-                border-top-left-radius: 8px;
-                border-top-right-radius: 8px;
+                background-color: #f0f0f0;
+                color: #333;
+                border: 1px solid #ccc;
+                border-bottom: none;
+                border-top-left-radius: 6px;
+                border-top-right-radius: 6px;
                 padding: 10px 20px;
-                margin-right: 3px;
-                margin-top: 2px;
+                margin-right: 2px;
                 margin-bottom: -2px;
                 font-size: 14px;
                 font-weight: bold;
                 min-width: 120px;
             }
             QTabBar::tab:selected {
-                background-color: white;
-                border-left: 2px solid #2196f3;
-                border-right: 2px solid #2196f3;
-                border-top: 2px solid #2196f3;
-                border-bottom: 0px none transparent;
-                color: #1976d2;
-                margin-top: 0px;
+                background-color: #4a90e2;
+                color: white;
+                border: 2px solid #4a90e2;
+                border-bottom: none;
                 margin-bottom: -2px;
             }
             QTabBar::tab:hover:!selected {
-                background-color: #e3f2fd;
-                border-color: #64b5f6;
+                background-color: #e6f2ff;
+                border-color: #4a90e2;
+                color: #4a90e2;
             }
         """)
         

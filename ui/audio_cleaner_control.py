@@ -39,12 +39,10 @@ class AudioCleanerControl(QWidget):
         self.cleaner_tab_widget = QTabWidget()
         self.cleaner_tab_widget.setStyleSheet("""
             QTabWidget::pane {
-                border: 1px solid #ccc;
                 background-color: white;
-                border-bottom-left-radius: 4px;
-                border-bottom-right-radius: 4px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
                 margin-top: 0px;
-                padding-top: 0px;
             }
             QTabWidget::tab-bar {
                 alignment: left;
@@ -53,29 +51,29 @@ class AudioCleanerControl(QWidget):
                 background-color: transparent;
             }
             QTabBar::tab {
-                background-color: #f5f5f5;
+                background-color: #f0f0f0;
+                color: #333;
                 border: 1px solid #ccc;
-                border-bottom: 1px solid #ccc;
+                border-bottom: none;
                 border-top-left-radius: 4px;
                 border-top-right-radius: 4px;
                 padding: 6px 12px;
                 margin-right: 2px;
-                margin-top: 1px;
-                margin-bottom: 0px;
+                margin-bottom: -1px;
+                font-size: 12px;
                 min-width: 80px;
             }
             QTabBar::tab:selected {
-                background-color: white;
-                border-left: 1px solid #ccc;
-                border-right: 1px solid #ccc;
-                border-top: 1px solid #ccc;
-                border-bottom: 0px none transparent;
-                margin-top: 0px;
-                margin-bottom: -1px;
+                background-color: #5ba8f2;
+                color: white;
+                border: 1px solid #5ba8f2;
+                border-bottom: none;
+                font-weight: bold;
             }
             QTabBar::tab:hover:!selected {
-                background-color: #e8f4fd;
-                border-color: #64b5f6;
+                background-color: #e6f2ff;
+                border-color: #5ba8f2;
+                color: #5ba8f2;
             }
         """)
         
