@@ -1,12 +1,20 @@
 {
   "models": [
     {
-      "id": "55db25ca71ce",
-      "name": "copy_honoka",
+      "id": "6ea8db1ca03f",
+      "name": "honoka_300",
       "note": "",
-      "model_path": "C:\\Users\\masa2\\Downloads\\copy_honoka\\honoka_model_e50_s2050.safetensors",
-      "config_path": "C:\\Users\\masa2\\Downloads\\copy_honoka\\config.json",
-      "style_path": "C:\\Users\\masa2\\Downloads\\copy_honoka\\style_vectors.npy"
+      "model_path": "F:\\AI_voise\\honoka_300\\honoka_model_e80_s5200.safetensors",
+      "config_path": "F:\\AI_voise\\honoka_300\\config.json",
+      "style_path": "F:\\AI_voise\\honoka_300\\style_vectors.npy"
+    },
+    {
+      "id": "e65b7b5154c9",
+      "name": "honoka_100",
+      "note": "",
+      "model_path": "F:\\AI_voise\\honoka_100\\honoka_model_100_e100_s2500.safetensors",
+      "config_path": "F:\\AI_voise\\honoka_100\\config.json",
+      "style_path": "F:\\AI_voise\\honoka_100\\style_vectors.npy"
     }
   ]
 }

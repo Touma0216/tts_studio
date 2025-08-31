@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
-                            QLabel, QFrame)
+                            QLabel, QFrame, QGraphicsDropShadowEffect)
 from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, pyqtSignal, QRect
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QColor
 
 class SlidingMenuWidget(QFrame):
     """上から下にスライドするメニューウィジェット"""
@@ -19,6 +19,7 @@ class SlidingMenuWidget(QFrame):
         
         self.init_ui()
         self.setup_animation()
+        self.setup_shadow()
         
         # 初期状態は非表示
         self.hide()
@@ -26,12 +27,14 @@ class SlidingMenuWidget(QFrame):
     def init_ui(self):
         """UIを初期化"""
         self.setFrameStyle(QFrame.Shape.StyledPanel)
+        
+        # --- スタイルシートを修正（box-shadowを削除） ---
         self.setStyleSheet("""
             QFrame {
                 background-color: white;
                 border: 1px solid #ddd;
                 border-top: none;
-                border-radius: 0px 0px 6px 6px;
+                border-radius: 0px 0px 8px 8px; /* 角の丸みを少し大きく */
             }
             QPushButton {
                 background-color: transparent;
@@ -75,11 +78,22 @@ class SlidingMenuWidget(QFrame):
         layout.addWidget(self.load_history_btn)
         layout.addStretch()
         
+    def setup_shadow(self):
+        """ドロップシャドウエフェクトを設定"""
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(15)
+        shadow.setColor(QColor(0, 0, 0, 80))
+        shadow.setOffset(0, 4)
+        self.setGraphicsEffect(shadow)
+        
     def setup_animation(self):
         """アニメーションを設定"""
         self.animation = QPropertyAnimation(self, b"geometry")
-        self.animation.setDuration(200)  # 200ms
-        self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.animation.setDuration(300)
+        
+        # --- アニメーションカーブをより滑らかなものに変更 ---
+        self.animation.setEasingCurve(QEasingCurve.Type.OutQuint) 
+        
         self.animation.finished.connect(self.on_animation_finished)
         
     def show_menu(self):
@@ -87,22 +101,18 @@ class SlidingMenuWidget(QFrame):
         if self.is_visible:
             return
             
-        # 位置とサイズを設定
         if self.parent_widget:
             menubar = self.parent_widget.menuBar()
             menubar_height = menubar.height()
             parent_width = self.parent_widget.width()
             
-            # 初期位置（高さ0で非表示）
             start_rect = QRect(0, menubar_height, parent_width, 0)
-            # 終了位置（目標の高さまで展開）
             end_rect = QRect(0, menubar_height, parent_width, self.target_height)
             
             self.setGeometry(start_rect)
             self.show()
-            self.raise_()  # 最前面に表示
+            self.raise_()
             
-            # アニメーション実行
             self.animation.setStartValue(start_rect)
             self.animation.setEndValue(end_rect)
             self.animation.start()
@@ -114,7 +124,6 @@ class SlidingMenuWidget(QFrame):
         if not self.is_visible:
             return
             
-        # 現在の位置から高さ0まで縮小
         current_rect = self.geometry()
         end_rect = QRect(current_rect.x(), current_rect.y(), current_rect.width(), 0)
         
@@ -127,7 +136,7 @@ class SlidingMenuWidget(QFrame):
     def on_animation_finished(self):
         """アニメーション完了時の処理"""
         if not self.is_visible:
-            self.hide()  # 完全に非表示
+            self.hide()
     
     def toggle_menu(self):
         """メニューの表示/非表示を切り替え"""
@@ -148,5 +157,5 @@ class SlidingMenuWidget(QFrame):
     
     def mousePressEvent(self, event):
         """マウスクリックイベント（メニュー内クリックは伝播させない）"""
-        event.accept()  # イベントを消費してバブリングを停止
+        event.accept()
         super().mousePressEvent(event)
