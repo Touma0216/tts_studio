@@ -8,7 +8,7 @@ from PyQt6.QtGui import QFont, QAction
 # 自作モジュール
 from .model_history import ModelHistoryWidget
 from .model_loader import ModelLoaderDialog
-from .tabbed_emotion_control import TabbedEmotionControl
+from .tabbed_audio_control import TabbedAudioControl  # 🔄 変更: TabbedEmotionControl → TabbedAudioControl
 from .multi_text import MultiTextWidget
 from .keyboard_shortcuts import KeyboardShortcutManager
 from .sliding_menu import SlidingMenuWidget
@@ -57,17 +57,17 @@ class TTSStudioMainWindow(QMainWindow):
         self.multi_text.row_removed.connect(self.on_text_row_removed)
         self.multi_text.row_numbers_updated.connect(self.on_row_numbers_updated)
 
-        params_label = QLabel("音声パラメータ:")
-        params_label.setFont(QFont("", 10, QFont.Weight.Bold))
-
+        # 音声パラメータラベル削除（タブで表示されるため）
         divider = QFrame()
         divider.setFrameShape(QFrame.Shape.HLine)
         divider.setFrameShadow(QFrame.Shadow.Sunken)
         divider.setStyleSheet("color: #dee2e6;")
 
-        self.tabbed_emotion_control = TabbedEmotionControl()
-        self.tabbed_emotion_control.parameters_changed.connect(self.on_parameters_changed)
-        self.tabbed_emotion_control.add_text_row("initial", 1)
+        # 🔄 変更: TabbedEmotionControl → TabbedAudioControl
+        self.tabbed_audio_control = TabbedAudioControl()
+        self.tabbed_audio_control.parameters_changed.connect(self.on_parameters_changed)
+        self.tabbed_audio_control.cleaner_settings_changed.connect(self.on_cleaner_settings_changed)  # 🆕 新規追加
+        self.tabbed_audio_control.add_text_row("initial", 1)
 
         controls = QHBoxLayout()
         controls.addStretch()
@@ -96,9 +96,8 @@ class TTSStudioMainWindow(QMainWindow):
         controls.addWidget(self.save_continuous_btn)
 
         left.addWidget(self.multi_text, 1)
-        left.addWidget(params_label)
         left.addWidget(divider)
-        left.addWidget(self.tabbed_emotion_control, 1)
+        left.addWidget(self.tabbed_audio_control, 1)  # 🔄 変更: tabbed_emotion_control → tabbed_audio_control
         left.addLayout(controls)
 
         # 右ペイン（ダミー）
@@ -262,17 +261,22 @@ class TTSStudioMainWindow(QMainWindow):
 
     # ---------- TTS / そのほか（既存） ----------
     def on_text_row_added(self, row_id, row_number):
-        self.tabbed_emotion_control.add_text_row(row_id, row_number)
+        self.tabbed_audio_control.add_text_row(row_id, row_number)  # 🔄 変更
 
     def on_text_row_removed(self, row_id):
-        self.tabbed_emotion_control.remove_text_row(row_id)
+        self.tabbed_audio_control.remove_text_row(row_id)  # 🔄 変更
 
     def on_row_numbers_updated(self, row_mapping):
-        self.tabbed_emotion_control.update_tab_numbers(row_mapping)
+        self.tabbed_audio_control.update_tab_numbers(row_mapping)  # 🔄 変更
 
     def on_parameters_changed(self, row_id, parameters):
         """パラメータ変更時の処理（必要に応じて実装）"""
         # 現在は何もしないが、将来的にリアルタイムプレビューなどに使用可能
+        pass
+
+    def on_cleaner_settings_changed(self, cleaner_settings):  # 🆕 新規追加
+        """クリーナー設定変更時の処理"""
+        # 現在は何もしないが、将来的に設定保存などに使用可能
         pass
 
     def load_last_model(self):
@@ -303,13 +307,24 @@ class TTSStudioMainWindow(QMainWindow):
         if not self.tts_engine.is_loaded:
             QMessageBox.warning(self, "エラー", "モデルが読み込まれていません。")
             return
-        tab_parameters = self.tabbed_emotion_control.get_parameters(row_id) or parameters
+        tab_parameters = self.tabbed_audio_control.get_parameters(row_id) or parameters  # 🔄 変更
         try:
             sr, audio = self.tts_engine.synthesize(text, **tab_parameters)
+            
+            # 🆕 音声クリーナー適用
+            if self.tabbed_audio_control.is_cleaner_enabled():
+                audio = self.apply_audio_cleaning(audio, sr)
+            
             import sounddevice as sd
             sd.play(audio, sr, blocking=False)
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"音声合成に失敗しました: {str(e)}")
+
+    def apply_audio_cleaning(self, audio, sample_rate):  # 🆕 新規追加
+        """音声クリーナーを適用（現在はダミー実装）"""
+        # TODO: 実際のクリーナー処理を実装
+        print("🔧 音声クリーナーが適用されました（ダミー）")
+        return audio
 
     def trim_silence(self, audio, sample_rate, threshold=0.01):
         """音声の末尾無音部分を削除"""
@@ -354,7 +369,7 @@ class TTSStudioMainWindow(QMainWindow):
                 row_id = data['row_id']
                 
                 # 対応するタブのパラメータを取得
-                tab_parameters = self.tabbed_emotion_control.get_parameters(row_id)
+                tab_parameters = self.tabbed_audio_control.get_parameters(row_id)  # 🔄 変更
                 if not tab_parameters:
                     # デフォルトパラメータ
                     tab_parameters = {
@@ -364,6 +379,10 @@ class TTSStudioMainWindow(QMainWindow):
                     }
                 
                 sr, audio = self.tts_engine.synthesize(text, **tab_parameters)
+                
+                # 🆕 音声クリーナー適用
+                if self.tabbed_audio_control.is_cleaner_enabled():
+                    audio = self.apply_audio_cleaning(audio, sr)
                 
                 if sample_rate is None:
                     sample_rate = sr
@@ -440,7 +459,7 @@ class TTSStudioMainWindow(QMainWindow):
                     row_id = data['row_id']
                     
                     # 対応するタブのパラメータを取得
-                    tab_parameters = self.tabbed_emotion_control.get_parameters(row_id)
+                    tab_parameters = self.tabbed_audio_control.get_parameters(row_id)  # 🔄 変更
                     if not tab_parameters:
                         tab_parameters = {
                             'style': 'Neutral', 'style_weight': 1.0,
@@ -449,6 +468,10 @@ class TTSStudioMainWindow(QMainWindow):
                         }
                     
                     sr, audio = self.tts_engine.synthesize(text, **tab_parameters)
+                    
+                    # 🆕 音声クリーナー適用
+                    if self.tabbed_audio_control.is_cleaner_enabled():
+                        audio = self.apply_audio_cleaning(audio, sr)
                     
                     # ファイル名生成
                     safe_text = "".join(c for c in text[:20] if c.isalnum() or c in (' ', '-', '_')).rstrip()
@@ -507,7 +530,7 @@ class TTSStudioMainWindow(QMainWindow):
                     row_id = data['row_id']
                     
                     # 対応するタブのパラメータを取得
-                    tab_parameters = self.tabbed_emotion_control.get_parameters(row_id)
+                    tab_parameters = self.tabbed_audio_control.get_parameters(row_id)  # 🔄 変更
                     if not tab_parameters:
                         tab_parameters = {
                             'style': 'Neutral', 'style_weight': 1.0,
@@ -516,6 +539,10 @@ class TTSStudioMainWindow(QMainWindow):
                         }
                     
                     sr, audio = self.tts_engine.synthesize(text, **tab_parameters)
+                    
+                    # 🆕 音声クリーナー適用
+                    if self.tabbed_audio_control.is_cleaner_enabled():
+                        audio = self.apply_audio_cleaning(audio, sr)
                     
                     if sample_rate is None:
                         sample_rate = sr
