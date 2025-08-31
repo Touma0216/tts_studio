@@ -17,7 +17,7 @@ class KeyboardShortcutManager(QObject):
         self.add_shortcut("Ctrl+F", self.open_file_menu)
         
         # ヘルプ機能（新規追加）
-        self.add_shortcut("Ctrl+H", self.toggle_help_overlay)
+        self.add_shortcut("Ctrl+H", self.toggle_help_dialog)
         
         # 再生系
         self.add_shortcut("Ctrl+R", self.play_sequential)
@@ -60,10 +60,15 @@ class KeyboardShortcutManager(QObject):
         """ファイルメニューを開く"""
         self.main_window.toggle_file_menu()
     
-    def toggle_help_overlay(self):
-        """ヘルプオーバーレイを表示/非表示"""
-        if hasattr(self.main_window, 'help_overlay'):
-            self.main_window.help_overlay.toggle_overlay()
+    def toggle_help_dialog(self):
+        """ヘルプダイアログを表示/非表示"""
+        if hasattr(self.main_window, 'help_dialog'):
+            if self.main_window.help_dialog.isVisible():
+                self.main_window.help_dialog.close()
+            else:
+                self.main_window.help_dialog.show()
+                self.main_window.help_dialog.raise_()
+                self.main_window.help_dialog.activateWindow()
     
     def play_current_row(self):
         """現在フォーカス中の行を再生"""

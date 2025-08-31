@@ -5,6 +5,7 @@ tts_studio/
 │   ├── __init__.py
 │   ├── main_window.py   # メインウィンドウ
 │   ├── sliding_menu.py   # スライドアニメ
+│   ├── help_overlay.py   # 操作説明のメニュー
 │   ├── tabbed_emotion_control.py # 感情コントロール
 │   ├── keyboard_shortcuts.py # キーボードショートカット
 │   ├── multi_text.py # 複数テキスト対応
