@@ -7,27 +7,39 @@
             font-family: "Yu Gothic", "Meiryo", sans-serif;
             margin: 0;
             padding: 20px;
-            background: white;
+            background: #f0f2f5;
             color: #333;
             line-height: 1.6;
+            font-size: 16px; /* フォントサイズを大きく */
+            display: flex;
+            justify-content: center;
         }
         
+        .container {
+            max-width: 800px;
+            width: 100%;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+        }
+
         h1 {
             text-align: center;
             color: #2c3e50;
             margin-bottom: 30px;
-            font-size: 24px;
-            border-bottom: 3px solid #3498db;
-            padding-bottom: 10px;
+            font-size: 28px;
         }
         
-        h2 {
-            color: #2980b9;
-            margin-top: 30px;
-            margin-bottom: 15px;
-            font-size: 18px;
-            border-left: 4px solid #3498db;
-            padding-left: 10px;
+        /* セクション見出しのスタイルを直接テーブルに適用 */
+        .shortcut-table th {
+            background: #34495e; /* 黒系の背景色 */
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: bold;
+            font-size: 20px; /* フォントサイズを大きく */
+            /* 横幅を広げるための設定は必要ありません。thはデフォルトで親要素の幅を埋めます */
         }
         
         .shortcut-table {
@@ -35,22 +47,12 @@
             border-collapse: collapse;
             margin: 15px 0;
             background: white;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .shortcut-table th {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 12px;
-            text-align: left;
-            font-weight: bold;
         }
         
         .shortcut-table td {
-            padding: 10px 12px;
+            padding: 12px 15px;
             border-bottom: 1px solid #ecf0f1;
+            font-size: 16px; /* フォントサイズを大きく */
         }
         
         .shortcut-table tr:nth-child(even) {
@@ -63,141 +65,77 @@
         }
         
         .key {
-            background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%);
-            color: white;
-            padding: 4px 8px;
-            border-radius: 4px;
             font-family: "Consolas", "Monaco", monospace;
             font-weight: bold;
-            font-size: 12px;
+            font-size: 18px; /* キーのフォントサイズを大きく */
+            color: #3498db;
             white-space: nowrap;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
         
         .key.special {
-            background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
-        }
-        
-        .section {
-            margin-bottom: 25px;
+            color: #e67e22;
         }
     </style>
 </head>
 <body>
-    <h1>キーボードショートカット一覧</h1>
-    
-    <div class="section">
-        <h2>ファイル操作</h2>
+    <div class="container">
+        <h1>キーボードショートカット一覧</h1>
+        
         <table class="shortcut-table">
             <tr>
-                <th>ショートカット</th>
-                <th>機能</th>
+                <th colspan="2">ファイル・ウィンドウ操作</th>
             </tr>
             <tr>
                 <td><span class="key">Ctrl + F</span></td>
-                <td>ファイルメニュー</td>
+                <td>ファイルメニューを開く</td>
             </tr>
             <tr>
                 <td><span class="key">Ctrl + H</span></td>
-                <td>操作説明</td>
+                <td>操作説明を表示/非表示</td>
             </tr>
-        </table>
-    </div>
-
-    <div class="section">
-        <h2>音声再生</h2>
-        <table class="shortcut-table">
+            
             <tr>
-                <th>ショートカット</th>
-                <th>機能</th>
+                <th colspan="2">音声再生</th>
             </tr>
             <tr>
                 <td><span class="key">Ctrl + P</span></td>
-                <td>現在行を再生</td>
+                <td>現在フォーカス中の行を再生</td>
             </tr>
             <tr>
                 <td><span class="key">Ctrl + R</span></td>
-                <td>連続再生</td>
+                <td>全テキストを連続再生</td>
             </tr>
-        </table>
-    </div>
 
-    <div class="section">
-        <h2>テキスト編集</h2>
-        <table class="shortcut-table">
             <tr>
-                <th>ショートカット</th>
-                <th>機能</th>
+                <th colspan="2">テキスト・タブ操作</th>
             </tr>
             <tr>
                 <td><span class="key">Ctrl + N</span></td>
-                <td>テキスト行追加</td>
-            </tr>
-            <tr>
-                <td><span class="key">Ctrl + Enter</span></td>
-                <td>改行挿入</td>
-            </tr>
-            <tr>
-                <td><span class="key">Enter</span></td>
-                <td>入力確定</td>
-            </tr>
-        </table>
-    </div>
-
-    <div class="section">
-        <h2>タブ切り替え</h2>
-        <table class="shortcut-table">
-            <tr>
-                <th>ショートカット</th>
-                <th>機能</th>
+                <td>新しいテキスト行を追加</td>
             </tr>
             <tr>
                 <td><span class="key special">Ctrl + Tab</span></td>
-                <td>★マスタータブ</td>
-            </tr>
-            <tr>
-                <td><span class="key">Ctrl + 1</span></td>
-                <td>1番目のテキスト行</td>
-            </tr>
-            <tr>
-                <td><span class="key">Ctrl + 2</span></td>
-                <td>2番目のテキスト行</td>
-            </tr>
-            <tr>
-                <td><span class="key">...</span></td>
-                <td>3～9番目も同様</td>
-            </tr>
-        </table>
-    </div>
-
-    <div class="section">
-        <h2>音声パラメータ</h2>
-        <table class="shortcut-table">
-            <tr>
-                <th>ショートカット</th>
-                <th>機能</th>
+                <td>★マスタータブへ移動</td>
             </tr>
             <tr>
                 <td><span class="key">Ctrl + E</span></td>
-                <td>感情選択</td>
+                <td>感情選択コンボボックスを開く</td>
             </tr>
-        </table>
-    </div>
-
-    <div class="section">
-        <h2>ファイル保存</h2>
-        <table class="shortcut-table">
             <tr>
-                <th>ショートカット</th>
-                <th>機能</th>
+                <td><span class="key">Ctrl + 1</span> - <span class="key">9</span></td>
+                <td>指定のテキスト行にフォーカス</td>
+            </tr>
+
+            <tr>
+                <th colspan="2">ファイル保存</th>
             </tr>
             <tr>
                 <td><span class="key">Ctrl + S</span></td>
-                <td>個別保存</td>
+                <td>現在行を個別ファイルとして保存</td>
             </tr>
             <tr>
                 <td><span class="key">Ctrl + Shift + S</span></td>
-                <td>連続保存</td>
+                <td>全テキストを1つのファイルに連続保存</td>
             </tr>
         </table>
     </div>
