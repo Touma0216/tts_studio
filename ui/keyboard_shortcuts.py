@@ -73,7 +73,7 @@ class KeyboardShortcutManager(QObject):
     def play_current_row(self):
         """現在フォーカス中の行を再生"""
         # アクティブなタブのIDを取得
-        current_tab_index = self.main_window.tabbed_emotion_control.tab_widget.currentIndex()
+        current_tab_index = self.main_window.tabbed_audio_control.emotion_control.tab_widget.currentIndex()
         
         # マスタータブ（★）の場合は何もしない
         if current_tab_index == 0:
@@ -81,7 +81,7 @@ class KeyboardShortcutManager(QObject):
             
         if current_tab_index >= 0:
             # タブのrow_idを取得（タブウィジェットから逆引き）
-            current_control = self.main_window.tabbed_emotion_control.tab_widget.currentWidget()
+            current_control = self.main_window.tabbed_audio_control.emotion_control.tab_widget.currentWidget()
             if current_control and hasattr(current_control, 'row_id') and not getattr(current_control, 'is_master', False):
                 row_id = current_control.row_id
                 # 対応するテキスト行を再生
@@ -103,10 +103,10 @@ class KeyboardShortcutManager(QObject):
     def focus_master_tab(self):
         """マスタータブ（★）にフォーカス"""
         # マスタータブは常にindex 0
-        self.main_window.tabbed_emotion_control.tab_widget.setCurrentIndex(0)
+        self.main_window.tabbed_audio_control.emotion_control.tab_widget.setCurrentIndex(0)
         
         # マスタータブ内の最初の入力要素にフォーカス
-        master_control = self.main_window.tabbed_emotion_control.master_control
+        master_control = self.main_window.tabbed_audio_control.emotion_control.master_control
         if master_control and hasattr(master_control, 'emotion_combo'):
             master_control.emotion_combo.setFocus()
     
@@ -119,11 +119,11 @@ class KeyboardShortcutManager(QObject):
             
             # 対応するパラメータタブもアクティブに（マスタータブの次のインデックス）
             row_id = target_row.row_id
-            self.main_window.tabbed_emotion_control.set_current_row(row_id)
+            self.main_window.tabbed_audio_control.set_current_row(row_id)
     
     def open_emotion_combo(self):
         """感情コンボボックスを開く"""
-        current_control = self.main_window.tabbed_emotion_control.tab_widget.currentWidget()
+        current_control = self.main_window.tabbed_audio_control.emotion_control.tab_widget.currentWidget()
         if current_control and hasattr(current_control, 'emotion_combo'):
             current_control.emotion_combo.setFocus()
             current_control.emotion_combo.showPopup()

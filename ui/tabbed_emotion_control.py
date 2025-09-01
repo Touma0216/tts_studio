@@ -32,6 +32,18 @@ class SingleEmotionControl(QWidget):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(15)
         
+        # 感情制御グループ
+        emotion_group = self.create_emotion_group()
+        layout.addWidget(emotion_group)
+        
+        # 音声パラメータグループ
+        params_group = self.create_params_group()
+        layout.addWidget(params_group)
+        
+        # プリセットボタン
+        preset_group = self.create_preset_group()
+        layout.addWidget(preset_group)
+
         # マスタータブの場合は説明を追加
         if self.is_master:
             info_label = QLabel("★ デフォルトパラメータ - ここを変更すると全てのタブに反映されます")
@@ -46,18 +58,6 @@ class SingleEmotionControl(QWidget):
                 }
             """)
             layout.addWidget(info_label)
-        
-        # 感情制御グループ
-        emotion_group = self.create_emotion_group()
-        layout.addWidget(emotion_group)
-        
-        # 音声パラメータグループ
-        params_group = self.create_params_group()
-        layout.addWidget(params_group)
-        
-        # プリセットボタン
-        preset_group = self.create_preset_group()
-        layout.addWidget(preset_group)
         
         layout.addStretch()
         
