@@ -337,7 +337,7 @@ class AudioCleanerControl(QWidget):
         preset_group = QGroupBox("プリセット選択")
         preset_layout = QVBoxLayout(preset_group)
         
-        # プリセット選択行
+        # プリセット選択行（ボタン削除版）
         selection_layout = QHBoxLayout()
         
         preset_label = QLabel("プリセット:")
@@ -362,70 +362,14 @@ class AudioCleanerControl(QWidget):
             }
         """)
         
-        # 編集ボタン（✎マーク）
-        self.edit_preset_button = QPushButton("✎")
-        self.edit_preset_button.setFixedSize(30, 30)
-        self.edit_preset_button.setToolTip("プリセット名を編集")
-        self.edit_preset_button.setStyleSheet("""
-            QPushButton {
-                background-color: #f0f0f0;
-                border: 1px solid #ccc;
-                border-radius: 15px;
-                font-size: 14px;
-                font-weight: bold;
-                color: #666;
-            }
-            QPushButton:hover {
-                background-color: #e0e0e0;
-                color: #333;
-            }
-        """)
-        self.edit_preset_button.clicked.connect(self.edit_preset_name)
-        
-        # 削除ボタン（🗑️マーク）
-        self.delete_preset_button = QPushButton("🗑️")
-        self.delete_preset_button.setFixedSize(30, 30)
-        self.delete_preset_button.setToolTip("プリセットを削除")
-        self.delete_preset_button.setStyleSheet("""
-            QPushButton {
-                background-color: #f0f0f0;
-                border: 1px solid #ccc;
-                border-radius: 15px;
-                font-size: 12px;
-            }
-            QPushButton:hover {
-                background-color: #ffebee;
-                border-color: #f44336;
-            }
-        """)
-        self.delete_preset_button.clicked.connect(self.delete_preset)
-        
         selection_layout.addWidget(preset_label)
         selection_layout.addWidget(self.preset_combo, 1)
-        selection_layout.addWidget(self.edit_preset_button)
-        selection_layout.addWidget(self.delete_preset_button)
+        selection_layout.addStretch()  # 右側の余白
         
-        # プリセット適用ボタン
-        self.apply_preset_button = QPushButton("プリセットを適用")
-        self.apply_preset_button.setMinimumHeight(40)
-        self.apply_preset_button.setStyleSheet("""
-            QPushButton {
-                background-color: #2196f3;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                font-size: 14px;
-                font-weight: bold;
-                padding: 10px;
-            }
-            QPushButton:hover {
-                background-color: #1976d2;
-            }
-        """)
-        self.apply_preset_button.clicked.connect(self.apply_preset)
+        # プリセット適用は自動（コンボボックス変更時に即座に適用）
+        self.preset_combo.currentTextChanged.connect(self.apply_preset_automatically)
         
         preset_layout.addLayout(selection_layout)
-        preset_layout.addWidget(self.apply_preset_button)
         
         # プリセット説明
         desc_group = QGroupBox("プリセット説明")
@@ -542,14 +486,20 @@ class AudioCleanerControl(QWidget):
             timeout_timer.stop()
             print(f"❌ 音声分析エラー: {e}")
             self.reset_analysis_ui()
-            QMessageBox.critical(self, "分析エラー", f"音声分析に失敗しました:\n{str(e)}")
+            QMessageBox.critical(self, "分析エラー", f"音声分析に失敗しました:\n{str(e)}", QMessageBox.StandardButton.Ok)
     
     def on_analysis_timeout(self):
         """分析タイムアウト時の処理"""
         print("⏰ 分析タイムアウト - UI復旧中...")
         self.reset_analysis_ui()
         self.results_display.setPlainText("⏰ 分析がタイムアウトしました。音声データが大きすぎる可能性があります。")
-        QMessageBox.warning(self, "分析タイムアウト", "音声分析がタイムアウトしました。")
+        # タイムアウト通知（音なし）
+        timeout_msg = QMessageBox(self)
+        timeout_msg.setIcon(QMessageBox.Icon.Warning)
+        timeout_msg.setWindowTitle("分析タイムアウト")
+        timeout_msg.setText("音声分析がタイムアウトしました。")
+        timeout_msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        timeout_msg.exec()
     
     def process_analysis_results(self, analysis_result: dict):
         """分析結果を処理（詳細表示）"""
@@ -670,18 +620,12 @@ class AudioCleanerControl(QWidget):
         self.progress_bar.setVisible(False)
         self.progress_bar.setValue(0)
     
-    # プリセット関連メソッド（簡素化）
-    def edit_preset_name(self):
-        """プリセット名編集（無効化）"""
-        QMessageBox.information(self, "編集不可", "デフォルトプリセットは編集できません。")
-    
-    def delete_preset(self):
-        """プリセット削除（無効化）"""
-        QMessageBox.information(self, "削除不可", "デフォルトプリセットは削除できません。")
-    
-    def apply_preset(self):
-        """選択されたプリセットを適用"""
+    # プリセット関連メソッド（簡素化・確認ダイアログ削除）
+    def apply_preset_automatically(self):
+        """プリセット選択時に自動適用（確認ダイアログなし）"""
         preset_key = self.preset_combo.currentData()
+        if not preset_key:
+            return
         
         # デフォルトプリセットのみ
         presets = {
@@ -715,7 +659,7 @@ class AudioCleanerControl(QWidget):
             self.cleaner_settings.update(preset_settings)
             self.toggle_switch.setChecked(preset_settings['enabled'])
             self.emit_settings_changed()
-            QMessageBox.information(self, "適用完了", f"プリセット '{self.preset_combo.currentText()}' を適用しました！")
+            # 確認ダイアログなしで即座に適用
     
     # イベントハンドラー
     def on_enable_toggled(self, enabled):
@@ -739,19 +683,15 @@ class AudioCleanerControl(QWidget):
     def set_audio_data_for_analysis(self, audio_data: np.ndarray, sample_rate: int):
         """外部から音声データを受け取って分析実行"""
         
-        # 簡単な検証
+        # 簡単な検証（警告ダイアログ削除）
         if audio_data is None or len(audio_data) == 0:
-            QMessageBox.warning(self, "分析エラー", "音声データが無効です。")
+            print("❌ 音声データが無効です")
             return
         
-        # データサイズチェック
+        # データサイズチェック（確認ダイアログ削除）
         data_size_mb = audio_data.nbytes / (1024 * 1024)
-        if data_size_mb > 100:  # 100MB以上
-            reply = QMessageBox.question(self, "大きなデータ", 
-                                       f"音声データが大きいです（{data_size_mb:.1f}MB）。\n処理に時間がかかる可能性があります。続行しますか？",
-                                       QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            if reply == QMessageBox.StandardButton.No:
-                return
+        if data_size_mb > 100:  # 100MB以上でも強行
+            print(f"⚠️ 大きなデータ（{data_size_mb:.1f}MB）ですが処理を続行します")
         
         print(f"🔍 音声分析開始（データサイズ: {data_size_mb:.1f}MB, 長さ: {len(audio_data)/sample_rate:.2f}秒）")
         self.run_simple_analysis_safe(audio_data, sample_rate)
