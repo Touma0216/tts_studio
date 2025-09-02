@@ -1,4 +1,6 @@
+# ui/main_window.py (完全版)
 import os
+import numpy as np
 from pathlib import Path
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QPushButton, QLabel, QFileDialog, QStyle, QFrame, QApplication, QMessageBox)
@@ -8,7 +10,7 @@ from PyQt6.QtGui import QFont, QAction
 # 自作モジュール
 from .model_history import ModelHistoryWidget
 from .model_loader import ModelLoaderDialog
-from .tabbed_audio_control import TabbedAudioControl  # 🔄 変更: TabbedEmotionControl → TabbedAudioControl
+from .tabbed_audio_control import TabbedAudioControl
 from .multi_text import MultiTextWidget
 from .keyboard_shortcuts import KeyboardShortcutManager
 from .sliding_menu import SlidingMenuWidget
@@ -16,15 +18,28 @@ from core.tts_engine import TTSEngine
 from core.model_manager import ModelManager
 from .help_dialog import HelpDialog
 
+# 🆕 音声処理関連
+from core.audio_processor import AudioProcessor
+from core.audio_analyzer import AudioAnalyzer
+
 
 class TTSStudioMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.tts_engine = TTSEngine()
         self.model_manager = ModelManager()
+        
+        # 🆕 音声処理関連を追加
+        self.audio_processor = AudioProcessor()
+        self.audio_analyzer = AudioAnalyzer()
+        self.last_generated_audio = None  # 解析用に最新の音声を保存
+        self.last_sample_rate = None
+        
         self.init_ui()
         self.help_dialog = HelpDialog(self)
-
+        
+        # クリーナー統合設定
+        self.setup_cleaner_integration()
         
         # スライド式メニューを作成
         self.sliding_menu = SlidingMenuWidget(self)
@@ -63,10 +78,10 @@ class TTSStudioMainWindow(QMainWindow):
         divider.setFrameShadow(QFrame.Shadow.Sunken)
         divider.setStyleSheet("color: #dee2e6;")
 
-        # 🔄 変更: TabbedEmotionControl → TabbedAudioControl
+        # 🔄 TabbedAudioControl（音声パラメータ + クリーナー統合版）
         self.tabbed_audio_control = TabbedAudioControl()
         self.tabbed_audio_control.parameters_changed.connect(self.on_parameters_changed)
-        self.tabbed_audio_control.cleaner_settings_changed.connect(self.on_cleaner_settings_changed)  # 🆕 新規追加
+        self.tabbed_audio_control.cleaner_settings_changed.connect(self.on_cleaner_settings_changed)
         self.tabbed_audio_control.add_text_row("initial", 1)
 
         controls = QHBoxLayout()
@@ -97,7 +112,7 @@ class TTSStudioMainWindow(QMainWindow):
 
         left.addWidget(self.multi_text, 1)
         left.addWidget(divider)
-        left.addWidget(self.tabbed_audio_control, 1)  # 🔄 変更: tabbed_emotion_control → tabbed_audio_control
+        left.addWidget(self.tabbed_audio_control, 1)
         left.addLayout(controls)
 
         # 右ペイン（ダミー）
@@ -169,6 +184,9 @@ class TTSStudioMainWindow(QMainWindow):
 
         help_action = menubar.addAction("説明(H)")
         help_action.triggered.connect(self.show_help_dialog)
+        
+        # 🆕 デバッグメニュー（開発時用）
+        self.create_debug_menu()
 
     def show_help_dialog(self):
         self.help_dialog.show()
@@ -185,6 +203,118 @@ class TTSStudioMainWindow(QMainWindow):
         if self.sliding_menu.is_visible and not self.sliding_menu.geometry().contains(event.pos()):
             self.sliding_menu.hide_menu()
         super().mousePressEvent(event)
+    
+    # 🆕 クリーナー統合設定
+    def setup_cleaner_integration(self):
+        """音声クリーナーとの統合設定"""
+        # クリーナーの解析要求シグナルを接続
+        self.tabbed_audio_control.cleaner_control.analyze_requested.connect(
+            self.handle_cleaner_analysis_request
+        )
+    
+    def handle_cleaner_analysis_request(self):
+        """クリーナーからの解析要求を処理"""
+        if not self.tts_engine.is_loaded:
+            QMessageBox.warning(self, "エラー", "モデルが読み込まれていません。\n先にモデルを読み込んでから解析してください。")
+            return
+        
+        # テスト用音声を生成して解析
+        self.generate_test_audio_for_analysis()
+    
+    def generate_test_audio_for_analysis(self):
+        """解析用のテスト音声を生成（1行目のテキストを使用）修正版"""
+        # 1行目のテキストを取得
+        texts_data = self.multi_text.get_all_texts_and_parameters()
+        
+        if texts_data:
+            # 1行目のテキストを使用
+            first_data = texts_data[0]
+            test_text = first_data['text']
+            row_id = first_data['row_id']
+            test_params = self.tabbed_audio_control.get_parameters(row_id) or first_data['parameters']
+            
+            # テキストが空の場合のチェック
+            if not test_text.strip():
+                test_text = "これは音声解析用のサンプルテキストです。ほのかちゃんの声で品質をチェックします。"
+                print("⚠️ 1行目のテキストが空のため、サンプルテキストを使用")
+        else:
+            # テキストが全くない場合はサンプルテキストを使用
+            test_text = "これは音声解析用のサンプルテキストです。ほのかちゃんの声で品質をチェックします。"
+            test_params = {
+                'style': 'Neutral', 'style_weight': 1.0,
+                'length_scale': 0.85, 'pitch_scale': 1.0,
+                'intonation_scale': 1.0, 'sdp_ratio': 0.25, 'noise': 0.35
+            }
+            print("⚠️ テキストが未入力のため、サンプルテキストを使用")
+        
+        progress = None  # プログレスダイアログの参照を初期化
+        
+        try:
+            print(f"🎤 解析用音声を生成中: '{test_text[:30]}...'")
+            
+            # 解析用進捗表示（改良版）
+            progress = QMessageBox(self)
+            progress.setWindowTitle("音声生成中")
+            progress.setText(f"解析用の音声を生成しています...\n\nテキスト: {test_text[:50]}...")
+            progress.setStandardButtons(QMessageBox.StandardButton.NoButton)  # ボタン無し
+            progress.setWindowModality(Qt.WindowModality.ApplicationModal)  # モーダル設定
+            progress.show()
+            
+            # UI更新を強制
+            QApplication.processEvents()
+            
+            # 音声合成（クリーナーは適用しない - 生音声を解析）
+            sr, audio = self.tts_engine.synthesize(test_text, **test_params)
+            print(f"✅ 音声生成完了: shape={audio.shape}, sr={sr}, 長さ={len(audio)/sr:.2f}秒")
+            
+            # 保存（解析用）
+            self.last_generated_audio = audio
+            self.last_sample_rate = sr
+            
+            # プログレスダイアログを確実に閉じる
+            if progress:
+                progress.close()
+                progress.deleteLater()  # メモリからも削除
+                progress = None
+            
+            # UI更新を強制
+            QApplication.processEvents()
+            
+            print("🔍 音声解析を開始...")
+            
+            # クリーナーに解析依頼（直接音声データを渡す）
+            self.tabbed_audio_control.cleaner_control.set_audio_data_for_analysis(audio, sr)
+            
+        except Exception as e:
+            # エラー時も確実にプログレスダイアログを閉じる
+            if progress:
+                try:
+                    progress.close()
+                    progress.deleteLater()
+                    progress = None
+                except:
+                    pass  # ダイアログが既に破棄されている場合は無視
+            
+            # UI更新を強制
+            QApplication.processEvents()
+            
+            print(f"❌ 解析用音声生成エラー: {e}")
+            QMessageBox.critical(self, "エラー", f"解析用音声の生成に失敗しました:\n{str(e)}")
+        
+        finally:
+            # 最終的な確認でプログレスダイアログを閉じる
+            if progress:
+                try:
+                    progress.close()
+                    progress.deleteLater()
+                    progress = None
+                except:
+                    pass
+            
+            # UI更新を強制
+            QApplication.processEvents()
+            self.tabbed_audio_control.cleaner_control.set_audio_data_for_analysis(audio, sr)
+
 
     # ---------- 履歴ダイアログ ----------
     def open_model_loader(self):
@@ -261,20 +391,20 @@ class TTSStudioMainWindow(QMainWindow):
 
     # ---------- TTS / そのほか（既存） ----------
     def on_text_row_added(self, row_id, row_number):
-        self.tabbed_audio_control.add_text_row(row_id, row_number)  # 🔄 変更
+        self.tabbed_audio_control.add_text_row(row_id, row_number)
 
     def on_text_row_removed(self, row_id):
-        self.tabbed_audio_control.remove_text_row(row_id)  # 🔄 変更
+        self.tabbed_audio_control.remove_text_row(row_id)
 
     def on_row_numbers_updated(self, row_mapping):
-        self.tabbed_audio_control.update_tab_numbers(row_mapping)  # 🔄 変更
+        self.tabbed_audio_control.update_tab_numbers(row_mapping)
 
     def on_parameters_changed(self, row_id, parameters):
         """パラメータ変更時の処理（必要に応じて実装）"""
         # 現在は何もしないが、将来的にリアルタイムプレビューなどに使用可能
         pass
 
-    def on_cleaner_settings_changed(self, cleaner_settings):  # 🆕 新規追加
+    def on_cleaner_settings_changed(self, cleaner_settings):
         """クリーナー設定変更時の処理"""
         # 現在は何もしないが、将来的に設定保存などに使用可能
         pass
@@ -302,29 +432,55 @@ class TTSStudioMainWindow(QMainWindow):
             # ウィンドウタイトル更新
             model_name = Path(paths["model_path"]).parent.name
             self.setWindowTitle(f"TTSスタジオ - {model_name}")
+    
+    # 🔄 音声クリーナー統合版メソッド群
+    def apply_audio_cleaning(self, audio, sample_rate):
+        """音声クリーナーを適用（実装版）"""
+        if not self.tabbed_audio_control.is_cleaner_enabled():
+            return audio
+        
+        try:
+            # クリーナー設定を取得
+            cleaner_settings = self.tabbed_audio_control.get_cleaner_settings()
+            
+            # 音声処理を適用
+            cleaned_audio = self.audio_processor.process_audio(audio, sample_rate, cleaner_settings)
+            
+            # ログ出力（デバッグ用）
+            print(f"🔧 音声クリーナーが適用されました:")
+            print(f"  - ハイパスフィルタ: {cleaner_settings.get('highpass_freq')}Hz")
+            print(f"  - ハム除去: {'有効' if cleaner_settings.get('hum_removal') else '無効'}")
+            print(f"  - ノイズ除去: {'有効' if cleaner_settings.get('noise_reduction') else '無効'}")
+            print(f"  - ラウドネス正規化: {'有効' if cleaner_settings.get('loudness_norm') else '無効'}")
+            
+            return cleaned_audio
+            
+        except Exception as e:
+            print(f"音声クリーナーエラー: {e}")
+            return audio  # エラー時は元の音声を返す
 
     def play_single_text(self, row_id, text, parameters):
         if not self.tts_engine.is_loaded:
             QMessageBox.warning(self, "エラー", "モデルが読み込まれていません。")
             return
-        tab_parameters = self.tabbed_audio_control.get_parameters(row_id) or parameters  # 🔄 変更
+        
+        tab_parameters = self.tabbed_audio_control.get_parameters(row_id) or parameters
         try:
             sr, audio = self.tts_engine.synthesize(text, **tab_parameters)
             
-            # 🆕 音声クリーナー適用
+            # 🔄 音声クリーナー適用
             if self.tabbed_audio_control.is_cleaner_enabled():
                 audio = self.apply_audio_cleaning(audio, sr)
             
+            # 最新音声を保存（解析用）
+            self.last_generated_audio = audio
+            self.last_sample_rate = sr
+            
             import sounddevice as sd
             sd.play(audio, sr, blocking=False)
+            
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"音声合成に失敗しました: {str(e)}")
-
-    def apply_audio_cleaning(self, audio, sample_rate):  # 🆕 新規追加
-        """音声クリーナーを適用（現在はダミー実装）"""
-        # TODO: 実際のクリーナー処理を実装
-        print("🔧 音声クリーナーが適用されました（ダミー）")
-        return audio
 
     def trim_silence(self, audio, sample_rate, threshold=0.01):
         """音声の末尾無音部分を削除"""
@@ -369,7 +525,7 @@ class TTSStudioMainWindow(QMainWindow):
                 row_id = data['row_id']
                 
                 # 対応するタブのパラメータを取得
-                tab_parameters = self.tabbed_audio_control.get_parameters(row_id)  # 🔄 変更
+                tab_parameters = self.tabbed_audio_control.get_parameters(row_id)
                 if not tab_parameters:
                     # デフォルトパラメータ
                     tab_parameters = {
@@ -380,7 +536,7 @@ class TTSStudioMainWindow(QMainWindow):
                 
                 sr, audio = self.tts_engine.synthesize(text, **tab_parameters)
                 
-                # 🆕 音声クリーナー適用
+                # 🔄 音声クリーナー適用
                 if self.tabbed_audio_control.is_cleaner_enabled():
                     audio = self.apply_audio_cleaning(audio, sr)
                 
@@ -415,17 +571,21 @@ class TTSStudioMainWindow(QMainWindow):
             if max_final > 0.9:
                 final_audio = final_audio * (0.9 / max_final)
             
+            # 最新音声を保存（解析用）
+            self.last_generated_audio = final_audio
+            self.last_sample_rate = sample_rate
+            
             # バックグラウンドで再生
             import sounddevice as sd
             sd.play(final_audio, sample_rate, blocking=False)
             
             # ボタンを元に戻す
             self.sequential_play_btn.setEnabled(True)
-            self.sequential_play_btn.setText("連続して再生")
+            self.sequential_play_btn.setText("連続して再生(Ctrl + R)")
             
         except Exception as e:
             self.sequential_play_btn.setEnabled(True)
-            self.sequential_play_btn.setText("連続して再生")
+            self.sequential_play_btn.setText("連続して再生(Ctrl + R)")
             QMessageBox.critical(self, "エラー", f"連続再生に失敗しました: {str(e)}")
     
     def save_individual(self):
@@ -459,7 +619,7 @@ class TTSStudioMainWindow(QMainWindow):
                     row_id = data['row_id']
                     
                     # 対応するタブのパラメータを取得
-                    tab_parameters = self.tabbed_audio_control.get_parameters(row_id)  # 🔄 変更
+                    tab_parameters = self.tabbed_audio_control.get_parameters(row_id)
                     if not tab_parameters:
                         tab_parameters = {
                             'style': 'Neutral', 'style_weight': 1.0,
@@ -469,7 +629,7 @@ class TTSStudioMainWindow(QMainWindow):
                     
                     sr, audio = self.tts_engine.synthesize(text, **tab_parameters)
                     
-                    # 🆕 音声クリーナー適用
+                    # 🔄 音声クリーナー適用
                     if self.tabbed_audio_control.is_cleaner_enabled():
                         audio = self.apply_audio_cleaning(audio, sr)
                     
@@ -477,20 +637,24 @@ class TTSStudioMainWindow(QMainWindow):
                     safe_text = "".join(c for c in text[:20] if c.isalnum() or c in (' ', '-', '_')).rstrip()
                     if not safe_text:
                         safe_text = f"text_{i}"
-                    filename = f"{i:02d}_{safe_text}.wav"
+                    
+                    # クリーナー適用状況をファイル名に反映
+                    cleaner_suffix = "_cleaned" if self.tabbed_audio_control.is_cleaner_enabled() else ""
+                    filename = f"{i:02d}_{safe_text}{cleaner_suffix}.wav"
                     file_path = os.path.join(folder_path, filename)
                     
                     sf.write(file_path, audio, sr)
                 
                 # ボタンを元に戻す
                 self.save_individual_btn.setEnabled(True)
-                self.save_individual_btn.setText("個別保存")
+                self.save_individual_btn.setText("個別保存(Ctrl + S)")
                 
-                QMessageBox.information(self, "完了", f"個別ファイルを保存しました。\n保存先: {folder_path}")
+                cleaner_info = "\n🔧 音声クリーナーが適用されています" if self.tabbed_audio_control.is_cleaner_enabled() else ""
+                QMessageBox.information(self, "完了", f"個別ファイルを保存しました。\n保存先: {folder_path}{cleaner_info}")
                 
         except Exception as e:
             self.save_individual_btn.setEnabled(True)
-            self.save_individual_btn.setText("個別保存")
+            self.save_individual_btn.setText("個別保存(Ctrl + S)")
             QMessageBox.critical(self, "エラー", f"個別保存に失敗しました: {str(e)}")
     
     def save_continuous(self):
@@ -509,10 +673,13 @@ class TTSStudioMainWindow(QMainWindow):
             import numpy as np
             
             # ファイル保存先選択
+            cleaner_suffix = "_cleaned" if self.tabbed_audio_control.is_cleaner_enabled() else ""
+            default_filename = f"continuous_output{cleaner_suffix}.wav"
+            
             file_path, _ = QFileDialog.getSaveFileName(
                 self,
                 "連続音声ファイルを保存",
-                "continuous_output.wav",
+                default_filename,
                 "WAV files (*.wav);;All files (*.*)"
             )
             
@@ -530,7 +697,7 @@ class TTSStudioMainWindow(QMainWindow):
                     row_id = data['row_id']
                     
                     # 対応するタブのパラメータを取得
-                    tab_parameters = self.tabbed_audio_control.get_parameters(row_id)  # 🔄 変更
+                    tab_parameters = self.tabbed_audio_control.get_parameters(row_id)
                     if not tab_parameters:
                         tab_parameters = {
                             'style': 'Neutral', 'style_weight': 1.0,
@@ -540,7 +707,7 @@ class TTSStudioMainWindow(QMainWindow):
                     
                     sr, audio = self.tts_engine.synthesize(text, **tab_parameters)
                     
-                    # 🆕 音声クリーナー適用
+                    # 🔄 音声クリーナー適用
                     if self.tabbed_audio_control.is_cleaner_enabled():
                         audio = self.apply_audio_cleaning(audio, sr)
                     
@@ -573,16 +740,254 @@ class TTSStudioMainWindow(QMainWindow):
                 if max_final > 0.9:
                     final_audio = final_audio * (0.9 / max_final)
                 
+                # 最新音声を保存（解析用）
+                self.last_generated_audio = final_audio
+                self.last_sample_rate = sample_rate
+                
                 # ファイル保存
                 sf.write(file_path, final_audio, sample_rate)
                 
                 # ボタンを元に戻す
                 self.save_continuous_btn.setEnabled(True)
-                self.save_continuous_btn.setText("連続保存")
+                self.save_continuous_btn.setText("連続保存(Ctrl + Shift + S)")
                 
-                QMessageBox.information(self, "完了", f"連続音声ファイルを保存しました。\n保存先: {file_path}")
+                cleaner_info = "\n🔧 音声クリーナーが適用されています" if self.tabbed_audio_control.is_cleaner_enabled() else ""
+                QMessageBox.information(self, "完了", f"連続音声ファイルを保存しました。\n保存先: {file_path}{cleaner_info}")
                 
         except Exception as e:
             self.save_continuous_btn.setEnabled(True)
-            self.save_continuous_btn.setText("連続保存")
+            self.save_continuous_btn.setText("連続保存(Ctrl + Shift + S)")
             QMessageBox.critical(self, "エラー", f"連続保存に失敗しました: {str(e)}")
+    
+    # 🆕 デバッグ・テスト用メソッド
+    def create_debug_menu(self):
+        """デバッグ用メニューを作成（開発時のみ）"""
+        debug_menu = self.menuBar().addMenu("デバッグ")
+        
+        # クリーナーテストアクション
+        test_cleaner_action = debug_menu.addAction("🔧 クリーナーテスト")
+        test_cleaner_action.triggered.connect(self.test_cleaner)
+        
+        # 解析結果表示アクション
+        show_analysis_action = debug_menu.addAction("📊 解析結果表示")
+        show_analysis_action.triggered.connect(self.show_analysis_results)
+        
+        # 音声保存アクション
+        save_test_audio_action = debug_menu.addAction("💾 テスト音声保存")
+        save_test_audio_action.triggered.connect(self.save_test_audio)
+    
+    def test_cleaner(self):
+        """クリーナーテスト機能"""
+        if not self.last_generated_audio or not self.last_sample_rate:
+            QMessageBox.information(self, "テスト", "テスト用音声がありません。\n先に音声を生成してください。")
+            return
+        
+        # 元音声と処理後音声の比較
+        original = self.last_generated_audio
+        sr = self.last_sample_rate
+        
+        if self.tabbed_audio_control.is_cleaner_enabled():
+            cleaned = self.apply_audio_cleaning(original, sr)
+            
+            # 比較分析
+            comparison = self.audio_processor.analyze_processing_effect(original, cleaned, sr)
+            
+            # 結果表示
+            result_text = f"""クリーナー処理比較結果:
+
+RMS変化: {comparison['rms_change_db']:.2f} dB
+ピーク変化: {comparison['peak_change_db']:.2f} dB
+ダイナミックレンジ変化: {comparison['dynamic_range_change']:.2f}倍
+
+元音声:
+- RMS: {comparison['original_metrics']['rms']:.4f}
+- ピーク: {comparison['original_metrics']['peak']:.4f}
+
+処理後:
+- RMS: {comparison['processed_metrics']['rms']:.4f}
+- ピーク: {comparison['processed_metrics']['peak']:.4f}"""
+            
+            QMessageBox.information(self, "クリーナーテスト結果", result_text)
+        else:
+            QMessageBox.information(self, "テスト", "クリーナーが無効です。")
+    
+    def show_analysis_results(self):
+        """解析結果の詳細表示"""
+        if hasattr(self.tabbed_audio_control.cleaner_control, 'current_analysis') and \
+           self.tabbed_audio_control.cleaner_control.current_analysis:
+            
+            analysis = self.tabbed_audio_control.cleaner_control.current_analysis
+            import numpy as np
+            
+            # 詳細解析結果を表示
+            details = f"""詳細解析結果:
+
+ピーク: {20*np.log10(np.max(analysis['peak_per_ch'])):.2f} dBFS
+RMS: {20*np.log10(np.mean(analysis['rms_per_ch'])):.2f} dBFS
+真ピーク推定: {20*np.log10(analysis['true_peak_est']):.2f} dBFS
+クリップ率: {np.max(analysis['clip_ratio_per_ch'])*100:.3f}%
+連続クリップ: {analysis['clip_runs_total']} 箇所
+無音率: {analysis['silence_ratio']*100:.1f}%
+SNR: {analysis['snr_db']:.1f} dB (推定)
+ノイズ床: {analysis['noise_floor_dbfs']:.1f} dBFS
+スペクトルフラットネス: {analysis['spectral_flatness']:.3f}
+ハム検出:
+- 50Hz系: {analysis['hum_detection'].get(50.0, 0)*100:.1f}%
+- 60Hz系: {analysis['hum_detection'].get(60.0, 0)*100:.1f}%"""
+            
+            QMessageBox.information(self, "詳細解析結果", details)
+        else:
+            QMessageBox.information(self, "解析結果", "解析結果がありません。\n音声解析を先に実行してください。")
+    
+    def save_test_audio(self):
+        """テスト音声を保存（デバッグ用）"""
+        if not self.last_generated_audio or not self.last_sample_rate:
+            QMessageBox.information(self, "保存", "保存する音声がありません。\n先に音声を生成してください。")
+            return
+        
+        try:
+            import soundfile as sf
+            from datetime import datetime
+            
+            # ファイル名生成
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            cleaner_status = "cleaned" if self.tabbed_audio_control.is_cleaner_enabled() else "original"
+            filename = f"test_audio_{timestamp}_{cleaner_status}.wav"
+            
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "テスト音声を保存",
+                filename,
+                "WAV files (*.wav);;All files (*.*)"
+            )
+            
+            if file_path:
+                sf.write(file_path, self.last_generated_audio, self.last_sample_rate)
+                QMessageBox.information(self, "保存完了", f"テスト音声を保存しました:\n{file_path}")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "保存エラー", f"テスト音声の保存に失敗しました:\n{str(e)}")
+    
+    # 🆕 アプリケーション終了時の処理
+    def closeEvent(self, event):
+        """アプリケーション終了時の処理（改良版）"""
+        try:
+            print("🔄 アプリケーション終了処理開始...")
+            
+            # 解析スレッドが実行中の場合は強制終了
+            cleaner_control = self.tabbed_audio_control.cleaner_control
+            if hasattr(cleaner_control, 'analysis_thread') and cleaner_control.analysis_thread:
+                if cleaner_control.analysis_thread.isRunning():
+                    print("⚠️ 解析スレッドを強制終了中...")
+                    cleaner_control.analysis_thread.stop()  # 停止フラグ設定
+                    cleaner_control.analysis_thread.quit()  # スレッド終了要求
+                    
+                    # 少し待つ
+                    if not cleaner_control.analysis_thread.wait(3000):  # 3秒待機
+                        print("⚠️ 解析スレッドを強制終了...")
+                        cleaner_control.analysis_thread.terminate()  # 強制終了
+                        cleaner_control.analysis_thread.wait(1000)  # 1秒待機
+            
+            # モデルをアンロード
+            if self.tts_engine:
+                print("🤖 TTSエンジンをアンロード中...")
+                self.tts_engine.unload_model()
+                
+            # 設定保存
+            print("💾 設定保存中...")
+            self.model_manager.save_history(quiet=True)
+            
+            print("✅ 終了処理完了")
+            
+        except Exception as e:
+            print(f"❌ 終了処理中にエラー: {e}")
+        
+        event.accept()
+    
+    # 🆕 音声品質チェック機能
+    def check_audio_quality(self):
+        """音声品質をチェック"""
+        if not self.last_generated_audio or not self.last_sample_rate:
+            QMessageBox.information(self, "品質チェック", "チェックする音声がありません。\n先に音声を生成してください。")
+            return
+        
+        try:
+            # 簡易品質チェック
+            audio = self.last_generated_audio
+            sr = self.last_sample_rate
+            
+            # 基本統計
+            peak = np.max(np.abs(audio))
+            rms = np.sqrt(np.mean(audio ** 2))
+            peak_db = 20 * np.log10(peak) if peak > 0 else -float('inf')
+            rms_db = 20 * np.log10(rms) if rms > 0 else -float('inf')
+            
+            # クリップ検出
+            clip_samples = np.sum(np.abs(audio) >= 0.999)
+            clip_ratio = clip_samples / len(audio) * 100
+            
+            # 品質評価
+            quality_issues = []
+            
+            if peak_db > -1.0:
+                quality_issues.append("⚠️ ピークレベルが高すぎます（-1dB以下推奨）")
+            
+            if clip_ratio > 0.01:
+                quality_issues.append("⚠️ クリッピングが検出されました")
+            
+            if rms_db < -30:
+                quality_issues.append("⚠️ 音量が小さすぎます")
+                
+            if rms_db > -10:
+                quality_issues.append("⚠️ 音量が大きすぎます")
+            
+            # 結果表示
+            quality_text = f"""音声品質チェック結果:
+
+ピークレベル: {peak_db:.1f} dBFS
+RMSレベル: {rms_db:.1f} dBFS
+クリップ率: {clip_ratio:.3f}%
+サンプリング周波数: {sr} Hz
+長さ: {len(audio)/sr:.2f} 秒
+
+品質評価:"""
+            
+            if quality_issues:
+                quality_text += "\n" + "\n".join(quality_issues)
+            else:
+                quality_text += "\n✅ 音質に問題はありません"
+            
+            QMessageBox.information(self, "音声品質チェック", quality_text)
+            
+        except Exception as e:
+            QMessageBox.critical(self, "品質チェックエラー", f"品質チェックに失敗しました:\n{str(e)}")
+    
+    # 🆕 ショートカット用の便利メソッド
+    def quick_test_synthesis(self):
+        """クイックテスト合成（デバッグ用）"""
+        if not self.tts_engine.is_loaded:
+            QMessageBox.warning(self, "テスト", "モデルが読み込まれていません。")
+            return
+        
+        try:
+            test_text = "これはクイックテストです。"
+            test_params = self.tabbed_audio_control.get_master_parameters()
+            
+            sr, audio = self.tts_engine.synthesize(test_text, **test_params)
+            
+            if self.tabbed_audio_control.is_cleaner_enabled():
+                audio = self.apply_audio_cleaning(audio, sr)
+            
+            self.last_generated_audio = audio
+            self.last_sample_rate = sr
+            
+            import sounddevice as sd
+            sd.play(audio, sr, blocking=False)
+            
+            print("✅ クイックテスト完了")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "テストエラー", f"クイックテストに失敗しました:\n{str(e)}")
+
+# 注意: このファイルを実際に使用する前に、必要な依存関係がインストールされていることを確認してください:
+# pip install PyQt6 numpy scipy soundfile sounddevice
