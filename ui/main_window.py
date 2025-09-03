@@ -52,7 +52,7 @@ class TTSStudioMainWindow(QMainWindow):
         self.load_last_model()
 
     def init_ui(self):
-        self.setWindowTitle("TTSスタジオ - ほのかちゃん")
+        self.setWindowTitle("TTSスタジオ")
         self.setGeometry(100, 100, 1200, 800)
         self.create_menu_bar()
 
