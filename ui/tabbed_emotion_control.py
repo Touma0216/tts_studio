@@ -105,13 +105,15 @@ class SingleEmotionControl(QWidget):
         layout = QVBoxLayout(group)
         layout.setSpacing(10)
         
-        # 感情選択
+        # 感情選択（初期化時は固定リスト）
         emotion_layout = QHBoxLayout()
         emotion_label = QLabel("感情:")
         emotion_label.setMinimumWidth(80)
         
         self.emotion_combo = QComboBox()
         self.emotion_combo.setToolTip("感情選択(E)")
+        
+        # 初期化時は固定の感情リスト（後でモデル読み込み時に更新）
         emotions = [
             ("Neutral", "😐 ニュートラル"),
             ("Happy", "😊 喜び"),
@@ -393,6 +395,7 @@ class SingleEmotionControl(QWidget):
         layout = QGridLayout(group)
         layout.setSpacing(5)
         
+        # プリセット（Fear感情対応版）
         presets = [
             ("標準", {
                 'style': 'Neutral', 'style_weight': 1.0, 'length_scale': 0.85,
@@ -406,9 +409,9 @@ class SingleEmotionControl(QWidget):
                 'style': 'Neutral', 'style_weight': 0.8, 'length_scale': 1.2,
                 'pitch_scale': 0.7, 'intonation_scale': 0.8, 'sdp_ratio': 0.15, 'noise': 0.3
             }),
-            ("感情豊か", {
-                'style': 'Happy', 'style_weight': 1.5, 'length_scale': 0.75,
-                'pitch_scale': 1.1, 'intonation_scale': 1.4, 'sdp_ratio': 0.6, 'noise': 0.5
+            ("恐怖の演技", {
+                'style': 'Fear', 'style_weight': 1.3, 'length_scale': 0.9,
+                'pitch_scale': 1.1, 'intonation_scale': 1.3, 'sdp_ratio': 0.4, 'noise': 0.45
             }),
         ]
         
@@ -553,6 +556,55 @@ class SingleEmotionControl(QWidget):
         """マスターパラメータから更新（UIも更新）"""
         self.current_params.update(master_params)
         self.load_parameters()
+    
+    def update_emotion_combo(self, available_styles):
+        """感情コンボボックスを利用可能なスタイルで更新"""
+        try:
+            current_selection = self.emotion_combo.currentData()
+            self.emotion_combo.clear()
+            
+            for style in available_styles:
+                # 適切な絵文字を選択
+                emoji = self._get_style_emoji(style)
+                display_name = f"{emoji} {style}"
+                self.emotion_combo.addItem(display_name, style)
+            
+            # 以前の選択を復元（可能なら）
+            if current_selection:
+                for i in range(self.emotion_combo.count()):
+                    if self.emotion_combo.itemData(i) == current_selection:
+                        self.emotion_combo.setCurrentIndex(i)
+                        return
+            
+            # 復元できない場合はNeutralを選択
+            for i in range(self.emotion_combo.count()):
+                if self.emotion_combo.itemData(i) in ['Neutral', 'neutral']:
+                    self.emotion_combo.setCurrentIndex(i)
+                    break
+            
+            print(f"✅ 単一感情コンボ更新完了: {self.row_id}")
+            
+        except Exception as e:
+            print(f"❌ 単一感情コンボ更新エラー({self.row_id}): {e}")
+    
+    def _get_style_emoji(self, style):
+        """スタイルに対応する絵文字を取得"""
+        style_lower = style.lower()
+        
+        emoji_map = {
+            'neutral': '😐',
+            'happy': '😊',
+            'happiness': '😊',
+            'sad': '😢',
+            'sadness': '😢',
+            'angry': '😠',
+            'anger': '😠',
+            'fear': '😰',
+            'disgust': '😖',
+            'surprise': '😲',
+        }
+        
+        return emoji_map.get(style_lower, '🎭')
 
 class TabbedEmotionControl(QWidget):
     """タブ式感情制御ウィジェット（マスターパラメータ対応）"""
@@ -695,3 +747,26 @@ class TabbedEmotionControl(QWidget):
             index = self.tab_widget.indexOf(control)
             if index != -1:
                 self.tab_widget.setCurrentIndex(index)
+    
+    def update_emotion_list(self, available_styles):
+        """利用可能な感情リストでコンボボックスを更新（TabbedEmotionControl用）"""
+        try:
+            print(f"🔄 TabbedEmotionControl: 感情リストを更新中... {available_styles}")
+            
+            # マスターコントロールを更新
+            if self.master_control and hasattr(self.master_control, 'update_emotion_combo'):
+                print(f"🔄 マスターコントロール更新中...")
+                self.master_control.update_emotion_combo(available_styles)
+            
+            # 個別コントロールも更新
+            for row_id, control in self.emotion_controls.items():
+                if hasattr(control, 'update_emotion_combo'):
+                    print(f"🔄 個別コントロール更新中: {row_id}")
+                    control.update_emotion_combo(available_styles)
+            
+            print(f"✅ TabbedEmotionControl: 感情リスト更新完了")
+            
+        except Exception as e:
+            print(f"❌ TabbedEmotionControl感情リスト更新エラー: {e}")
+            import traceback
+            traceback.print_exc()

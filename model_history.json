@@ -1,10 +1,10 @@
 {
   "models": [
     {
-      "id": "722a02592f30",
+      "id": "299e9f48bc53",
       "name": "honoka_500",
       "note": "",
-      "model_path": "F:\\AI_voise\\honoka_500\\honoka_model_e10_s520.safetensors",
+      "model_path": "F:\\AI_voise\\honoka_500\\honoka_model_e60_s3120.safetensors",
       "config_path": "F:\\AI_voise\\honoka_500\\config.json",
       "style_path": "F:\\AI_voise\\honoka_500\\style_vectors.npy"
     }

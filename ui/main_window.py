@@ -410,28 +410,48 @@ class TTSStudioMainWindow(QMainWindow):
         pass
 
     def load_last_model(self):
-        models = self.model_manager.get_all_models()
-        if not models:
-            return
-        last = models[0]  # 先頭が直近
-        if not self.model_manager.validate_model_files(last):
-            return
-        paths = {
-            "model_path": last["model_path"],
-            "config_path": last["config_path"],
-            "style_path": last["style_path"],
-        }
-        success = self.tts_engine.load_model(
-            paths["model_path"], paths["config_path"], paths["style_path"]
-        )
-        if success:
-            self.sequential_play_btn.setEnabled(True)
-            self.save_individual_btn.setEnabled(True)
-            self.save_continuous_btn.setEnabled(True)
-            
-            # ウィンドウタイトル更新
-            model_name = Path(paths["model_path"]).parent.name
-            self.setWindowTitle(f"TTSスタジオ - {model_name}")
+            """前回のモデルを自動読み込み（感情UI更新対応版）"""
+            models = self.model_manager.get_all_models()
+            if not models:
+                return
+            last = models[0]  # 先頭が直近
+            if not self.model_manager.validate_model_files(last):
+                return
+            paths = {
+                "model_path": last["model_path"],
+                "config_path": last["config_path"],
+                "style_path": last["style_path"],
+            }
+            success = self.tts_engine.load_model(
+                paths["model_path"], paths["config_path"], paths["style_path"]
+            )
+            if success:
+                self.sequential_play_btn.setEnabled(True)
+                self.save_individual_btn.setEnabled(True)
+                self.save_continuous_btn.setEnabled(True)
+                
+                # ウィンドウタイトル更新
+                model_name = Path(paths["model_path"]).parent.name
+                self.setWindowTitle(f"TTSスタジオ - {model_name}")
+                
+                # 🆕 感情情報をコンソールに表示
+                print("\n" + "="*50)
+                print("🎭 自動モデル読み込み完了 - 感情情報:")
+                print("="*50)
+                available_styles = self.tts_engine.get_available_styles()
+                print(f"📋 利用可能感情: {available_styles}")
+                
+                # fear関連の感情をチェック
+                fear_emotions = [e for e in available_styles if 'fear' in e.lower()]
+                if fear_emotions:
+                    print(f"😰 Fear関連感情: {fear_emotions}")
+                else:
+                    print("⚠️ Fear関連感情が見つかりません")
+                
+                print("="*50 + "\n")
+                
+                # 🆕 感情UIを更新
+                self.update_emotion_ui_after_model_load()
     
     # 🔄 音声クリーナー統合版メソッド群
     def apply_audio_cleaning(self, audio, sample_rate):
@@ -989,5 +1009,207 @@ RMSレベル: {rms_db:.1f} dBFS
         except Exception as e:
             QMessageBox.critical(self, "テストエラー", f"クイックテストに失敗しました:\n{str(e)}")
 
-# 注意: このファイルを実際に使用する前に、必要な依存関係がインストールされていることを確認してください:
-# pip install PyQt6 numpy scipy soundfile sounddevice
+
+    def create_debug_menu(self):
+        """デバッグ用メニューを作成（開発時のみ）"""
+        debug_menu = self.menuBar().addMenu("デバッグ")
+        
+        # 🆕 感情デバッグアクション
+        debug_emotions_action = debug_menu.addAction("🎭 感情マッピング確認")
+        debug_emotions_action.triggered.connect(self.debug_emotions)
+        
+        # 🆕 Fear感情テストアクション
+        test_fear_action = debug_menu.addAction("😰 Fear感情テスト")
+        test_fear_action.triggered.connect(self.test_fear_emotion)
+        
+        # クリーナーテストアクション
+        test_cleaner_action = debug_menu.addAction("🔧 クリーナーテスト")
+        test_cleaner_action.triggered.connect(self.test_cleaner)
+        
+        # 解析結果表示アクション
+        show_analysis_action = debug_menu.addAction("📊 解析結果表示")
+        show_analysis_action.triggered.connect(self.show_analysis_results)
+        
+        # 音声保存アクション
+        save_test_audio_action = debug_menu.addAction("💾 テスト音声保存")
+        save_test_audio_action.triggered.connect(self.save_test_audio)
+        
+        # 🆕 利用可能感情一覧
+        list_emotions_action = debug_menu.addAction("📋 利用可能感情一覧")
+        list_emotions_action.triggered.connect(self.list_available_emotions)
+    
+    # 🆕 感情関連デバッグメソッド
+    def debug_emotions(self):
+        """感情マッピングのデバッグ情報を表示"""
+        if not self.tts_engine.is_loaded:
+            QMessageBox.information(self, "デバッグ", "モデルが読み込まれていません。")
+            return
+        
+        # TTSエンジンのデバッグ情報を表示
+        self.tts_engine.debug_emotions()
+        
+        # ダイアログでも表示
+        debug_info = self.get_emotion_debug_info()
+        QMessageBox.information(self, "感情マッピング デバッグ", debug_info)
+    
+    def get_emotion_debug_info(self):
+        """感情デバッグ情報を文字列で取得"""
+        if not self.tts_engine.is_loaded:
+            return "モデルが読み込まれていません。"
+        
+        try:
+            model_path = Path(self.tts_engine.model_info.get('model_path', '')).parent.name
+            available_styles = self.tts_engine.get_available_styles()
+            
+            info = f"""感情マッピング デバッグ情報:
+
+📁 モデル: {model_path}
+🎭 利用可能な感情: {', '.join(available_styles)}
+
+🔄 感情マッピング:"""
+            
+            for original, mapped in sorted(self.tts_engine.emotion_mapping.items()):
+                if original == mapped:
+                    info += f"\n  '{original}' ✅"
+                else:
+                    info += f"\n  '{original}' → '{mapped}'"
+            
+            return info
+            
+        except Exception as e:
+            return f"デバッグ情報取得エラー: {str(e)}"
+    
+    def test_fear_emotion(self):
+        """Fear感情での音声合成をテスト"""
+        if not self.tts_engine.is_loaded:
+            QMessageBox.information(self, "テスト", "モデルが読み込まれていません。")
+            return
+        
+        test_emotions = ['fear', 'Fear', 'FEAR']
+        results = []
+        
+        for emotion in test_emotions:
+            try:
+                success, sr, audio = self.tts_engine.test_emotion(
+                    emotion, 
+                    "恐怖の感情テストです。これは怖いですね。"
+                )
+                
+                if success:
+                    results.append(f"✅ '{emotion}': 成功 ({len(audio)} samples)")
+                    
+                    # 音声を再生
+                    try:
+                        import sounddevice as sd
+                        sd.play(audio, sr, blocking=False)
+                        break  # 最初に成功したものを再生
+                    except:
+                        pass
+                else:
+                    results.append(f"❌ '{emotion}': 失敗")
+                    
+            except Exception as e:
+                results.append(f"❌ '{emotion}': エラー - {str(e)}")
+        
+        result_text = "Fear感情テスト結果:\n\n" + "\n".join(results)
+        QMessageBox.information(self, "Fear感情テスト", result_text)
+    
+    def list_available_emotions(self):
+        """利用可能な感情の一覧を表示"""
+        if not self.tts_engine.is_loaded:
+            QMessageBox.information(self, "感情一覧", "モデルが読み込まれていません。")
+            return
+        
+        try:
+            available_styles = self.tts_engine.get_available_styles()
+            model_name = Path(self.tts_engine.model_info.get('model_path', '')).parent.name
+            
+            info = f"""利用可能感情一覧:
+
+📁 モデル: {model_name}
+🎭 感情数: {len(available_styles)}個
+
+感情リスト:"""
+            
+            for i, style in enumerate(available_styles, 1):
+                info += f"\n  {i}. {style}"
+            
+            # 感情マッピング情報も追加
+            info += f"\n\n🔄 感情マッピング数: {len(self.tts_engine.emotion_mapping)}個"
+            
+            QMessageBox.information(self, "利用可能感情一覧", info)
+            
+        except Exception as e:
+            QMessageBox.critical(self, "エラー", f"感情一覧取得エラー:\n{str(e)}")
+    
+    def load_model(self, paths):
+        """モデルを読み込む（感情デバッグ対応版）"""
+        try:
+            success = self.tts_engine.load_model(
+                paths["model_path"], 
+                paths["config_path"], 
+                paths["style_path"]
+            )
+            
+            if success:
+                # 履歴に追加
+                self.model_manager.add_model(
+                    paths["model_path"], 
+                    paths["config_path"], 
+                    paths["style_path"]
+                )
+                
+                # ボタンを有効化
+                self.sequential_play_btn.setEnabled(True)
+                self.save_individual_btn.setEnabled(True)
+                self.save_continuous_btn.setEnabled(True)
+                
+                # ウィンドウタイトル更新
+                model_name = Path(paths["model_path"]).parent.name
+                self.setWindowTitle(f"TTSスタジオ - {model_name}")
+                
+                # 🆕 感情デバッグ情報をコンソールに表示
+                print("\n" + "="*50)
+                print("🎭 モデル読み込み完了 - 感情情報:")
+                print("="*50)
+                available_styles = self.tts_engine.get_available_styles()
+                print(f"📋 利用可能感情: {available_styles}")
+                
+                # fear関連の感情をチェック
+                fear_emotions = [e for e in available_styles if 'fear' in e.lower()]
+                if fear_emotions:
+                    print(f"😰 Fear関連感情: {fear_emotions}")
+                else:
+                    print("⚠️ Fear関連感情が見つかりません")
+                
+                print("="*50 + "\n")
+                
+                QMessageBox.information(self, "成功", f"モデルを読み込みました。\n\n🎭 利用可能感情: {len(available_styles)}個")
+                
+            else:
+                QMessageBox.critical(self, "エラー", "モデルの読み込みに失敗しました。")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "エラー", f"モデル読み込み中にエラーが発生しました:\n{str(e)}")
+    
+    # 🆕 モデル読み込み時の感情UI更新
+    def update_emotion_ui_after_model_load(self):
+        """モデル読み込み後に感情UIを更新（簡素化版）"""
+        if not self.tts_engine.is_loaded:
+            return
+        
+        try:
+            # 利用可能な感情を取得
+            available_styles = self.tts_engine.get_available_styles()
+            print(f"🔄 感情UI更新開始: {available_styles}")
+            
+            # タブ式感情コントロールを更新
+            emotion_control = self.tabbed_audio_control.emotion_control
+            emotion_control.update_emotion_list(available_styles)
+            
+            print(f"✅ 感情UI更新完了")
+            
+        except Exception as e:
+            print(f"❌ 感情UI更新エラー: {e}")
+            import traceback
+            traceback.print_exc()
