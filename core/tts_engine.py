@@ -27,22 +27,23 @@ class TTSEngine:
         self.default_params = {
             'style': 'Neutral',
             'style_weight': 1.0,
-            'sdp_ratio': 0.25,    # 👈 0.02 → 0.25（元の値）
-            'noise': 0.25,        # 👈 0.02 → 0.25（元の値）
-            'length_scale': 0.85
+            'sdp_ratio': 0.5,    # 👈 0.02 → 0.25（元の値）
+            'noise': 0.6,
+            'noise_w': 0.8,        # 👈 0.02 → 0.25（元の値）
+            'length_scale': 1.0
         }
 
         # 後処理を全部無効にする（問題切り分けのため）
         self.audio_processing = {
             'normalize': True,
-            'target_peak_db': -6.0,        
-            'remove_hum': False,           # 👈 一時無効
+            'target_peak_db': -9.0,        
+            'remove_hum': False,           
             'remove_dc': True,
             'soft_limit': False,           # 👈 一時無効
             'limit_threshold': 0.95,
             'spectral_cleaning': False,    # 👈 一時無効
             'professional_gate': False,    # 👈 一時無効
-            'frequency_cleanup': False,    # 👈 一時無効
+            'frequency_cleanup': False,    
         }
         
         # 感情名マッピング

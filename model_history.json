@@ -1,6 +1,14 @@
 {
   "models": [
     {
+      "id": "299e9f48bc53",
+      "name": "honoka_500",
+      "note": "",
+      "model_path": "F:\\AI_voise\\honoka_500\\honoka_model_e60_s3120.safetensors",
+      "config_path": "F:\\AI_voise\\honoka_500\\config.json",
+      "style_path": "F:\\AI_voise\\honoka_500\\style_vectors.npy"
+    },
+    {
       "id": "cbe0f0022a77",
       "name": "amitaro",
       "note": "",
@@ -15,14 +23,6 @@
       "model_path": "F:\\AI_voise\\honoka_test\\honoka_model_e100_s19400.safetensors",
       "config_path": "F:\\AI_voise\\honoka_test\\config.json",
       "style_path": "F:\\AI_voise\\honoka_test\\style_vectors.npy"
-    },
-    {
-      "id": "299e9f48bc53",
-      "name": "honoka_500",
-      "note": "",
-      "model_path": "F:\\AI_voise\\honoka_500\\honoka_model_e60_s3120.safetensors",
-      "config_path": "F:\\AI_voise\\honoka_500\\config.json",
-      "style_path": "F:\\AI_voise\\honoka_500\\style_vectors.npy"
     }
   ]
 }
