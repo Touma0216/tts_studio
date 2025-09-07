@@ -388,10 +388,10 @@ class AudioCleanerControl(QWidget):
         return widget
     
     def create_cleaner_tab(self):
-        """音声クリーナータブを作成（説明追加版）"""
+        """音声クリーナータブを作成（コンパクト版）"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        layout.setSpacing(20)
+        layout.setSpacing(15)  # 間隔を少し縮める
         
         # [音声クリーナー] ON/OFFスイッチ
         cleaner_group = QGroupBox("音声クリーナー")
@@ -401,8 +401,11 @@ class AudioCleanerControl(QWidget):
         switch_label.setFont(QFont("", 12, QFont.Weight.Bold))
         
         # 前回の設定状態でスイッチを初期化
-        self.toggle_switch = ToggleSwitchWidget(self.cleaner_settings['enabled'])
+        initial_state = self.cleaner_settings['enabled']
+        print(f"🔘 トグルスイッチ初期化: {initial_state}")
+        self.toggle_switch = ToggleSwitchWidget(initial_state)
         self.toggle_switch.toggled.connect(self.on_enable_toggled)
+        print(f"✅ トグルスイッチ作成完了: isChecked={self.toggle_switch.isChecked()}")
         
         cleaner_layout.addWidget(switch_label)
         cleaner_layout.addStretch()
@@ -441,12 +444,13 @@ class AudioCleanerControl(QWidget):
         selection_layout.addWidget(self.preset_combo, 1)
         selection_layout.addStretch()
         
-        # プリセット適用は自動（コンボボックス変更時に即座に適用）
+        # プリセット変更時の説明更新とプリセット適用（初期化時は適用しない）
+        self.preset_combo.currentTextChanged.connect(self.update_preset_description)
         self.preset_combo.currentTextChanged.connect(self.apply_preset_automatically)
         
         preset_layout.addLayout(selection_layout)
         
-        # プリセット説明
+        # プリセット説明（コンパクト化）
         desc_group = QGroupBox("プリセット説明")
         desc_layout = QVBoxLayout(desc_group)
         
@@ -456,58 +460,22 @@ class AudioCleanerControl(QWidget):
                 background-color: #f8f9fa;
                 border: 1px solid #dee2e6;
                 border-radius: 4px;
-                padding: 12px;
+                padding: 10px;
                 color: #495057;
-                line-height: 1.4;
-            }
-        """)
-        self.preset_description.setWordWrap(True)
-        self.preset_description.setMinimumHeight(60)
-        
-        # プリセット変更時の説明更新
-        self.preset_combo.currentTextChanged.connect(self.update_preset_description)
-        
-        desc_layout.addWidget(self.preset_description)
-        
-        # 👈 音声クリーナーとは？の説明を追加
-        about_group = QGroupBox("音声クリーナーとは？")
-        about_layout = QVBoxLayout(about_group)
-        
-        about_text = QLabel("""音声クリーナーは、AI音声合成で生成された音声を自動的に高品質化する機能です。
-
-🔧 主な効果:
-• ノイズ除去 - 背景ノイズや「サー」音を減らします
-• ハム除去 - 電源由来の50Hz/60Hz系の「ブーン」音を除去
-• 音量正規化 - 適切な音量レベルに自動調整
-• 周波数調整 - 不要な低域・高域をカット
-
-🎯 こんな時に有効:
-• 配信・録音で使用する場合
-• よりクリアな音質が欲しい場合
-• ノイズが気になる場合
-• 音量を統一したい場合
-
-⚠️ 注意: 処理により若干の音質変化が生じる場合があります。自然な音質を重視する場合はOFFのままご使用ください。""")
-        
-        about_text.setStyleSheet("""
-            QLabel {
-                background-color: #fff3e0;
-                border: 1px solid #ff9800;
-                border-radius: 6px;
-                padding: 15px;
-                color: #e65100;
-                line-height: 1.6;
+                line-height: 1.3;
                 font-size: 12px;
             }
         """)
-        about_text.setWordWrap(True)
+        self.preset_description.setWordWrap(True)
+        self.preset_description.setMinimumHeight(40)  # 高さを縮める
         
-        about_layout.addWidget(about_text)
+        desc_layout.addWidget(self.preset_description)
         
+        # レイアウト追加（説明セクションを削除）
         layout.addWidget(cleaner_group)
         layout.addWidget(preset_group)
         layout.addWidget(desc_group)
-        layout.addWidget(about_group)  # 👈 説明を追加
+        # 👈 about_group（音声クリーナーとは？）を削除
         layout.addStretch()
         
         # プリセットリストを初期化
@@ -516,6 +484,10 @@ class AudioCleanerControl(QWidget):
         self.restore_last_preset()
         # 初期説明を設定
         self.update_preset_description()
+        
+        # 初期化完了
+        self.is_initializing = False
+        print("✅ 初期化完了 - プリセット自動適用を有効化")
         
         return widget
     

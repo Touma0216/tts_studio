@@ -110,9 +110,9 @@ class TTSStudioMainWindow(QMainWindow):
         controls.addWidget(self.save_individual_btn)
         controls.addWidget(self.save_continuous_btn)
 
-        left.addWidget(self.multi_text, 1)
+        left.addWidget(self.multi_text, 2)  # 👈 1 → 2 に変更（テキストエリアを2倍に）
         left.addWidget(divider)
-        left.addWidget(self.tabbed_audio_control, 1)
+        left.addWidget(self.tabbed_audio_control, 1)  # 👈 タブエリアは1のまま（相対的に小さくなる）
         left.addLayout(controls)
 
         # 右ペイン（ダミー）
