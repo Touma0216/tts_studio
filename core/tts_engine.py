@@ -36,7 +36,7 @@ class TTSEngine:
         # 後処理を全部無効にする（問題切り分けのため）
         self.audio_processing = {
             'normalize': True,
-            'target_peak_db': -6.0,        
+            'target_peak_db': -9.0,        
             'remove_hum': True,           
             'remove_dc': True,
             'soft_limit': False,           # 👈 一時無効

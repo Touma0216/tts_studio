@@ -15,14 +15,6 @@
       "model_path": "F:\\AI_voise\\amitaro\\amitaro.safetensors",
       "config_path": "F:\\AI_voise\\amitaro\\config.json",
       "style_path": "F:\\AI_voise\\amitaro\\style_vectors.npy"
-    },
-    {
-      "id": "39ba8dfb8b7e",
-      "name": "honoka_test",
-      "note": "",
-      "model_path": "F:\\AI_voise\\honoka_test\\honoka_model_e100_s19400.safetensors",
-      "config_path": "F:\\AI_voise\\honoka_test\\config.json",
-      "style_path": "F:\\AI_voise\\honoka_test\\style_vectors.npy"
     }
   ]
 }

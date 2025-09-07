@@ -1,4 +1,4 @@
-# ui/main_window.py (完全版)
+# ui/main_window.py (デバッグメニュー完全削除版)
 import os
 import numpy as np
 from pathlib import Path
@@ -18,7 +18,7 @@ from core.tts_engine import TTSEngine
 from core.model_manager import ModelManager
 from .help_dialog import HelpDialog
 
-# 🆕 音声処理関連
+# 音声処理関連
 from core.audio_processor import AudioProcessor
 from core.audio_analyzer import AudioAnalyzer
 
@@ -29,7 +29,7 @@ class TTSStudioMainWindow(QMainWindow):
         self.tts_engine = TTSEngine()
         self.model_manager = ModelManager()
         
-        # 🆕 音声処理関連を追加
+        # 音声処理関連を追加
         self.audio_processor = AudioProcessor()
         self.audio_analyzer = AudioAnalyzer()
         self.last_generated_audio = None  # 解析用に最新の音声を保存
@@ -78,7 +78,7 @@ class TTSStudioMainWindow(QMainWindow):
         divider.setFrameShadow(QFrame.Shadow.Sunken)
         divider.setStyleSheet("color: #dee2e6;")
 
-        # 🔄 TabbedAudioControl（音声パラメータ + クリーナー統合版）
+        # TabbedAudioControl（音声パラメータ + クリーナー統合版）
         self.tabbed_audio_control = TabbedAudioControl()
         self.tabbed_audio_control.parameters_changed.connect(self.on_parameters_changed)
         self.tabbed_audio_control.cleaner_settings_changed.connect(self.on_cleaner_settings_changed)
@@ -184,9 +184,6 @@ class TTSStudioMainWindow(QMainWindow):
 
         help_action = menubar.addAction("説明(H)")
         help_action.triggered.connect(self.show_help_dialog)
-        
-        # 🆕 デバッグメニュー（開発時用）
-        self.create_debug_menu()
 
     def show_help_dialog(self):
         self.help_dialog.show()
@@ -204,7 +201,7 @@ class TTSStudioMainWindow(QMainWindow):
             self.sliding_menu.hide_menu()
         super().mousePressEvent(event)
     
-    # 🆕 クリーナー統合設定
+    # クリーナー統合設定
     def setup_cleaner_integration(self):
         """音声クリーナーとの統合設定"""
         # クリーナーの解析要求シグナルを接続
@@ -313,8 +310,6 @@ class TTSStudioMainWindow(QMainWindow):
             
             # UI更新を強制
             QApplication.processEvents()
-            self.tabbed_audio_control.cleaner_control.set_audio_data_for_analysis(audio, sr)
-
 
     # ---------- 履歴ダイアログ ----------
     def open_model_loader(self):
@@ -356,7 +351,7 @@ class TTSStudioMainWindow(QMainWindow):
 
     # ---------- モデル読み込み ----------
     def load_model(self, paths):
-        """モデルを読み込む"""
+        """モデルを読み込む（感情デバッグ対応版）"""
         try:
             success = self.tts_engine.load_model(
                 paths["model_path"], 
@@ -381,13 +376,32 @@ class TTSStudioMainWindow(QMainWindow):
                 model_name = Path(paths["model_path"]).parent.name
                 self.setWindowTitle(f"TTSスタジオ - {model_name}")
                 
-                QMessageBox.information(self, "成功", "モデルを読み込みました。")
+                # 感情情報をコンソールに表示
+                print("\n" + "="*50)
+                print("🎭 モデル読み込み完了 - 感情情報:")
+                print("="*50)
+                available_styles = self.tts_engine.get_available_styles()
+                print(f"📋 利用可能感情: {available_styles}")
+                
+                # fear関連の感情をチェック
+                fear_emotions = [e for e in available_styles if 'fear' in e.lower()]
+                if fear_emotions:
+                    print(f"😰 Fear関連感情: {fear_emotions}")
+                else:
+                    print("⚠️ Fear関連感情が見つかりません")
+                
+                print("="*50 + "\n")
+                
+                QMessageBox.information(self, "成功", f"モデルを読み込みました。\n\n🎭 利用可能感情: {len(available_styles)}個")
+                
+                # 感情UIを更新
+                self.update_emotion_ui_after_model_load()
                 
             else:
                 QMessageBox.critical(self, "エラー", "モデルの読み込みに失敗しました。")
                 
         except Exception as e:
-            QMessageBox.critical(self, "エラー", f"モデル読み込み中にエラーが発生しました: {str(e)}")
+            QMessageBox.critical(self, "エラー", f"モデル読み込み中にエラーが発生しました:\n{str(e)}")
 
     # ---------- TTS / そのほか（既存） ----------
     def on_text_row_added(self, row_id, row_number):
@@ -434,7 +448,7 @@ class TTSStudioMainWindow(QMainWindow):
                 model_name = Path(paths["model_path"]).parent.name
                 self.setWindowTitle(f"TTSスタジオ - {model_name}")
                 
-                # 🆕 感情情報をコンソールに表示
+                # 感情情報をコンソールに表示
                 print("\n" + "="*50)
                 print("🎭 自動モデル読み込み完了 - 感情情報:")
                 print("="*50)
@@ -450,10 +464,10 @@ class TTSStudioMainWindow(QMainWindow):
                 
                 print("="*50 + "\n")
                 
-                # 🆕 感情UIを更新
+                # 感情UIを更新
                 self.update_emotion_ui_after_model_load()
     
-    # 🔄 音声クリーナー統合版メソッド群
+    # 音声クリーナー統合版メソッド群
     def apply_audio_cleaning(self, audio, sample_rate):
         """音声クリーナーを適用（実装版）"""
         if not self.tabbed_audio_control.is_cleaner_enabled():
@@ -488,7 +502,7 @@ class TTSStudioMainWindow(QMainWindow):
         try:
             sr, audio = self.tts_engine.synthesize(text, **tab_parameters)
             
-            # 🔄 音声クリーナー適用
+            # 音声クリーナー適用
             if self.tabbed_audio_control.is_cleaner_enabled():
                 audio = self.apply_audio_cleaning(audio, sr)
             
@@ -556,7 +570,7 @@ class TTSStudioMainWindow(QMainWindow):
                 
                 sr, audio = self.tts_engine.synthesize(text, **tab_parameters)
                 
-                # 🔄 音声クリーナー適用
+                # 音声クリーナー適用
                 if self.tabbed_audio_control.is_cleaner_enabled():
                     audio = self.apply_audio_cleaning(audio, sr)
                 
@@ -649,7 +663,7 @@ class TTSStudioMainWindow(QMainWindow):
                     
                     sr, audio = self.tts_engine.synthesize(text, **tab_parameters)
                     
-                    # 🔄 音声クリーナー適用
+                    # 音声クリーナー適用
                     if self.tabbed_audio_control.is_cleaner_enabled():
                         audio = self.apply_audio_cleaning(audio, sr)
                     
@@ -727,7 +741,7 @@ class TTSStudioMainWindow(QMainWindow):
                     
                     sr, audio = self.tts_engine.synthesize(text, **tab_parameters)
                     
-                    # 🔄 音声クリーナー適用
+                    # 音声クリーナー適用
                     if self.tabbed_audio_control.is_cleaner_enabled():
                         audio = self.apply_audio_cleaning(audio, sr)
                     
@@ -779,116 +793,29 @@ class TTSStudioMainWindow(QMainWindow):
             self.save_continuous_btn.setText("連続保存(Ctrl + Shift + S)")
             QMessageBox.critical(self, "エラー", f"連続保存に失敗しました: {str(e)}")
     
-    # 🆕 デバッグ・テスト用メソッド
-    def create_debug_menu(self):
-        """デバッグ用メニューを作成（開発時のみ）"""
-        debug_menu = self.menuBar().addMenu("デバッグ")
-        
-        # クリーナーテストアクション
-        test_cleaner_action = debug_menu.addAction("🔧 クリーナーテスト")
-        test_cleaner_action.triggered.connect(self.test_cleaner)
-        
-        # 解析結果表示アクション
-        show_analysis_action = debug_menu.addAction("📊 解析結果表示")
-        show_analysis_action.triggered.connect(self.show_analysis_results)
-        
-        # 音声保存アクション
-        save_test_audio_action = debug_menu.addAction("💾 テスト音声保存")
-        save_test_audio_action.triggered.connect(self.save_test_audio)
-    
-    def test_cleaner(self):
-        """クリーナーテスト機能"""
-        if not self.last_generated_audio or not self.last_sample_rate:
-            QMessageBox.information(self, "テスト", "テスト用音声がありません。\n先に音声を生成してください。")
-            return
-        
-        # 元音声と処理後音声の比較
-        original = self.last_generated_audio
-        sr = self.last_sample_rate
-        
-        if self.tabbed_audio_control.is_cleaner_enabled():
-            cleaned = self.apply_audio_cleaning(original, sr)
-            
-            # 比較分析
-            comparison = self.audio_processor.analyze_processing_effect(original, cleaned, sr)
-            
-            # 結果表示
-            result_text = f"""クリーナー処理比較結果:
-
-RMS変化: {comparison['rms_change_db']:.2f} dB
-ピーク変化: {comparison['peak_change_db']:.2f} dB
-ダイナミックレンジ変化: {comparison['dynamic_range_change']:.2f}倍
-
-元音声:
-- RMS: {comparison['original_metrics']['rms']:.4f}
-- ピーク: {comparison['original_metrics']['peak']:.4f}
-
-処理後:
-- RMS: {comparison['processed_metrics']['rms']:.4f}
-- ピーク: {comparison['processed_metrics']['peak']:.4f}"""
-            
-            QMessageBox.information(self, "クリーナーテスト結果", result_text)
-        else:
-            QMessageBox.information(self, "テスト", "クリーナーが無効です。")
-    
-    def show_analysis_results(self):
-        """解析結果の詳細表示"""
-        if hasattr(self.tabbed_audio_control.cleaner_control, 'current_analysis') and \
-           self.tabbed_audio_control.cleaner_control.current_analysis:
-            
-            analysis = self.tabbed_audio_control.cleaner_control.current_analysis
-            import numpy as np
-            
-            # 詳細解析結果を表示
-            details = f"""詳細解析結果:
-
-ピーク: {20*np.log10(np.max(analysis['peak_per_ch'])):.2f} dBFS
-RMS: {20*np.log10(np.mean(analysis['rms_per_ch'])):.2f} dBFS
-真ピーク推定: {20*np.log10(analysis['true_peak_est']):.2f} dBFS
-クリップ率: {np.max(analysis['clip_ratio_per_ch'])*100:.3f}%
-連続クリップ: {analysis['clip_runs_total']} 箇所
-無音率: {analysis['silence_ratio']*100:.1f}%
-SNR: {analysis['snr_db']:.1f} dB (推定)
-ノイズ床: {analysis['noise_floor_dbfs']:.1f} dBFS
-スペクトルフラットネス: {analysis['spectral_flatness']:.3f}
-ハム検出:
-- 50Hz系: {analysis['hum_detection'].get(50.0, 0)*100:.1f}%
-- 60Hz系: {analysis['hum_detection'].get(60.0, 0)*100:.1f}%"""
-            
-            QMessageBox.information(self, "詳細解析結果", details)
-        else:
-            QMessageBox.information(self, "解析結果", "解析結果がありません。\n音声解析を先に実行してください。")
-    
-    def save_test_audio(self):
-        """テスト音声を保存（デバッグ用）"""
-        if not self.last_generated_audio or not self.last_sample_rate:
-            QMessageBox.information(self, "保存", "保存する音声がありません。\n先に音声を生成してください。")
+    # モデル読み込み時の感情UI更新
+    def update_emotion_ui_after_model_load(self):
+        """モデル読み込み後に感情UIを更新（簡素化版）"""
+        if not self.tts_engine.is_loaded:
             return
         
         try:
-            import soundfile as sf
-            from datetime import datetime
+            # 利用可能な感情を取得
+            available_styles = self.tts_engine.get_available_styles()
+            print(f"🔄 感情UI更新開始: {available_styles}")
             
-            # ファイル名生成
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            cleaner_status = "cleaned" if self.tabbed_audio_control.is_cleaner_enabled() else "original"
-            filename = f"test_audio_{timestamp}_{cleaner_status}.wav"
+            # タブ式感情コントロールを更新
+            emotion_control = self.tabbed_audio_control.emotion_control
+            emotion_control.update_emotion_list(available_styles)
             
-            file_path, _ = QFileDialog.getSaveFileName(
-                self,
-                "テスト音声を保存",
-                filename,
-                "WAV files (*.wav);;All files (*.*)"
-            )
+            print(f"✅ 感情UI更新完了")
             
-            if file_path:
-                sf.write(file_path, self.last_generated_audio, self.last_sample_rate)
-                QMessageBox.information(self, "保存完了", f"テスト音声を保存しました:\n{file_path}")
-                
         except Exception as e:
-            QMessageBox.critical(self, "保存エラー", f"テスト音声の保存に失敗しました:\n{str(e)}")
+            print(f"❌ 感情UI更新エラー: {e}")
+            import traceback
+            traceback.print_exc()
     
-    # 🆕 アプリケーション終了時の処理
+    # アプリケーション終了時の処理
     def closeEvent(self, event):
         """アプリケーション終了時の処理（改良版）"""
         try:
@@ -923,293 +850,3 @@ SNR: {analysis['snr_db']:.1f} dB (推定)
             print(f"❌ 終了処理中にエラー: {e}")
         
         event.accept()
-    
-    # 🆕 音声品質チェック機能
-    def check_audio_quality(self):
-        """音声品質をチェック"""
-        if not self.last_generated_audio or not self.last_sample_rate:
-            QMessageBox.information(self, "品質チェック", "チェックする音声がありません。\n先に音声を生成してください。")
-            return
-        
-        try:
-            # 簡易品質チェック
-            audio = self.last_generated_audio
-            sr = self.last_sample_rate
-            
-            # 基本統計
-            peak = np.max(np.abs(audio))
-            rms = np.sqrt(np.mean(audio ** 2))
-            peak_db = 20 * np.log10(peak) if peak > 0 else -float('inf')
-            rms_db = 20 * np.log10(rms) if rms > 0 else -float('inf')
-            
-            # クリップ検出
-            clip_samples = np.sum(np.abs(audio) >= 0.999)
-            clip_ratio = clip_samples / len(audio) * 100
-            
-            # 品質評価
-            quality_issues = []
-            
-            if peak_db > -1.0:
-                quality_issues.append("⚠️ ピークレベルが高すぎます（-1dB以下推奨）")
-            
-            if clip_ratio > 0.01:
-                quality_issues.append("⚠️ クリッピングが検出されました")
-            
-            if rms_db < -30:
-                quality_issues.append("⚠️ 音量が小さすぎます")
-                
-            if rms_db > -10:
-                quality_issues.append("⚠️ 音量が大きすぎます")
-            
-            # 結果表示
-            quality_text = f"""音声品質チェック結果:
-
-ピークレベル: {peak_db:.1f} dBFS
-RMSレベル: {rms_db:.1f} dBFS
-クリップ率: {clip_ratio:.3f}%
-サンプリング周波数: {sr} Hz
-長さ: {len(audio)/sr:.2f} 秒
-
-品質評価:"""
-            
-            if quality_issues:
-                quality_text += "\n" + "\n".join(quality_issues)
-            else:
-                quality_text += "\n✅ 音質に問題はありません"
-            
-            QMessageBox.information(self, "音声品質チェック", quality_text)
-            
-        except Exception as e:
-            QMessageBox.critical(self, "品質チェックエラー", f"品質チェックに失敗しました:\n{str(e)}")
-    
-    # 🆕 ショートカット用の便利メソッド
-    def quick_test_synthesis(self):
-        """クイックテスト合成（デバッグ用）"""
-        if not self.tts_engine.is_loaded:
-            QMessageBox.warning(self, "テスト", "モデルが読み込まれていません。")
-            return
-        
-        try:
-            test_text = "これはクイックテストです。"
-            test_params = self.tabbed_audio_control.get_master_parameters()
-            
-            sr, audio = self.tts_engine.synthesize(test_text, **test_params)
-            
-            if self.tabbed_audio_control.is_cleaner_enabled():
-                audio = self.apply_audio_cleaning(audio, sr)
-            
-            self.last_generated_audio = audio
-            self.last_sample_rate = sr
-            
-            import sounddevice as sd
-            sd.play(audio, sr, blocking=False)
-            
-            print("✅ クイックテスト完了")
-            
-        except Exception as e:
-            QMessageBox.critical(self, "テストエラー", f"クイックテストに失敗しました:\n{str(e)}")
-
-
-    def create_debug_menu(self):
-        """デバッグ用メニューを作成（開発時のみ）"""
-        debug_menu = self.menuBar().addMenu("デバッグ")
-        
-        # 🆕 感情デバッグアクション
-        debug_emotions_action = debug_menu.addAction("🎭 感情マッピング確認")
-        debug_emotions_action.triggered.connect(self.debug_emotions)
-        
-        # 🆕 Fear感情テストアクション
-        test_fear_action = debug_menu.addAction("😰 Fear感情テスト")
-        test_fear_action.triggered.connect(self.test_fear_emotion)
-        
-        # クリーナーテストアクション
-        test_cleaner_action = debug_menu.addAction("🔧 クリーナーテスト")
-        test_cleaner_action.triggered.connect(self.test_cleaner)
-        
-        # 解析結果表示アクション
-        show_analysis_action = debug_menu.addAction("📊 解析結果表示")
-        show_analysis_action.triggered.connect(self.show_analysis_results)
-        
-        # 音声保存アクション
-        save_test_audio_action = debug_menu.addAction("💾 テスト音声保存")
-        save_test_audio_action.triggered.connect(self.save_test_audio)
-        
-        # 🆕 利用可能感情一覧
-        list_emotions_action = debug_menu.addAction("📋 利用可能感情一覧")
-        list_emotions_action.triggered.connect(self.list_available_emotions)
-    
-    # 🆕 感情関連デバッグメソッド
-    def debug_emotions(self):
-        """感情マッピングのデバッグ情報を表示"""
-        if not self.tts_engine.is_loaded:
-            QMessageBox.information(self, "デバッグ", "モデルが読み込まれていません。")
-            return
-        
-        # TTSエンジンのデバッグ情報を表示
-        self.tts_engine.debug_emotions()
-        
-        # ダイアログでも表示
-        debug_info = self.get_emotion_debug_info()
-        QMessageBox.information(self, "感情マッピング デバッグ", debug_info)
-    
-    def get_emotion_debug_info(self):
-        """感情デバッグ情報を文字列で取得"""
-        if not self.tts_engine.is_loaded:
-            return "モデルが読み込まれていません。"
-        
-        try:
-            model_path = Path(self.tts_engine.model_info.get('model_path', '')).parent.name
-            available_styles = self.tts_engine.get_available_styles()
-            
-            info = f"""感情マッピング デバッグ情報:
-
-📁 モデル: {model_path}
-🎭 利用可能な感情: {', '.join(available_styles)}
-
-🔄 感情マッピング:"""
-            
-            for original, mapped in sorted(self.tts_engine.emotion_mapping.items()):
-                if original == mapped:
-                    info += f"\n  '{original}' ✅"
-                else:
-                    info += f"\n  '{original}' → '{mapped}'"
-            
-            return info
-            
-        except Exception as e:
-            return f"デバッグ情報取得エラー: {str(e)}"
-    
-    def test_fear_emotion(self):
-        """Fear感情での音声合成をテスト"""
-        if not self.tts_engine.is_loaded:
-            QMessageBox.information(self, "テスト", "モデルが読み込まれていません。")
-            return
-        
-        test_emotions = ['fear', 'Fear', 'FEAR']
-        results = []
-        
-        for emotion in test_emotions:
-            try:
-                success, sr, audio = self.tts_engine.test_emotion(
-                    emotion, 
-                    "恐怖の感情テストです。これは怖いですね。"
-                )
-                
-                if success:
-                    results.append(f"✅ '{emotion}': 成功 ({len(audio)} samples)")
-                    
-                    # 音声を再生
-                    try:
-                        import sounddevice as sd
-                        sd.play(audio, sr, blocking=False)
-                        break  # 最初に成功したものを再生
-                    except:
-                        pass
-                else:
-                    results.append(f"❌ '{emotion}': 失敗")
-                    
-            except Exception as e:
-                results.append(f"❌ '{emotion}': エラー - {str(e)}")
-        
-        result_text = "Fear感情テスト結果:\n\n" + "\n".join(results)
-        QMessageBox.information(self, "Fear感情テスト", result_text)
-    
-    def list_available_emotions(self):
-        """利用可能な感情の一覧を表示"""
-        if not self.tts_engine.is_loaded:
-            QMessageBox.information(self, "感情一覧", "モデルが読み込まれていません。")
-            return
-        
-        try:
-            available_styles = self.tts_engine.get_available_styles()
-            model_name = Path(self.tts_engine.model_info.get('model_path', '')).parent.name
-            
-            info = f"""利用可能感情一覧:
-
-📁 モデル: {model_name}
-🎭 感情数: {len(available_styles)}個
-
-感情リスト:"""
-            
-            for i, style in enumerate(available_styles, 1):
-                info += f"\n  {i}. {style}"
-            
-            # 感情マッピング情報も追加
-            info += f"\n\n🔄 感情マッピング数: {len(self.tts_engine.emotion_mapping)}個"
-            
-            QMessageBox.information(self, "利用可能感情一覧", info)
-            
-        except Exception as e:
-            QMessageBox.critical(self, "エラー", f"感情一覧取得エラー:\n{str(e)}")
-    
-    def load_model(self, paths):
-        """モデルを読み込む（感情デバッグ対応版）"""
-        try:
-            success = self.tts_engine.load_model(
-                paths["model_path"], 
-                paths["config_path"], 
-                paths["style_path"]
-            )
-            
-            if success:
-                # 履歴に追加
-                self.model_manager.add_model(
-                    paths["model_path"], 
-                    paths["config_path"], 
-                    paths["style_path"]
-                )
-                
-                # ボタンを有効化
-                self.sequential_play_btn.setEnabled(True)
-                self.save_individual_btn.setEnabled(True)
-                self.save_continuous_btn.setEnabled(True)
-                
-                # ウィンドウタイトル更新
-                model_name = Path(paths["model_path"]).parent.name
-                self.setWindowTitle(f"TTSスタジオ - {model_name}")
-                
-                # 🆕 感情デバッグ情報をコンソールに表示
-                print("\n" + "="*50)
-                print("🎭 モデル読み込み完了 - 感情情報:")
-                print("="*50)
-                available_styles = self.tts_engine.get_available_styles()
-                print(f"📋 利用可能感情: {available_styles}")
-                
-                # fear関連の感情をチェック
-                fear_emotions = [e for e in available_styles if 'fear' in e.lower()]
-                if fear_emotions:
-                    print(f"😰 Fear関連感情: {fear_emotions}")
-                else:
-                    print("⚠️ Fear関連感情が見つかりません")
-                
-                print("="*50 + "\n")
-                
-                QMessageBox.information(self, "成功", f"モデルを読み込みました。\n\n🎭 利用可能感情: {len(available_styles)}個")
-                
-            else:
-                QMessageBox.critical(self, "エラー", "モデルの読み込みに失敗しました。")
-                
-        except Exception as e:
-            QMessageBox.critical(self, "エラー", f"モデル読み込み中にエラーが発生しました:\n{str(e)}")
-    
-    # 🆕 モデル読み込み時の感情UI更新
-    def update_emotion_ui_after_model_load(self):
-        """モデル読み込み後に感情UIを更新（簡素化版）"""
-        if not self.tts_engine.is_loaded:
-            return
-        
-        try:
-            # 利用可能な感情を取得
-            available_styles = self.tts_engine.get_available_styles()
-            print(f"🔄 感情UI更新開始: {available_styles}")
-            
-            # タブ式感情コントロールを更新
-            emotion_control = self.tabbed_audio_control.emotion_control
-            emotion_control.update_emotion_list(available_styles)
-            
-            print(f"✅ 感情UI更新完了")
-            
-        except Exception as e:
-            print(f"❌ 感情UI更新エラー: {e}")
-            import traceback
-            traceback.print_exc()
