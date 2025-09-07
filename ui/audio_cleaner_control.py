@@ -1,10 +1,13 @@
-# ui/audio_cleaner_control.py (再構成版)
+# ui/audio_cleaner_control.py (改善版 - 設定保存対応)
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox,
                             QGroupBox, QGridLayout, QPushButton, QSlider, QDoubleSpinBox,
                             QTabWidget, QFrame, QComboBox, QTextEdit, QProgressBar, QMessageBox, QApplication, QLineEdit)
 from PyQt6.QtCore import Qt, pyqtSignal, QThread, pyqtSlot
 from PyQt6.QtGui import QFont
 import numpy as np
+import json
+import os
+from pathlib import Path
 
 # 新しく追加するモジュール
 from core.audio_analyzer import AudioAnalyzer
@@ -130,8 +133,74 @@ class ToggleSwitchWidget(QWidget):
             self._checked = checked
             self.update()
 
+class UserSettingsManager:
+    """ユーザー設定管理クラス"""
+    
+    def __init__(self):
+        self.settings_file = Path("user_settings.json")
+        self.default_settings = {
+            'audio_cleaner': {
+                'enabled': False,  # 👈 デフォルトはOFF
+                'last_preset': 'standard_processing'
+            },
+            'ui_preferences': {
+                'window_geometry': None,
+                'last_tab_index': 0
+            }
+        }
+        self.settings = self.load_settings()
+    
+    def load_settings(self):
+        """設定を読み込み"""
+        try:
+            if self.settings_file.exists():
+                with open(self.settings_file, 'r', encoding='utf-8') as f:
+                    loaded = json.load(f)
+                    # デフォルト設定とマージ
+                    settings = self.default_settings.copy()
+                    settings.update(loaded)
+                    print(f"📁 ユーザー設定を読み込み: {self.settings_file}")
+                    return settings
+            else:
+                print("📄 新規ユーザー設定ファイルを作成します")
+                return self.default_settings.copy()
+        except Exception as e:
+            print(f"⚠️ 設定読み込みエラー: {e} - デフォルト設定を使用")
+            return self.default_settings.copy()
+    
+    def save_settings(self):
+        """設定を保存"""
+        try:
+            with open(self.settings_file, 'w', encoding='utf-8') as f:
+                json.dump(self.settings, f, ensure_ascii=False, indent=2)
+            print(f"💾 ユーザー設定を保存: {self.settings_file}")
+        except Exception as e:
+            print(f"❌ 設定保存エラー: {e}")
+    
+    def get_cleaner_enabled(self):
+        """クリーナー有効状態を取得"""
+        return self.settings.get('audio_cleaner', {}).get('enabled', False)
+    
+    def set_cleaner_enabled(self, enabled):
+        """クリーナー有効状態を設定"""
+        if 'audio_cleaner' not in self.settings:
+            self.settings['audio_cleaner'] = {}
+        self.settings['audio_cleaner']['enabled'] = enabled
+        self.save_settings()
+    
+    def get_last_preset(self):
+        """最後に使用したプリセットを取得"""
+        return self.settings.get('audio_cleaner', {}).get('last_preset', 'standard_processing')
+    
+    def set_last_preset(self, preset_key):
+        """最後に使用したプリセットを設定"""
+        if 'audio_cleaner' not in self.settings:
+            self.settings['audio_cleaner'] = {}
+        self.settings['audio_cleaner']['last_preset'] = preset_key
+        self.save_settings()
+
 class AudioCleanerControl(QWidget):
-    """音声クリーナー制御ウィジェット（再構成版）"""
+    """音声クリーナー制御ウィジェット（設定保存対応版）"""
     
     settings_changed = pyqtSignal(dict)  # cleaner_settings
     analyze_requested = pyqtSignal()  # 分析リクエスト
@@ -139,9 +208,12 @@ class AudioCleanerControl(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         
-        # クリーナー設定（最小限）
+        # 設定管理器
+        self.settings_manager = UserSettingsManager()
+        
+        # クリーナー設定（前回の状態を復元）
         self.cleaner_settings = {
-            'enabled': False,  # デフォルトOFF
+            'enabled': self.settings_manager.get_cleaner_enabled(),  # 👈 前回の設定を復元
             'auto_generated': False,
             'highpass_freq': 80,
             'hum_removal': True,
@@ -166,8 +238,10 @@ class AudioCleanerControl(QWidget):
         
         self.init_ui()
         
+        print(f"🔧 音声クリーナー初期化完了: 有効={self.cleaner_settings['enabled']}")
+        
     def init_ui(self):
-        """UIを初期化（再構成版）"""
+        """UIを初期化（説明追加版）"""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(15)
@@ -314,7 +388,7 @@ class AudioCleanerControl(QWidget):
         return widget
     
     def create_cleaner_tab(self):
-        """音声クリーナータブを作成（実用的な処理）"""
+        """音声クリーナータブを作成（説明追加版）"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setSpacing(20)
@@ -326,6 +400,7 @@ class AudioCleanerControl(QWidget):
         switch_label = QLabel("音声クリーナーを有効化")
         switch_label.setFont(QFont("", 12, QFont.Weight.Bold))
         
+        # 前回の設定状態でスイッチを初期化
         self.toggle_switch = ToggleSwitchWidget(self.cleaner_settings['enabled'])
         self.toggle_switch.toggled.connect(self.on_enable_toggled)
         
@@ -337,7 +412,7 @@ class AudioCleanerControl(QWidget):
         preset_group = QGroupBox("プリセット選択")
         preset_layout = QVBoxLayout(preset_group)
         
-        # プリセット選択行（ボタン削除版）
+        # プリセット選択行
         selection_layout = QHBoxLayout()
         
         preset_label = QLabel("プリセット:")
@@ -364,7 +439,7 @@ class AudioCleanerControl(QWidget):
         
         selection_layout.addWidget(preset_label)
         selection_layout.addWidget(self.preset_combo, 1)
-        selection_layout.addStretch()  # 右側の余白
+        selection_layout.addStretch()
         
         # プリセット適用は自動（コンボボックス変更時に即座に適用）
         self.preset_combo.currentTextChanged.connect(self.apply_preset_automatically)
@@ -394,20 +469,82 @@ class AudioCleanerControl(QWidget):
         
         desc_layout.addWidget(self.preset_description)
         
+        # 👈 音声クリーナーとは？の説明を追加
+        about_group = QGroupBox("音声クリーナーとは？")
+        about_layout = QVBoxLayout(about_group)
+        
+        about_text = QLabel("""音声クリーナーは、AI音声合成で生成された音声を自動的に高品質化する機能です。
+
+🔧 主な効果:
+• ノイズ除去 - 背景ノイズや「サー」音を減らします
+• ハム除去 - 電源由来の50Hz/60Hz系の「ブーン」音を除去
+• 音量正規化 - 適切な音量レベルに自動調整
+• 周波数調整 - 不要な低域・高域をカット
+
+🎯 こんな時に有効:
+• 配信・録音で使用する場合
+• よりクリアな音質が欲しい場合
+• ノイズが気になる場合
+• 音量を統一したい場合
+
+⚠️ 注意: 処理により若干の音質変化が生じる場合があります。自然な音質を重視する場合はOFFのままご使用ください。""")
+        
+        about_text.setStyleSheet("""
+            QLabel {
+                background-color: #fff3e0;
+                border: 1px solid #ff9800;
+                border-radius: 6px;
+                padding: 15px;
+                color: #e65100;
+                line-height: 1.6;
+                font-size: 12px;
+            }
+        """)
+        about_text.setWordWrap(True)
+        
+        about_layout.addWidget(about_text)
+        
         layout.addWidget(cleaner_group)
         layout.addWidget(preset_group)
         layout.addWidget(desc_group)
+        layout.addWidget(about_group)  # 👈 説明を追加
         layout.addStretch()
         
         # プリセットリストを初期化
         self.load_preset_list()
+        # 前回選択していたプリセットを復元
+        self.restore_last_preset()
         # 初期説明を設定
         self.update_preset_description()
         
         return widget
     
+    def restore_last_preset(self):
+        """前回選択していたプリセットを復元（デバッグログ付き）"""
+        last_preset = self.settings_manager.get_last_preset()
+        print(f"🔄 プリセット復元開始: {last_preset}")
+        
+        # 現在のenabled状態を確認
+        current_enabled = self.cleaner_settings['enabled']
+        print(f"🎛️ プリセット復元前のenabled状態: {current_enabled}")
+        
+        # コンボボックスから該当プリセットを探して選択
+        for i in range(self.preset_combo.count()):
+            if self.preset_combo.itemData(i) == last_preset:
+                # シグナルを一時的に切断してプリセット適用を防ぐ
+                self.preset_combo.currentTextChanged.disconnect()
+                self.preset_combo.setCurrentIndex(i)
+                # シグナルを再接続
+                self.preset_combo.currentTextChanged.connect(self.apply_preset_automatically)
+                
+                print(f"🔄 前回のプリセットを復元: {last_preset} (enabled状態保持)")
+                break
+        
+        # 復元後のenabled状態を確認
+        print(f"🎛️ プリセット復元後のenabled状態: {self.cleaner_settings['enabled']}")
+    
     def update_preset_description(self):
-        """プリセットの説明を更新"""
+        """プリセットの説明を更新（改良版）"""
         preset_key = self.preset_combo.currentData()
         
         descriptions = {
@@ -434,10 +571,6 @@ class AudioCleanerControl(QWidget):
         
         for name, key in default_presets:
             self.preset_combo.addItem(name, key)
-        
-        # カスタムプリセット（削除）
-        # for name, settings in self.custom_presets.items():
-        #     self.preset_combo.addItem(f"💾 {name}", f"custom_{name}")
     
     # 分析関連メソッド
     def start_analysis(self):
@@ -620,34 +753,38 @@ class AudioCleanerControl(QWidget):
         self.progress_bar.setVisible(False)
         self.progress_bar.setValue(0)
     
-    # プリセット関連メソッド（簡素化・確認ダイアログ削除）
+    # プリセット関連メソッド（設定保存対応）
     def apply_preset_automatically(self):
-        """プリセット選択時に自動適用（確認ダイアログなし）"""
+        """プリセット選択時に自動適用（enabled状態保持版）"""
         preset_key = self.preset_combo.currentData()
         if not preset_key:
             return
         
-        # デフォルトプリセットのみ
+        # 👈 現在のenabled状態を保存
+        current_enabled = self.cleaner_settings['enabled']
+        print(f"🎯 プリセット適用開始: {preset_key}, 現在のenabled: {current_enabled}")
+        
+        # デフォルトプリセット（enabledを削除）
         presets = {
             "standard_processing": {
-                'enabled': True, 'auto_generated': False, 'highpass_freq': 80,
+                'auto_generated': False, 'highpass_freq': 80,
                 'hum_removal': True, 'hum_frequencies': [50, 60, 100, 120, 150, 180, 200, 240],
                 'hum_gains': [-20, -20, -12, -12, -9, -9, -6, -6], 'noise_reduction': True,
                 'noise_floor': -28, 'loudness_norm': True, 'target_lufs': -20.0, 'true_peak': -1.0,
             },
             "light_processing": {
-                'enabled': True, 'auto_generated': False, 'highpass_freq': 60,
+                'auto_generated': False, 'highpass_freq': 60,
                 'hum_removal': False, 'noise_reduction': True, 'noise_floor': -35,
                 'loudness_norm': True, 'target_lufs': -18.0, 'true_peak': -1.0,
             },
             "heavy_cleaning": {
-                'enabled': True, 'auto_generated': False, 'highpass_freq': 100,
+                'auto_generated': False, 'highpass_freq': 100,
                 'hum_removal': True, 'hum_frequencies': [50, 60, 100, 120, 150, 180, 200, 240, 300],
                 'hum_gains': [-25, -25, -18, -18, -15, -15, -12, -12, -9], 'noise_reduction': True,
                 'noise_floor': -25, 'loudness_norm': True, 'target_lufs': -20.0, 'true_peak': -2.0,
             },
             "streaming_optimized": {
-                'enabled': True, 'auto_generated': False, 'highpass_freq': 80,
+                'auto_generated': False, 'highpass_freq': 80,
                 'hum_removal': True, 'hum_frequencies': [50, 60, 100, 120],
                 'hum_gains': [-15, -15, -10, -10], 'noise_reduction': True, 'noise_floor': -30,
                 'loudness_norm': True, 'target_lufs': -16.0, 'true_peak': -1.0,
@@ -656,16 +793,32 @@ class AudioCleanerControl(QWidget):
         
         if preset_key in presets:
             preset_settings = presets[preset_key]
+            
+            # プリセット設定を適用
             self.cleaner_settings.update(preset_settings)
-            self.toggle_switch.setChecked(preset_settings['enabled'])
+            
+            # 👈 enabled状態を元に戻す
+            self.cleaner_settings['enabled'] = current_enabled
+            
+            # 👈 UIは更新しない（現在の状態を維持）
+            # self.toggle_switch.setChecked(preset_settings['enabled'])  # この行を削除またはコメントアウト
+            
+            # 設定を保存
+            self.settings_manager.set_last_preset(preset_key)
+            
             self.emit_settings_changed()
-            # 確認ダイアログなしで即座に適用
+            print(f"🎯 プリセット適用完了: {preset_key}, enabled維持: {current_enabled}")
     
-    # イベントハンドラー
+    # イベントハンドラー（設定保存対応）
     def on_enable_toggled(self, enabled):
-        """クリーナー有効/無効切り替え"""
+        """クリーナー有効/無効切り替え（設定保存対応）"""
         self.cleaner_settings['enabled'] = enabled
+        
+        # 設定を保存
+        self.settings_manager.set_cleaner_enabled(enabled)
+        
         self.emit_settings_changed()
+        print(f"🔧 クリーナー切り替え: {'有効' if enabled else '無効'}")
     
     def emit_settings_changed(self):
         """設定変更シグナルを送信"""
@@ -683,12 +836,12 @@ class AudioCleanerControl(QWidget):
     def set_audio_data_for_analysis(self, audio_data: np.ndarray, sample_rate: int):
         """外部から音声データを受け取って分析実行"""
         
-        # 簡単な検証（警告ダイアログ削除）
+        # 簡単な検証
         if audio_data is None or len(audio_data) == 0:
             print("❌ 音声データが無効です")
             return
         
-        # データサイズチェック（確認ダイアログ削除）
+        # データサイズチェック
         data_size_mb = audio_data.nbytes / (1024 * 1024)
         if data_size_mb > 100:  # 100MB以上でも強行
             print(f"⚠️ 大きなデータ（{data_size_mb:.1f}MB）ですが処理を続行します")

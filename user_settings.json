@@ -1,0 +1,10 @@
+{
+  "audio_cleaner": {
+    "enabled": false,
+    "last_preset": "light_processing"
+  },
+  "ui_preferences": {
+    "window_geometry": null,
+    "last_tab_index": 0
+  }
+}
