@@ -5,6 +5,8 @@ import traceback
 import inspect
 import logging
 import json
+from scipy.signal import butter, filtfilt
+from scipy.ndimage import gaussian_filter1d  # 🆕 スムージング用
 
 # Style-Bert-VITS2のログを無効化
 logging.getLogger("style_bert_vits2").setLevel(logging.ERROR)
@@ -31,6 +33,16 @@ class TTSEngine:
             'length_scale': 0.85
         }
         
+        # 🆕 音声後処理設定
+        self.audio_processing = {
+            'normalize': True,           # 音量正規化
+            'target_peak_db': -6.0,     # 目標ピークレベル（dBFS）
+            'remove_hum': True,          # ハムノイズ除去
+            'remove_dc': True,           # DCオフセット除去
+            'soft_limit': True,          # ソフトリミッター
+            'limit_threshold': 0.95      # リミッター閾値
+        }
+        
         # 感情名マッピング（大文字・小文字やamitaro/jvnvの違いに対応）
         self.emotion_mapping = {
             # 小文字 -> 大文字（JVNV用）
@@ -53,6 +65,244 @@ class TTSEngine:
             'Surprise': 'Surprise',
             'Neutral': 'Neutral',
         }
+    
+    # 🆕 音声後処理メソッド群
+    def remove_dc_offset(self, audio):
+        """DCオフセットを除去"""
+        return audio - np.mean(audio)
+    
+    def normalize_audio(self, audio, target_peak_db=-6.0):
+        """音声を指定のピークレベルに正規化"""
+        # DCオフセット除去
+        audio = self.remove_dc_offset(audio)
+        
+        # 現在のピークを取得（絶対値の最大）
+        current_peak = np.max(np.abs(audio))
+        
+        if current_peak == 0:
+            return audio
+        
+        # 目標ピークレベル（線形値）
+        target_peak_linear = 10 ** (target_peak_db / 20.0)
+        
+        # スケールファクター計算
+        scale_factor = target_peak_linear / current_peak
+        
+        # 正規化実行
+        normalized = audio * scale_factor
+        
+        print(f"🔊 音量正規化: {current_peak:.3f} -> {np.max(np.abs(normalized)):.3f} (目標: {target_peak_linear:.3f})")
+        
+        return normalized
+    
+    def remove_hum_noise(self, audio, sr=44100):
+        """50Hz/60Hz系ハムノイズを除去"""
+        if len(audio) < 1024:  # 短すぎる場合はスキップ
+            return audio
+            
+        try:
+            nyquist = sr / 2
+            filtered_audio = audio.copy()
+            
+            # 50Hz系ノッチフィルタ（基本波 + 高調波）
+            for freq in [50, 100, 150, 200]:
+                if freq < nyquist:
+                    low = max((freq - 2), 1) / nyquist
+                    high = min((freq + 2), nyquist - 1) / nyquist
+                    
+                    if high > low:
+                        b, a = butter(2, [low, high], btype='bandstop')
+                        filtered_audio = filtfilt(b, a, filtered_audio)
+            
+            # 60Hz系ノッチフィルタ（基本波 + 高調波）
+            for freq in [60, 120, 180, 240]:
+                if freq < nyquist:
+                    low = max((freq - 2), 1) / nyquist
+                    high = min((freq + 2), nyquist - 1) / nyquist
+                    
+                    if high > low:
+                        b, a = butter(2, [low, high], btype='bandstop')
+                        filtered_audio = filtfilt(b, a, filtered_audio)
+            
+            print(f"🎛️ ハムノイズフィルタ適用完了")
+            return filtered_audio
+            
+        except Exception as e:
+            print(f"⚠️ ハムノイズフィルタエラー: {e}")
+            return audio
+    
+    def soft_limiter(self, audio, threshold=0.95):
+        """ソフトリミッターでクリッピングを防止"""
+        # 閾値を超える部分に対してソフトクリッピング
+        abs_audio = np.abs(audio)
+        mask = abs_audio > threshold
+        
+        if np.any(mask):
+            # tanh関数を使用したソフトクリッピング
+            sign = np.sign(audio)
+            limited = np.where(
+                mask,
+                sign * threshold * np.tanh(abs_audio / threshold),
+                audio
+            )
+            
+            clipped_samples = np.sum(mask)
+            total_samples = len(audio)
+            clip_rate = (clipped_samples / total_samples) * 100
+            
+            print(f"🛡️ ソフトリミッター: {clipped_samples}/{total_samples} samples処理 ({clip_rate:.2f}%)")
+            
+            return limited
+        
+        return audio
+    
+    def advanced_noise_reduction(self, audio, sr):
+        """高度なノイズリダクション"""
+        if len(audio) < 1024:
+            return audio
+            
+        try:
+            # 1. 高周波ノイズカット（ローパスフィルタ）
+            nyquist = sr / 2
+            cutoff = min(8000, nyquist * 0.8)  # 8kHzまたはナイキスト周波数の80%
+            cutoff_norm = cutoff / nyquist
+            
+            if cutoff_norm < 0.99:
+                b, a = butter(4, cutoff_norm, btype='low')
+                audio = filtfilt(b, a, audio)
+                print(f"🔇 ローパスフィルタ適用: {cutoff}Hz")
+            
+            # 2. ノイズゲート（静寂部分のノイズを除去）
+            rms = np.sqrt(np.mean(audio**2))
+            gate_threshold = rms * 0.01  # RMSの1%をしきい値
+            
+            # 短時間フレームでノイズゲート適用
+            frame_size = int(sr * 0.02)  # 20ms
+            gated_audio = audio.copy()
+            
+            for i in range(0, len(audio) - frame_size, frame_size):
+                frame = audio[i:i+frame_size]
+                frame_rms = np.sqrt(np.mean(frame**2))
+                
+                if frame_rms < gate_threshold:
+                    # ノイズゲート適用（完全にミュートではなく減衰）
+                    gated_audio[i:i+frame_size] *= 0.1
+                    
+            audio = gated_audio
+            print(f"🚪 ノイズゲート適用: しきい値 {gate_threshold:.6f}")
+            
+            # 3. デエッサー（サ行のキツい音を和らげる）
+            # 2-8kHzの範囲でピークを抑制
+            for freq in [2000, 3000, 4000, 5000, 6000, 7000, 8000]:
+                if freq < nyquist:
+                    # ナローバンドコンプレッサー的な処理
+                    low = max((freq - 200), 100) / nyquist
+                    high = min((freq + 200), nyquist - 100) / nyquist
+                    
+                    if high > low:
+                        b, a = butter(2, [low, high], btype='bandpass')
+                        band_signal = filtfilt(b, a, audio)
+                        
+                        # バンド信号が強すぎる場合は減衰
+                        band_rms = np.sqrt(np.mean(band_signal**2))
+                        if band_rms > rms * 0.3:  # 全体RMSの30%以上なら減衰
+                            reduction_factor = 0.7
+                            audio -= band_signal * (1 - reduction_factor)
+            
+            print(f"🎤 デエッサー適用完了")
+            
+            return audio
+            
+        except Exception as e:
+            print(f"⚠️ 高度ノイズリダクションエラー: {e}")
+            return audio
+    
+    def spectral_noise_reduction(self, audio, sr):
+        """スペクトラルノイズリダクション（簡易版）"""
+        try:
+            from scipy.fft import fft, ifft
+            
+            # FFT
+            fft_audio = fft(audio)
+            freqs = np.fft.fftfreq(len(audio), 1/sr)
+            
+            # パワースペクトラム
+            power = np.abs(fft_audio) ** 2
+            
+            # ノイズ推定（低パワー部分をノイズとみなす）
+            noise_power = np.percentile(power, 10)  # 下位10%をノイズ
+            
+            # ウィーナーフィルタ的な処理
+            snr_est = power / (noise_power + 1e-10)
+            reduction_factor = snr_est / (snr_est + 1)
+            
+            # 強すぎる処理を避ける
+            reduction_factor = np.clip(reduction_factor, 0.3, 1.0)
+            
+            # フィルタ適用
+            fft_audio *= reduction_factor
+            
+            # IFFT
+            cleaned_audio = np.real(ifft(fft_audio))
+            
+            print(f"🌊 スペクトラルノイズリダクション適用")
+            
+            return cleaned_audio.astype(np.float32)
+            
+        except Exception as e:
+            print(f"⚠️ スペクトラルノイズリダクションエラー: {e}")
+            return audio
+
+    def process_audio(self, audio, sr):
+        """音声の総合的な後処理（強化版）"""
+        processed = audio.copy()
+        
+        # Float32に変換（必要に応じて）
+        if processed.dtype != np.float32:
+            if processed.dtype == np.int16:
+                processed = processed.astype(np.float32) / 32768.0
+            elif processed.dtype == np.int32:
+                processed = processed.astype(np.float32) / 2147483648.0
+            else:
+                processed = processed.astype(np.float32)
+        
+        original_peak = np.max(np.abs(processed))
+        print(f"🎵 元音声ピーク: {original_peak:.6f}")
+        
+        # DCオフセット除去
+        if self.audio_processing['remove_dc']:
+            processed = self.remove_dc_offset(processed)
+        
+        # 🆕 高度なノイズリダクション
+        if self.audio_processing.get('advanced_noise_reduction', True):
+            processed = self.advanced_noise_reduction(processed, sr)
+        
+        # 🆕 スペクトラルノイズリダクション  
+        if self.audio_processing.get('spectral_noise_reduction', True):
+            processed = self.spectral_noise_reduction(processed, sr)
+        
+        # ハムノイズ除去
+        if self.audio_processing['remove_hum']:
+            processed = self.remove_hum_noise(processed, sr)
+        
+        # 音量正規化
+        if self.audio_processing['normalize']:
+            processed = self.normalize_audio(
+                processed, 
+                self.audio_processing['target_peak_db']
+            )
+        
+        # ソフトリミッター
+        if self.audio_processing['soft_limit']:
+            processed = self.soft_limiter(
+                processed,
+                self.audio_processing['limit_threshold']
+            )
+        
+        final_peak = np.max(np.abs(processed))
+        print(f"🎶 処理後ピーク: {final_peak:.6f}")
+        
+        return processed
         
     def load_model(self, model_path, config_path, style_path):
         """モデルを読み込む（感情マッピング対応版）"""
@@ -361,7 +611,7 @@ class TTSEngine:
         return normalized
     
     def synthesize(self, text, **params):
-        """音声合成を実行（感情名正規化対応版）"""
+        """音声合成を実行（🆕音声後処理付き）"""
         if not self.is_loaded or self.model is None:
             raise RuntimeError("モデルが読み込まれていません")
         
@@ -395,7 +645,7 @@ class TTSEngine:
                 kwargs = self._build_infer_kwargs(text, synth_params)
                 
                 # 音声合成実行
-                sr, audio = self.model.infer(**kwargs)
+                sr, raw_audio = self.model.infer(**kwargs)
                 
             finally:
                 # stdout/stderrを復元
@@ -403,10 +653,15 @@ class TTSEngine:
                 sys.stderr = old_stderr
             
             # 結果チェック
-            if audio is None or len(audio) == 0:
+            if raw_audio is None or len(raw_audio) == 0:
                 raise RuntimeError("音声データが生成されませんでした")
+            
+            # 🆕 音声後処理を実行
+            print(f"🎵 音声後処理開始...")
+            processed_audio = self.process_audio(raw_audio, sr)
+            print(f"✅ 音声後処理完了")
                 
-            return sr, audio
+            return sr, processed_audio  # 🆕 処理済み音声を返す
             
         except Exception as e:
             print(f"❌ 音声合成エラー: {e}")
@@ -426,6 +681,21 @@ class TTSEngine:
                     raise RuntimeError(f"感情 '{normalized_style}' は利用できません。利用可能: {available}. '{suggestion}'を試してください。")
             
             raise e
+    
+    # 🆕 音声処理設定メソッド
+    def set_audio_processing(self, **settings):
+        """音声後処理の設定を変更"""
+        for key, value in settings.items():
+            if key in self.audio_processing:
+                old_value = self.audio_processing[key]
+                self.audio_processing[key] = value
+                print(f"🔧 音声処理設定変更: {key} = {old_value} -> {value}")
+            else:
+                print(f"⚠️ 未知の設定: {key}")
+    
+    def get_audio_processing_settings(self):
+        """現在の音声後処理設定を取得"""
+        return self.audio_processing.copy()
     
     def _build_infer_kwargs(self, text, params):
         """infer() メソッドに渡す引数を安全に構築（感情正規化済み前提）"""
