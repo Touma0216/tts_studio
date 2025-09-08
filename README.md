@@ -7,6 +7,7 @@ tts_studio-main/
 │   ├── audio_analyzer.py
 │   ├── audio_processor.py
 │   ├── model_manager.py
+│   ├── audio_effects_processor.py
 │   └── tts_engine.py
 ├── ui/
 │   ├── __init__.py

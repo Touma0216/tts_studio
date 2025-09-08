@@ -1,4 +1,4 @@
-# ui/main_window.py (エフェクト統合版)
+# ui/main_window.py (エフェクトプロセッサー統合版)
 import os
 import numpy as np
 from pathlib import Path
@@ -21,6 +21,7 @@ from .help_dialog import HelpDialog
 # 音声処理関連
 from core.audio_processor import AudioProcessor
 from core.audio_analyzer import AudioAnalyzer
+from core.audio_effects_processor import AudioEffectsProcessor  # 新規追加
 
 
 class TTSStudioMainWindow(QMainWindow):
@@ -32,6 +33,7 @@ class TTSStudioMainWindow(QMainWindow):
         # 音声処理関連を追加
         self.audio_processor = AudioProcessor()
         self.audio_analyzer = AudioAnalyzer()
+        self.audio_effects_processor = AudioEffectsProcessor()  # 新規追加
         self.last_generated_audio = None  # 解析用に最新の音声を保存
         self.last_sample_rate = None
         
@@ -111,9 +113,9 @@ class TTSStudioMainWindow(QMainWindow):
         controls.addWidget(self.save_individual_btn)
         controls.addWidget(self.save_continuous_btn)
 
-        left.addWidget(self.multi_text, 2)  # 👈 1 → 2 に変更（テキストエリアを2倍に）
+        left.addWidget(self.multi_text, 2)
         left.addWidget(divider)
-        left.addWidget(self.tabbed_audio_control, 1)  # 👈 タブエリアは1のまま（相対的に小さくなる）
+        left.addWidget(self.tabbed_audio_control, 1)
         left.addLayout(controls)
 
         # 右ペイン（ダミー）
@@ -504,7 +506,7 @@ class TTSStudioMainWindow(QMainWindow):
             return audio  # エラー時は元の音声を返す
 
     def apply_audio_effects(self, audio, sample_rate):
-        """音声エフェクトを適用（新規実装）"""
+        """音声エフェクトを適用（新規実装 - AudioEffectsProcessor使用）"""
         if not self.tabbed_audio_control.is_effects_enabled():
             return audio
         
@@ -512,140 +514,21 @@ class TTSStudioMainWindow(QMainWindow):
             # エフェクト設定を取得
             effects_settings = self.tabbed_audio_control.get_effects_settings()
             
-            # エフェクト処理を適用
-            processed_audio = self.process_audio_effects(audio, sample_rate, effects_settings)
+            # AudioEffectsProcessorを使用してエフェクト処理
+            processed_audio = self.audio_effects_processor.process_effects(
+                audio, sample_rate, effects_settings
+            )
             
-            # ログ出力（デバッグ用）
-            active_effects = []
-            if effects_settings.get('echo_enabled'):
-                active_effects.append(f"エコー(遅延:{effects_settings.get('echo_delay'):.2f}s)")
-            if effects_settings.get('reverb_enabled'):
-                active_effects.append(f"リバーブ(部屋:{effects_settings.get('reverb_room_size'):.2f})")
-            if effects_settings.get('filter_enabled'):
-                active_effects.append(f"フィルター({effects_settings.get('filter_type')}:{effects_settings.get('filter_cutoff')}Hz)")
-            if effects_settings.get('distortion_enabled'):
-                active_effects.append(f"ディストーション({effects_settings.get('distortion_drive'):.1f}dB)")
-            
-            print(f"🎛️ 音声エフェクトが適用されました: {', '.join(active_effects) if active_effects else 'なし'}")
+            # 適用されたエフェクトの情報をログ出力
+            active_effects = self.audio_effects_processor.get_effects_info(effects_settings)
+            if active_effects:
+                print(f"🎛️ 音声エフェクトが適用されました: {', '.join(active_effects)}")
             
             return processed_audio
             
         except Exception as e:
             print(f"音声エフェクトエラー: {e}")
             return audio  # エラー時は元の音声を返す
-
-    def process_audio_effects(self, audio, sample_rate, effects_settings):
-        """実際のエフェクト処理を行う"""
-        processed_audio = audio.copy()
-        
-        # エコーエフェクト
-        if effects_settings.get('echo_enabled', False):
-            processed_audio = self.apply_echo_effect(
-                processed_audio, 
-                sample_rate,
-                effects_settings.get('echo_delay', 0.5),
-                effects_settings.get('echo_decay', 0.3)
-            )
-        
-        # リバーブエフェクト
-        if effects_settings.get('reverb_enabled', False):
-            processed_audio = self.apply_reverb_effect(
-                processed_audio,
-                sample_rate,
-                effects_settings.get('reverb_room_size', 0.5),
-                effects_settings.get('reverb_damping', 0.3)
-            )
-        
-        # フィルターエフェクト
-        if effects_settings.get('filter_enabled', False):
-            processed_audio = self.apply_filter_effect(
-                processed_audio,
-                sample_rate,
-                effects_settings.get('filter_type', 'lowpass'),
-                effects_settings.get('filter_cutoff', 8000)
-            )
-        
-        # ディストーションエフェクト
-        if effects_settings.get('distortion_enabled', False):
-            processed_audio = self.apply_distortion_effect(
-                processed_audio,
-                effects_settings.get('distortion_drive', 5.0)
-            )
-        
-        return processed_audio
-
-    def apply_echo_effect(self, audio, sample_rate, delay, decay):
-        """エコーエフェクトを適用"""
-        delay_samples = int(delay * sample_rate)
-        if delay_samples >= len(audio):
-            return audio
-        
-        echo_audio = np.zeros_like(audio)
-        echo_audio[delay_samples:] = audio[:-delay_samples] * decay
-        return audio + echo_audio
-
-    def apply_reverb_effect(self, audio, sample_rate, room_size, damping):
-        """簡易リバーブエフェクトを適用"""
-        # 複数の遅延を組み合わせた簡易リバーブ
-        delays = [0.03, 0.05, 0.07, 0.09, 0.11]  # 異なる遅延時間
-        reverb_audio = audio.copy()
-        
-        for i, delay in enumerate(delays):
-            delay_samples = int(delay * sample_rate)
-            if delay_samples < len(audio):
-                decay_factor = (room_size * 0.5) * (0.8 ** i) * (1 - damping)
-                delayed_audio = np.zeros_like(audio)
-                delayed_audio[delay_samples:] = audio[:-delay_samples] * decay_factor
-                reverb_audio += delayed_audio
-        
-        return reverb_audio
-
-    def apply_filter_effect(self, audio, sample_rate, filter_type, cutoff):
-        """フィルターエフェクトを適用"""
-        try:
-            from scipy.signal import butter, filtfilt
-            
-            nyquist = 0.5 * sample_rate
-            normal_cutoff = cutoff / nyquist
-            
-            if normal_cutoff >= 1.0:
-                return audio
-            
-            if filter_type == 'lowpass':
-                b, a = butter(4, normal_cutoff, btype='low', analog=False)
-            elif filter_type == 'highpass':
-                b, a = butter(4, normal_cutoff, btype='high', analog=False)
-            elif filter_type == 'bandpass':
-                low_cutoff = max(0.01, normal_cutoff - 0.1)
-                high_cutoff = min(0.99, normal_cutoff + 0.1)
-                b, a = butter(4, [low_cutoff, high_cutoff], btype='band', analog=False)
-            else:
-                return audio
-            
-            return filtfilt(b, a, audio)
-            
-        except ImportError:
-            print("⚠️ scipy.signalが利用できません。フィルターエフェクトをスキップします。")
-            return audio
-        except Exception as e:
-            print(f"フィルターエラー: {e}")
-            return audio
-
-    def apply_distortion_effect(self, audio, drive):
-        """ディストーションエフェクトを適用"""
-        # ソフトクリッピング
-        drive_linear = 10 ** (drive / 20)  # dBを線形値に変換
-        driven_audio = audio * drive_linear
-        
-        # tanh関数によるソフトディストーション
-        distorted_audio = np.tanh(driven_audio)
-        
-        # 音量を調整
-        max_val = np.abs(distorted_audio).max()
-        if max_val > 0:
-            distorted_audio = distorted_audio * (0.8 / max_val)
-        
-        return distorted_audio
 
     def play_single_text(self, row_id, text, parameters):
         if not self.tts_engine.is_loaded:
