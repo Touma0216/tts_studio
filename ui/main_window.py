@@ -428,7 +428,8 @@ class TTSStudioMainWindow(QMainWindow):
 
     def on_effects_settings_changed(self, effects_settings):
         """エフェクト設定変更時の処理（新規追加）"""
-        print(f"🎛️ エフェクト設定が変更されました: {effects_settings.get('enabled', False)}")
+        # サイレント処理 - ログ出力なし
+        pass
 
     def load_last_model(self):
             """前回のモデルを自動読み込み（感情UI更新対応版）"""

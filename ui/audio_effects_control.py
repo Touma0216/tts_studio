@@ -1,6 +1,6 @@
 # ui/audio_effects_control.py (シンプル版)
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                            QTabWidget, QFrame, QSlider)
+                            QTabWidget, QFrame, QSlider, QGroupBox)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont, QPainter, QBrush, QPen, QColor
 from PyQt6.QtCore import QRectF
@@ -142,32 +142,59 @@ class AudioEffectsControl(QWidget):
         """音声エフェクトタブを作成"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        layout.setSpacing(20)
+        layout.setSpacing(15)
         layout.setContentsMargins(15, 15, 15, 15)
         
         # エコーエフェクト
-        echo_layout = QHBoxLayout()
-        echo_label = QLabel("エコー")
+        echo_group = QGroupBox("エコー")
+        echo_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 1px solid #ccc;
+                border-radius: 6px;
+                margin-top: 10px;
+                padding-top: 5px;
+                background-color: white;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
+                background-color: white;
+            }
+        """)
+        echo_layout = QHBoxLayout(echo_group)
+        echo_layout.setSpacing(15)
+        
+        echo_label = QLabel("強度")
         echo_label.setFont(QFont("", 12, QFont.Weight.Bold))
-        echo_label.setMinimumWidth(80)
+        echo_label.setMinimumWidth(60)
         
         self.echo_slider = QSlider(Qt.Orientation.Horizontal)
         self.echo_slider.setRange(10, 100)
         self.echo_slider.setValue(30)
         self.echo_slider.setStyleSheet("""
             QSlider::groove:horizontal {
-                border: 1px solid #dee2e6;
-                height: 8px;
-                background: #f8f9fa;
-                border-radius: 4px;
+                border: 1px solid #bbb;
+                background: white;
+                height: 6px;
+                border-radius: 3px;
+            }
+            QSlider::sub-page:horizontal {
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #007bff, stop: 1 #4dabf7);
+                border: 1px solid #007bff;
+                height: 6px;
+                border-radius: 3px;
             }
             QSlider::handle:horizontal {
-                background: #007bff;
-                border: 1px solid #0056b3;
+                background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 1,
+                    stop: 0 #fff, stop: 1 #007bff);
+                border: 1px solid #007bff;
                 width: 18px;
-                height: 18px;
+                margin-top: -6px;
+                margin-bottom: -6px;
                 border-radius: 9px;
-                margin: -6px 0;
             }
         """)
         
@@ -178,28 +205,55 @@ class AudioEffectsControl(QWidget):
         echo_layout.addWidget(self.echo_toggle)
         
         # リバーブエフェクト
-        reverb_layout = QHBoxLayout()
-        reverb_label = QLabel("リバーブ")
+        reverb_group = QGroupBox("リバーブ")
+        reverb_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 1px solid #ccc;
+                border-radius: 6px;
+                margin-top: 10px;
+                padding-top: 5px;
+                background-color: white;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
+                background-color: white;
+            }
+        """)
+        reverb_layout = QHBoxLayout(reverb_group)
+        reverb_layout.setSpacing(15)
+        
+        reverb_label = QLabel("強度")
         reverb_label.setFont(QFont("", 12, QFont.Weight.Bold))
-        reverb_label.setMinimumWidth(80)
+        reverb_label.setMinimumWidth(60)
         
         self.reverb_slider = QSlider(Qt.Orientation.Horizontal)
         self.reverb_slider.setRange(10, 100)
         self.reverb_slider.setValue(50)
         self.reverb_slider.setStyleSheet("""
             QSlider::groove:horizontal {
-                border: 1px solid #dee2e6;
-                height: 8px;
-                background: #f8f9fa;
-                border-radius: 4px;
+                border: 1px solid #bbb;
+                background: white;
+                height: 6px;
+                border-radius: 3px;
+            }
+            QSlider::sub-page:horizontal {
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #28a745, stop: 1 #6fdc6f);
+                border: 1px solid #28a745;
+                height: 6px;
+                border-radius: 3px;
             }
             QSlider::handle:horizontal {
-                background: #28a745;
-                border: 1px solid #1e7e34;
+                background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 1,
+                    stop: 0 #fff, stop: 1 #28a745);
+                border: 1px solid #28a745;
                 width: 18px;
-                height: 18px;
+                margin-top: -6px;
+                margin-bottom: -6px;
                 border-radius: 9px;
-                margin: -6px 0;
             }
         """)
         
@@ -210,28 +264,55 @@ class AudioEffectsControl(QWidget):
         reverb_layout.addWidget(self.reverb_toggle)
         
         # ディストーションエフェクト
-        distortion_layout = QHBoxLayout()
-        distortion_label = QLabel("ディストーション")
+        distortion_group = QGroupBox("ディストーション")
+        distortion_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 1px solid #ccc;
+                border-radius: 6px;
+                margin-top: 10px;
+                padding-top: 5px;
+                background-color: white;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
+                background-color: white;
+            }
+        """)
+        distortion_layout = QHBoxLayout(distortion_group)
+        distortion_layout.setSpacing(15)
+        
+        distortion_label = QLabel("強度")
         distortion_label.setFont(QFont("", 12, QFont.Weight.Bold))
-        distortion_label.setMinimumWidth(80)
+        distortion_label.setMinimumWidth(60)
         
         self.distortion_slider = QSlider(Qt.Orientation.Horizontal)
         self.distortion_slider.setRange(10, 100)
         self.distortion_slider.setValue(40)
         self.distortion_slider.setStyleSheet("""
             QSlider::groove:horizontal {
-                border: 1px solid #dee2e6;
-                height: 8px;
-                background: #f8f9fa;
-                border-radius: 4px;
+                border: 1px solid #bbb;
+                background: white;
+                height: 6px;
+                border-radius: 3px;
+            }
+            QSlider::sub-page:horizontal {
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #dc3545, stop: 1 #f1556c);
+                border: 1px solid #dc3545;
+                height: 6px;
+                border-radius: 3px;
             }
             QSlider::handle:horizontal {
-                background: #dc3545;
-                border: 1px solid #c82333;
+                background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 1,
+                    stop: 0 #fff, stop: 1 #dc3545);
+                border: 1px solid #dc3545;
                 width: 18px;
-                height: 18px;
+                margin-top: -6px;
+                margin-bottom: -6px;
                 border-radius: 9px;
-                margin: -6px 0;
             }
         """)
         
@@ -242,9 +323,9 @@ class AudioEffectsControl(QWidget):
         distortion_layout.addWidget(self.distortion_toggle)
         
         # レイアウトに追加
-        layout.addLayout(echo_layout)
-        layout.addLayout(reverb_layout)
-        layout.addLayout(distortion_layout)
+        layout.addWidget(echo_group)
+        layout.addWidget(reverb_group)
+        layout.addWidget(distortion_group)
         layout.addStretch()
         
         return widget
