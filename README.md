@@ -1,6 +1,7 @@
 tts_studio-main/
 ├── main.py
 ├── model_history.json
+├── user_settings.json
 ├── core/
 │   ├── __init__.py
 │   ├── audio_analyzer.py
