@@ -1,6 +1,6 @@
-# ui/audio_effects_control.py (完全版 - 音声エフェクト｜環境エフェクト)
+# ui/audio_effects_control.py (完全版 - 音声エフェクト｜環境エフェクト + リセットボタン付き)
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                            QTabWidget, QFrame, QSlider, QGroupBox, QGridLayout, QDoubleSpinBox)
+                            QTabWidget, QFrame, QSlider, QGroupBox, QGridLayout, QDoubleSpinBox, QPushButton)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont, QPainter, QBrush, QPen, QColor
 from PyQt6.QtCore import QRectF
@@ -286,6 +286,30 @@ class AudioEffectsControl(QWidget):
             effects_layout.addWidget(toggle, i, 4)
         
         layout.addWidget(effects_group)
+        
+        # リセットボタン（UI統一版）
+        reset_btn = QPushButton("🔄 音声エフェクトをリセット")
+        reset_btn.setFixedHeight(40)
+        reset_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff5722;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: bold;
+                padding: 8px 16px;
+            }
+            QPushButton:hover {
+                background-color: #f4511e;
+            }
+            QPushButton:pressed {
+                background-color: #d84315;
+            }
+        """)
+        reset_btn.clicked.connect(self.reset_audio_effects)
+        
+        layout.addWidget(reset_btn)
         layout.addStretch()
         
         return widget
@@ -412,6 +436,30 @@ class AudioEffectsControl(QWidget):
             env_effects_layout.addWidget(toggle, i, 4)
         
         layout.addWidget(env_effects_group)
+        
+        # リセットボタン（UI統一版）
+        reset_btn = QPushButton("🔄 環境エフェクトをリセット")
+        reset_btn.setFixedHeight(40)
+        reset_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff5722;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: bold;
+                padding: 8px 16px;
+            }
+            QPushButton:hover {
+                background-color: #f4511e;
+            }
+            QPushButton:pressed {
+                background-color: #d84315;
+            }
+        """)
+        reset_btn.clicked.connect(self.reset_environmental_effects)
+        
+        layout.addWidget(reset_btn)
         layout.addStretch()
         
         return widget
@@ -427,77 +475,6 @@ class AudioEffectsControl(QWidget):
         self.robot_spinbox.setValue(float_value)
         self.robot_spinbox.blockSignals(False)
         self.emit_settings_changed()
-        
-    # ================================
-    # リセット機能
-    # ================================
-    
-    def reset_audio_effects(self):
-        """音声エフェクトをデフォルト値にリセット"""
-        try:
-            self.blockSignals(True)
-            
-            # ロボット音声
-            self.robot_toggle.setChecked(False)
-            self.robot_slider.setValue(int(0.5 * 100))
-            self.robot_spinbox.setValue(0.5)
-            
-            # ディストーション
-            self.distortion_toggle.setChecked(False)
-            self.distortion_slider.setValue(int(0.4 * 100))
-            self.distortion_spinbox.setValue(0.4)
-            
-            # ボイスチェンジ
-            self.voice_change_toggle.setChecked(False)
-            self.voice_change_slider.setValue(0)
-            self.voice_change_spinbox.setValue(0.0)
-            
-            # やまびこ
-            self.echo_toggle.setChecked(False)
-            self.echo_slider.setValue(int(0.3 * 100))
-            self.echo_spinbox.setValue(0.3)
-            
-            self.blockSignals(False)
-            self.emit_settings_changed()
-            
-            print("🔄 音声エフェクトをリセットしました")
-            
-        except Exception as e:
-            print(f"音声エフェクトリセットエラー: {e}")
-    
-    def reset_environmental_effects(self):
-        """環境エフェクトをデフォルト値にリセット"""
-        try:
-            self.blockSignals(True)
-            
-            # 電話音声
-            self.phone_toggle.setChecked(False)
-            self.phone_slider.setValue(int(0.5 * 100))
-            self.phone_spinbox.setValue(0.5)
-            
-            # 壁越し音声
-            self.through_wall_toggle.setChecked(False)
-            self.through_wall_slider.setValue(int(0.3 * 100))
-            self.through_wall_spinbox.setValue(0.3)
-            
-            # 閉鎖空間
-            self.reverb_toggle.setChecked(False)
-            self.reverb_slider.setValue(int(0.5 * 100))
-            self.reverb_spinbox.setValue(0.5)
-            
-            self.blockSignals(False)
-            self.emit_settings_changed()
-            
-            print("🔄 環境エフェクトをリセットしました")
-            
-        except Exception as e:
-            print(f"環境エフェクトリセットエラー: {e}")
-    
-    def reset_all_effects(self):
-        """全エフェクトをリセット（外部から呼び出し可能）"""
-        self.reset_audio_effects()
-        self.reset_environmental_effects()
-        print("🔄 全エフェクトをリセットしました")
     
     def on_robot_spinbox_changed(self, value):
         """ロボット音声SpinBox変更時"""
@@ -611,6 +588,71 @@ class AudioEffectsControl(QWidget):
         """設定変更シグナルを発信（サイレント）"""
         settings = self.get_current_settings()
         self.effects_settings_changed.emit(settings)
+    
+    # ================================
+    # リセット機能
+    # ================================
+    
+    def reset_audio_effects(self):
+        """音声エフェクトをデフォルト値にリセット"""
+        try:
+            self.blockSignals(True)
+            
+            # ロボット音声
+            self.robot_toggle.setChecked(False)
+            self.robot_slider.setValue(int(0.5 * 100))
+            self.robot_spinbox.setValue(0.5)
+            
+            # ディストーション
+            self.distortion_toggle.setChecked(False)
+            self.distortion_slider.setValue(int(0.4 * 100))
+            self.distortion_spinbox.setValue(0.4)
+            
+            # ボイスチェンジ
+            self.voice_change_toggle.setChecked(False)
+            self.voice_change_slider.setValue(0)
+            self.voice_change_spinbox.setValue(0.0)
+            
+            # やまびこ
+            self.echo_toggle.setChecked(False)
+            self.echo_slider.setValue(int(0.3 * 100))
+            self.echo_spinbox.setValue(0.3)
+            
+            self.blockSignals(False)
+            self.emit_settings_changed()
+            
+            print("🔄 音声エフェクトをリセットしました")
+            
+        except Exception as e:
+            print(f"音声エフェクトリセットエラー: {e}")
+    
+    def reset_environmental_effects(self):
+        """環境エフェクトをデフォルト値にリセット"""
+        try:
+            self.blockSignals(True)
+            
+            # 電話音声
+            self.phone_toggle.setChecked(False)
+            self.phone_slider.setValue(int(0.5 * 100))
+            self.phone_spinbox.setValue(0.5)
+            
+            # 壁越し音声
+            self.through_wall_toggle.setChecked(False)
+            self.through_wall_slider.setValue(int(0.3 * 100))
+            self.through_wall_spinbox.setValue(0.3)
+            
+            # 閉鎖空間
+            self.reverb_toggle.setChecked(False)
+            self.reverb_slider.setValue(int(0.5 * 100))
+            self.reverb_spinbox.setValue(0.5)
+            
+            self.blockSignals(False)
+            self.emit_settings_changed()
+            
+            print("🔄 環境エフェクトをリセットしました")
+            
+        except Exception as e:
+            print(f"環境エフェクトリセットエラー: {e}")
     
     # ================================
     # 設定管理メソッド
