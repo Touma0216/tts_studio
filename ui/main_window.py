@@ -1,4 +1,4 @@
-# ui/main_window.py (デバッグメニュー完全削除版)
+# ui/main_window.py (エフェクト統合版)
 import os
 import numpy as np
 from pathlib import Path
@@ -38,8 +38,8 @@ class TTSStudioMainWindow(QMainWindow):
         self.init_ui()
         self.help_dialog = HelpDialog(self)
         
-        # クリーナー統合設定
-        self.setup_cleaner_integration()
+        # 音声処理統合設定（クリーナー + エフェクト）
+        self.setup_audio_processing_integration()
         
         # スライド式メニューを作成
         self.sliding_menu = SlidingMenuWidget(self)
@@ -78,10 +78,11 @@ class TTSStudioMainWindow(QMainWindow):
         divider.setFrameShadow(QFrame.Shadow.Sunken)
         divider.setStyleSheet("color: #dee2e6;")
 
-        # TabbedAudioControl（音声パラメータ + クリーナー統合版）
+        # TabbedAudioControl（音声パラメータ + クリーナー + エフェクト統合版）
         self.tabbed_audio_control = TabbedAudioControl()
         self.tabbed_audio_control.parameters_changed.connect(self.on_parameters_changed)
         self.tabbed_audio_control.cleaner_settings_changed.connect(self.on_cleaner_settings_changed)
+        self.tabbed_audio_control.effects_settings_changed.connect(self.on_effects_settings_changed)
         self.tabbed_audio_control.add_text_row("initial", 1)
 
         controls = QHBoxLayout()
@@ -201,9 +202,11 @@ class TTSStudioMainWindow(QMainWindow):
             self.sliding_menu.hide_menu()
         super().mousePressEvent(event)
     
-    # クリーナー統合設定
-    def setup_cleaner_integration(self):
-        """音声クリーナーとの統合設定"""
+    # ================================
+    # 音声処理統合設定（クリーナー + エフェクト）
+    # ================================
+    def setup_audio_processing_integration(self):
+        """音声処理（クリーナー + エフェクト）との統合設定"""
         # クリーナーの解析要求シグナルを接続
         self.tabbed_audio_control.cleaner_control.analyze_requested.connect(
             self.handle_cleaner_analysis_request
@@ -423,6 +426,10 @@ class TTSStudioMainWindow(QMainWindow):
         # 現在は何もしないが、将来的に設定保存などに使用可能
         pass
 
+    def on_effects_settings_changed(self, effects_settings):
+        """エフェクト設定変更時の処理（新規追加）"""
+        print(f"🎛️ エフェクト設定が変更されました: {effects_settings.get('enabled', False)}")
+
     def load_last_model(self):
             """前回のモデルを自動読み込み（感情UI更新対応版）"""
             models = self.model_manager.get_all_models()
@@ -467,7 +474,9 @@ class TTSStudioMainWindow(QMainWindow):
                 # 感情UIを更新
                 self.update_emotion_ui_after_model_load()
     
-    # 音声クリーナー統合版メソッド群
+    # ================================
+    # 音声処理統合メソッド（クリーナー + エフェクト）
+    # ================================
     def apply_audio_cleaning(self, audio, sample_rate):
         """音声クリーナーを適用（実装版）"""
         if not self.tabbed_audio_control.is_cleaner_enabled():
@@ -493,6 +502,150 @@ class TTSStudioMainWindow(QMainWindow):
             print(f"音声クリーナーエラー: {e}")
             return audio  # エラー時は元の音声を返す
 
+    def apply_audio_effects(self, audio, sample_rate):
+        """音声エフェクトを適用（新規実装）"""
+        if not self.tabbed_audio_control.is_effects_enabled():
+            return audio
+        
+        try:
+            # エフェクト設定を取得
+            effects_settings = self.tabbed_audio_control.get_effects_settings()
+            
+            # エフェクト処理を適用
+            processed_audio = self.process_audio_effects(audio, sample_rate, effects_settings)
+            
+            # ログ出力（デバッグ用）
+            active_effects = []
+            if effects_settings.get('echo_enabled'):
+                active_effects.append(f"エコー(遅延:{effects_settings.get('echo_delay'):.2f}s)")
+            if effects_settings.get('reverb_enabled'):
+                active_effects.append(f"リバーブ(部屋:{effects_settings.get('reverb_room_size'):.2f})")
+            if effects_settings.get('filter_enabled'):
+                active_effects.append(f"フィルター({effects_settings.get('filter_type')}:{effects_settings.get('filter_cutoff')}Hz)")
+            if effects_settings.get('distortion_enabled'):
+                active_effects.append(f"ディストーション({effects_settings.get('distortion_drive'):.1f}dB)")
+            
+            print(f"🎛️ 音声エフェクトが適用されました: {', '.join(active_effects) if active_effects else 'なし'}")
+            
+            return processed_audio
+            
+        except Exception as e:
+            print(f"音声エフェクトエラー: {e}")
+            return audio  # エラー時は元の音声を返す
+
+    def process_audio_effects(self, audio, sample_rate, effects_settings):
+        """実際のエフェクト処理を行う"""
+        processed_audio = audio.copy()
+        
+        # エコーエフェクト
+        if effects_settings.get('echo_enabled', False):
+            processed_audio = self.apply_echo_effect(
+                processed_audio, 
+                sample_rate,
+                effects_settings.get('echo_delay', 0.5),
+                effects_settings.get('echo_decay', 0.3)
+            )
+        
+        # リバーブエフェクト
+        if effects_settings.get('reverb_enabled', False):
+            processed_audio = self.apply_reverb_effect(
+                processed_audio,
+                sample_rate,
+                effects_settings.get('reverb_room_size', 0.5),
+                effects_settings.get('reverb_damping', 0.3)
+            )
+        
+        # フィルターエフェクト
+        if effects_settings.get('filter_enabled', False):
+            processed_audio = self.apply_filter_effect(
+                processed_audio,
+                sample_rate,
+                effects_settings.get('filter_type', 'lowpass'),
+                effects_settings.get('filter_cutoff', 8000)
+            )
+        
+        # ディストーションエフェクト
+        if effects_settings.get('distortion_enabled', False):
+            processed_audio = self.apply_distortion_effect(
+                processed_audio,
+                effects_settings.get('distortion_drive', 5.0)
+            )
+        
+        return processed_audio
+
+    def apply_echo_effect(self, audio, sample_rate, delay, decay):
+        """エコーエフェクトを適用"""
+        delay_samples = int(delay * sample_rate)
+        if delay_samples >= len(audio):
+            return audio
+        
+        echo_audio = np.zeros_like(audio)
+        echo_audio[delay_samples:] = audio[:-delay_samples] * decay
+        return audio + echo_audio
+
+    def apply_reverb_effect(self, audio, sample_rate, room_size, damping):
+        """簡易リバーブエフェクトを適用"""
+        # 複数の遅延を組み合わせた簡易リバーブ
+        delays = [0.03, 0.05, 0.07, 0.09, 0.11]  # 異なる遅延時間
+        reverb_audio = audio.copy()
+        
+        for i, delay in enumerate(delays):
+            delay_samples = int(delay * sample_rate)
+            if delay_samples < len(audio):
+                decay_factor = (room_size * 0.5) * (0.8 ** i) * (1 - damping)
+                delayed_audio = np.zeros_like(audio)
+                delayed_audio[delay_samples:] = audio[:-delay_samples] * decay_factor
+                reverb_audio += delayed_audio
+        
+        return reverb_audio
+
+    def apply_filter_effect(self, audio, sample_rate, filter_type, cutoff):
+        """フィルターエフェクトを適用"""
+        try:
+            from scipy.signal import butter, filtfilt
+            
+            nyquist = 0.5 * sample_rate
+            normal_cutoff = cutoff / nyquist
+            
+            if normal_cutoff >= 1.0:
+                return audio
+            
+            if filter_type == 'lowpass':
+                b, a = butter(4, normal_cutoff, btype='low', analog=False)
+            elif filter_type == 'highpass':
+                b, a = butter(4, normal_cutoff, btype='high', analog=False)
+            elif filter_type == 'bandpass':
+                low_cutoff = max(0.01, normal_cutoff - 0.1)
+                high_cutoff = min(0.99, normal_cutoff + 0.1)
+                b, a = butter(4, [low_cutoff, high_cutoff], btype='band', analog=False)
+            else:
+                return audio
+            
+            return filtfilt(b, a, audio)
+            
+        except ImportError:
+            print("⚠️ scipy.signalが利用できません。フィルターエフェクトをスキップします。")
+            return audio
+        except Exception as e:
+            print(f"フィルターエラー: {e}")
+            return audio
+
+    def apply_distortion_effect(self, audio, drive):
+        """ディストーションエフェクトを適用"""
+        # ソフトクリッピング
+        drive_linear = 10 ** (drive / 20)  # dBを線形値に変換
+        driven_audio = audio * drive_linear
+        
+        # tanh関数によるソフトディストーション
+        distorted_audio = np.tanh(driven_audio)
+        
+        # 音量を調整
+        max_val = np.abs(distorted_audio).max()
+        if max_val > 0:
+            distorted_audio = distorted_audio * (0.8 / max_val)
+        
+        return distorted_audio
+
     def play_single_text(self, row_id, text, parameters):
         if not self.tts_engine.is_loaded:
             QMessageBox.warning(self, "エラー", "モデルが読み込まれていません。")
@@ -505,6 +658,10 @@ class TTSStudioMainWindow(QMainWindow):
             # 音声クリーナー適用
             if self.tabbed_audio_control.is_cleaner_enabled():
                 audio = self.apply_audio_cleaning(audio, sr)
+            
+            # 音声エフェクト適用（新規追加）
+            if self.tabbed_audio_control.is_effects_enabled():
+                audio = self.apply_audio_effects(audio, sr)
             
             # 最新音声を保存（解析用）
             self.last_generated_audio = audio
@@ -573,6 +730,10 @@ class TTSStudioMainWindow(QMainWindow):
                 # 音声クリーナー適用
                 if self.tabbed_audio_control.is_cleaner_enabled():
                     audio = self.apply_audio_cleaning(audio, sr)
+                
+                # 音声エフェクト適用（新規追加）
+                if self.tabbed_audio_control.is_effects_enabled():
+                    audio = self.apply_audio_effects(audio, sr)
                 
                 if sample_rate is None:
                     sample_rate = sr
@@ -667,14 +828,24 @@ class TTSStudioMainWindow(QMainWindow):
                     if self.tabbed_audio_control.is_cleaner_enabled():
                         audio = self.apply_audio_cleaning(audio, sr)
                     
+                    # 音声エフェクト適用（新規追加）
+                    if self.tabbed_audio_control.is_effects_enabled():
+                        audio = self.apply_audio_effects(audio, sr)
+                    
                     # ファイル名生成
                     safe_text = "".join(c for c in text[:20] if c.isalnum() or c in (' ', '-', '_')).rstrip()
                     if not safe_text:
                         safe_text = f"text_{i}"
                     
-                    # クリーナー適用状況をファイル名に反映
-                    cleaner_suffix = "_cleaned" if self.tabbed_audio_control.is_cleaner_enabled() else ""
-                    filename = f"{i:02d}_{safe_text}{cleaner_suffix}.wav"
+                    # 処理適用状況をファイル名に反映
+                    suffix_parts = []
+                    if self.tabbed_audio_control.is_cleaner_enabled():
+                        suffix_parts.append("cleaned")
+                    if self.tabbed_audio_control.is_effects_enabled():
+                        suffix_parts.append("effects")
+                    
+                    suffix = "_" + "_".join(suffix_parts) if suffix_parts else ""
+                    filename = f"{i:02d}_{safe_text}{suffix}.wav"
                     file_path = os.path.join(folder_path, filename)
                     
                     sf.write(file_path, audio, sr)
@@ -683,8 +854,15 @@ class TTSStudioMainWindow(QMainWindow):
                 self.save_individual_btn.setEnabled(True)
                 self.save_individual_btn.setText("個別保存(Ctrl + S)")
                 
-                cleaner_info = "\n🔧 音声クリーナーが適用されています" if self.tabbed_audio_control.is_cleaner_enabled() else ""
-                QMessageBox.information(self, "完了", f"個別ファイルを保存しました。\n保存先: {folder_path}{cleaner_info}")
+                # 適用された処理の情報
+                processing_info = []
+                if self.tabbed_audio_control.is_cleaner_enabled():
+                    processing_info.append("🔧 音声クリーナー")
+                if self.tabbed_audio_control.is_effects_enabled():
+                    processing_info.append("🎛️ 音声エフェクト")
+                
+                info_text = "\n適用された処理: " + ", ".join(processing_info) if processing_info else ""
+                QMessageBox.information(self, "完了", f"個別ファイルを保存しました。\n保存先: {folder_path}{info_text}")
                 
         except Exception as e:
             self.save_individual_btn.setEnabled(True)
@@ -707,8 +885,14 @@ class TTSStudioMainWindow(QMainWindow):
             import numpy as np
             
             # ファイル保存先選択
-            cleaner_suffix = "_cleaned" if self.tabbed_audio_control.is_cleaner_enabled() else ""
-            default_filename = f"continuous_output{cleaner_suffix}.wav"
+            suffix_parts = []
+            if self.tabbed_audio_control.is_cleaner_enabled():
+                suffix_parts.append("cleaned")
+            if self.tabbed_audio_control.is_effects_enabled():
+                suffix_parts.append("effects")
+            
+            suffix = "_" + "_".join(suffix_parts) if suffix_parts else ""
+            default_filename = f"continuous_output{suffix}.wav"
             
             file_path, _ = QFileDialog.getSaveFileName(
                 self,
@@ -744,6 +928,10 @@ class TTSStudioMainWindow(QMainWindow):
                     # 音声クリーナー適用
                     if self.tabbed_audio_control.is_cleaner_enabled():
                         audio = self.apply_audio_cleaning(audio, sr)
+                    
+                    # 音声エフェクト適用（新規追加）
+                    if self.tabbed_audio_control.is_effects_enabled():
+                        audio = self.apply_audio_effects(audio, sr)
                     
                     if sample_rate is None:
                         sample_rate = sr
@@ -785,8 +973,15 @@ class TTSStudioMainWindow(QMainWindow):
                 self.save_continuous_btn.setEnabled(True)
                 self.save_continuous_btn.setText("連続保存(Ctrl + Shift + S)")
                 
-                cleaner_info = "\n🔧 音声クリーナーが適用されています" if self.tabbed_audio_control.is_cleaner_enabled() else ""
-                QMessageBox.information(self, "完了", f"連続音声ファイルを保存しました。\n保存先: {file_path}{cleaner_info}")
+                # 適用された処理の情報
+                processing_info = []
+                if self.tabbed_audio_control.is_cleaner_enabled():
+                    processing_info.append("🔧 音声クリーナー")
+                if self.tabbed_audio_control.is_effects_enabled():
+                    processing_info.append("🎛️ 音声エフェクト")
+                
+                info_text = "\n適用された処理: " + ", ".join(processing_info) if processing_info else ""
+                QMessageBox.information(self, "完了", f"連続音声ファイルを保存しました。\n保存先: {file_path}{info_text}")
                 
         except Exception as e:
             self.save_continuous_btn.setEnabled(True)

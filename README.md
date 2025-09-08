@@ -11,6 +11,7 @@ tts_studio-main/
 ├── ui/
 │   ├── __init__.py
 │   ├── audio_cleaner_control.py
+│   ├── audio_effects_control.py
 │   ├── help_dialog.py
 │   ├── keyboard_shortcuts.py
 │   ├── main_window.py
