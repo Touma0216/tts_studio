@@ -78,22 +78,41 @@ class AudioEffectsProcessor:
     
     def apply_robot_voice(self, audio, intensity):
         """
-        ロボット音声エフェクト
-        ピッチの量子化とわずかなディストーションで機械的な声に
+        ロボット音声エフェクト - 安全版
         """
         try:
-            # ピッチ量子化（音階に強制）
-            quantized_audio = self._quantize_pitch(audio, intensity)
+            # 入力チェック
+            if not np.isfinite(audio).all():
+                return audio
             
-            # 軽いディストーション
-            robot_factor = 1.0 + intensity * 2.0
-            robot_audio = np.tanh(quantized_audio * robot_factor) * 0.8
+            # 1. 低い周波数のリングモジュレーション
+            t = np.arange(len(audio)) / self.sample_rate
+            base_freq = 30 + intensity * 70  # 30Hz-100Hz（超低域）
+            carrier = np.sin(2 * np.pi * base_freq * t)
             
-            # 原音とのミックス
-            mix_ratio = intensity
-            result = (1 - mix_ratio) * audio + mix_ratio * robot_audio
+            # リングモジュレーション
+            ring_modulated = audio * carrier
             
-            return result
+            # 2. 軽いディストーション
+            drive = 1.0 + intensity * 2.0
+            distorted = np.tanh(ring_modulated * drive)
+            
+            # 3. NaN/inf完全除去
+            distorted = np.nan_to_num(distorted, nan=0.0, posinf=0.0, neginf=0.0)
+            
+            # 4. 音量制限
+            max_val = np.abs(distorted).max()
+            if max_val > 0.8:
+                distorted = distorted / max_val * 0.8
+            
+            # 5. 控えめミックス
+            mix_ratio = intensity * 0.5
+            result = (1 - mix_ratio) * audio + mix_ratio * distorted
+            
+            # 6. 最終安全処理
+            result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
+            
+            return result.astype(np.float32)
             
         except Exception as e:
             print(f"ロボット音声エラー: {e}")
@@ -132,22 +151,27 @@ class AudioEffectsProcessor:
     
     def apply_distortion(self, audio, intensity):
         """
-        ディストーション（歪み）エフェクト
-        tanhによるソフトディストーション
+        ディストーション（歪み）エフェクト - 強化版
         """
         try:
-            # ドライブ量の計算
-            drive = 1.0 + intensity * 9.0  # 1.0 ~ 10.0
+            # より強力なドライブ
+            drive = 1.0 + intensity * 15.0  # 1.0 ~ 16.0（大幅強化）
             
-            # ソフトクリッピング
+            # ハードディストーション
             driven_audio = audio * drive
             distorted_audio = np.tanh(driven_audio)
             
-            # 音量補正
-            distorted_audio *= 0.7
+            # 追加の歪み処理
+            if intensity > 0.3:
+                # ハードクリッピング追加
+                clip_threshold = 0.7 - intensity * 0.4  # 0.7 → 0.3
+                distorted_audio = np.clip(distorted_audio, -clip_threshold, clip_threshold)
             
-            # 原音とのミックス
-            mix_ratio = intensity * 0.8
+            # 音量補正（歪み具合に応じて調整）
+            distorted_audio *= (0.8 - intensity * 0.2)  # 強い歪みほど音量下げる
+            
+            # より強いミックス比率
+            mix_ratio = intensity * 0.95  # 最大95%（大幅強化）
             result = (1 - mix_ratio) * audio + mix_ratio * distorted_audio
             
             return result
@@ -328,84 +352,6 @@ class AudioEffectsProcessor:
     # ================================
     # ユーティリティメソッド
     # ================================
-    
-    def _quantize_pitch(self, audio, intensity):
-        """
-        ピッチを音階に量子化（簡易版）
-        ロボット音声効果用
-        """
-        try:
-            # 簡易的なピッチ量子化
-            # 実際の実装ではFFTを使用してより精密に行う
-            
-            # 窓関数を使った処理
-            window_size = int(0.02 * self.sample_rate)  # 20ms
-            hop_size = window_size // 2
-            
-            quantized = audio.copy()
-            
-            # intensityが低い場合は処理をスキップ
-            if intensity < 0.1:
-                return audio
-            
-            # 簡易的な音程補正（強度に応じて）
-            for i in range(0, len(audio) - window_size, hop_size):
-                window = audio[i:i + window_size]
-                
-                # 音量が十分大きい部分のみ処理
-                if np.max(np.abs(window)) > 0.01:
-                    # 簡易的な周期検出と補正
-                    autocorr = np.correlate(window, window, mode='full')
-                    center = len(autocorr) // 2
-                    
-                    # ピーク検出（簡易版）
-                    peaks = autocorr[center:]
-                    if len(peaks) > 50:
-                        peak_idx = np.argmax(peaks[20:]) + 20  # 最初の20サンプルを除外
-                        if peak_idx > 0 and peaks[peak_idx] > np.max(peaks) * 0.3:
-                            # 検出された周期を半音階に量子化
-                            quantized_period = self._quantize_to_semitone(peak_idx)
-                            
-                            # 量子化された周期で音声を再構成（簡易版）
-                            if quantized_period != peak_idx:
-                                scale_factor = quantized_period / peak_idx
-                                # 簡易的なピッチ変更
-                                quantized[i:i + window_size] = window * (1 + (scale_factor - 1) * intensity)
-            
-            return quantized
-            
-        except Exception:
-            # エラー時は元の音声を返す
-            return audio
-    
-    def _quantize_to_semitone(self, period):
-        """
-        周期を半音階に量子化
-        """
-        try:
-            # 基準周波数 (A4 = 440Hz)
-            base_freq = 440.0
-            base_period = self.sample_rate / base_freq
-            
-            # 周期から周波数を計算
-            if period <= 0:
-                return period
-                
-            freq = self.sample_rate / period
-            
-            # 半音階に量子化
-            # log2(freq/base_freq) * 12 = 半音数
-            semitones = 12 * np.log2(freq / base_freq)
-            quantized_semitones = round(semitones)
-            
-            # 量子化された周波数
-            quantized_freq = base_freq * (2 ** (quantized_semitones / 12))
-            quantized_period = self.sample_rate / quantized_freq
-            
-            return max(1, int(quantized_period))
-            
-        except Exception:
-            return period
     
     def _normalize_audio(self, audio, target_level=0.8):
         """
