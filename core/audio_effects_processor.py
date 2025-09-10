@@ -78,42 +78,115 @@ class AudioEffectsProcessor:
     
     def apply_robot_voice(self, audio, intensity):
         """
-        ロボット音声エフェクト - 安全版
+        ロボット音声エフェクト - 本格的専門処理（制約なし）
         """
         try:
-            # 入力チェック
-            if not np.isfinite(audio).all():
-                return audio
+            import librosa
+            from scipy.signal import butter, filtfilt, hilbert
             
-            # 1. 低い周波数のリングモジュレーション
-            t = np.arange(len(audio)) / self.sample_rate
-            base_freq = 30 + intensity * 70  # 30Hz-100Hz（超低域）
-            carrier = np.sin(2 * np.pi * base_freq * t)
+            # 1. 高品質ピッチシフト
+            shifted_audio = librosa.effects.pitch_shift(
+                audio, 
+                sr=self.sample_rate, 
+                n_steps=-3 + intensity * 2  # -3〜-1半音で機械的に
+            )
             
-            # リングモジュレーション
-            ring_modulated = audio * carrier
+            # 2. マルチバンド・ボコーダー処理
+            nyquist = self.sample_rate / 2
+            bands = [
+                (80, 200), (200, 400), (400, 800), (800, 1600), 
+                (1600, 3200), (3200, 6400), (6400, 12800)
+            ]
             
-            # 2. 軽いディストーション
-            drive = 1.0 + intensity * 2.0
-            distorted = np.tanh(ring_modulated * drive)
+            vocoded_result = np.zeros_like(audio)
             
-            # 3. NaN/inf完全除去
-            distorted = np.nan_to_num(distorted, nan=0.0, posinf=0.0, neginf=0.0)
+            for i, (low_f, high_f) in enumerate(bands):
+                if high_f > nyquist:
+                    high_f = nyquist * 0.95
+                
+                # バンドパスフィルター
+                low_norm = low_f / nyquist
+                high_norm = high_f / nyquist
+                
+                b, a = butter(6, [low_norm, high_norm], btype='band')
+                band_signal = filtfilt(b, a, shifted_audio)
+                
+                # エンベロープ検出（Hilbert変換）
+                analytic_signal = hilbert(band_signal)
+                envelope = np.abs(analytic_signal)
+                
+                # キャリア周波数（バンドごと）
+                carrier_freq = (low_f + high_f) / 2
+                t = np.arange(len(audio)) / self.sample_rate
+                
+                # 複数キャリア波の合成
+                carrier1 = np.sin(2 * np.pi * carrier_freq * t)
+                carrier2 = np.sin(2 * np.pi * carrier_freq * 1.5 * t) * 0.5
+                carrier3 = np.sin(2 * np.pi * carrier_freq * 2.0 * t) * 0.25
+                
+                combined_carrier = carrier1 + carrier2 + carrier3
+                
+                # エンベロープ適用
+                band_vocoded = envelope * combined_carrier * (0.15 + intensity * 0.1)
+                
+                vocoded_result += band_vocoded
             
-            # 4. 音量制限
-            max_val = np.abs(distorted).max()
+            # 3. リングモジュレーション強化
+            ring_freq = 100 + intensity * 400  # 100-500Hz
+            ring_carrier = np.sin(2 * np.pi * ring_freq * t)
+            ring_modulated = vocoded_result * ring_carrier
+            
+            # 4. ビットクラッシュ（デジタル感）
+            bits = max(3, int(12 - intensity * 8))  # 12bit→3bit
+            levels = 2 ** bits
+            bit_crushed = np.round(ring_modulated * levels) / levels
+            
+            # 5. フォルマント変更（librosa高度処理）
+            if intensity > 0.5:
+                # スペクトログラム操作
+                stft = librosa.stft(bit_crushed, n_fft=2048)
+                magnitude = np.abs(stft)
+                phase = np.angle(stft)
+                
+                # フォルマント圧縮（ロボット的に）
+                freq_shift = int(intensity * 20)  # 周波数ビンシフト
+                if freq_shift > 0:
+                    shifted_magnitude = np.roll(magnitude, freq_shift, axis=0)
+                    modified_stft = shifted_magnitude * np.exp(1j * phase)
+                    bit_crushed = librosa.istft(modified_stft)
+            
+            # 6. ディストーション（アナログ風）
+            drive = 1.0 + intensity * 5.0
+            distorted = np.tanh(bit_crushed * drive) * 0.7
+            
+            # 7. 高周波エンハンサー
+            high_cutoff = 4000 / nyquist
+            if high_cutoff < 0.95:
+                b, a = butter(4, high_cutoff, btype='high')
+                highs = filtfilt(b, a, distorted)
+                distorted += highs * intensity * 0.3
+            
+            # 8. コムフィルター（金属的響き）
+            delay_samples = int(0.001 * self.sample_rate)  # 1ms遅延
+            comb_filtered = distorted.copy()
+            if delay_samples < len(distorted):
+                comb_filtered[delay_samples:] += distorted[:-delay_samples] * 0.4 * intensity
+            
+            # 9. 最終ミックス
+            robot_mix = 0.1 + intensity * 0.9  # 10%〜100%
+            result = (1 - robot_mix) * audio + robot_mix * comb_filtered
+            
+            # 10. 正規化
+            max_val = np.abs(result).max()
             if max_val > 0.8:
-                distorted = distorted / max_val * 0.8
-            
-            # 5. 控えめミックス
-            mix_ratio = intensity * 0.5
-            result = (1 - mix_ratio) * audio + mix_ratio * distorted
-            
-            # 6. 最終安全処理
-            result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
+                result = result * (0.8 / max_val)
             
             return result.astype(np.float32)
             
+        except ImportError as e:
+            print(f"⚠️ ライブラリが不足: {e}")
+            print("pip install librosa scipy")
+            return audio
         except Exception as e:
             print(f"ロボット音声エラー: {e}")
             return audio
@@ -391,5 +464,7 @@ class AudioEffectsProcessor:
             active_effects.append(f"壁越し({effects_settings.get('through_wall_intensity', 0):.2f})")
         if effects_settings.get('reverb_enabled'):
             active_effects.append(f"閉鎖空間({effects_settings.get('reverb_intensity', 0):.2f})")
+        if effects_settings.get('underwater_enabled'):
+            active_effects.append(f"水中音声({effects_settings.get('underwater_intensity', 0):.2f})")
         
         return active_effects
