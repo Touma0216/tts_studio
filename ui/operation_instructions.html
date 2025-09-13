@@ -75,6 +75,13 @@
         .key.special {
             color: #e67e22;
         }
+        
+        .key.new {
+            color: #e74c3c;
+            background: #fff5f5;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
     </style>
 </head>
 <body>
@@ -92,6 +99,14 @@
             <tr>
                 <td><span class="key">Ctrl + H</span></td>
                 <td>操作説明を表示/非表示</td>
+            </tr>
+            
+            <tr>
+                <th colspan="2">編集操作</th>
+            </tr>
+            <tr>
+                <td><span class="key new">Ctrl + Z</span></td>
+                <td>前の設定に戻す（パラメータ・テキストUndo）</td>
             </tr>
             
             <tr>
@@ -138,6 +153,17 @@
                 <td>全テキストを1つのファイルに連続保存</td>
             </tr>
         </table>
+        
+        <div style="margin-top: 30px; padding: 15px; background: #e8f5e8; border-radius: 6px; border-left: 4px solid #4caf50;">
+            <h3 style="margin-top: 0; color: #2e7d32;">💡 Undo機能について</h3>
+            <p><strong>Ctrl + Z</strong> は状況に応じて動作が変わります：</p>
+            <ul>
+                <li><strong>テキスト入力中</strong>：テキストの変更を取り消し</li>
+                <li><strong>音声パラメータタブ</strong>：感情・話速・ピッチなどの前の設定に戻す</li>
+                <li><strong>その他のタブ</strong>：動作しません</li>
+            </ul>
+            <p style="margin-bottom: 0;">※ 1回だけ前の状態に戻せます</p>
+        </div>
     </div>
 </body>
 </html>

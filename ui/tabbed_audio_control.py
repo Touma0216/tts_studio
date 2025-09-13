@@ -8,7 +8,7 @@ from .audio_cleaner_control import AudioCleanerControl
 from .audio_effects_control import AudioEffectsControl
 
 class TabbedAudioControl(QWidget):
-    """音声パラメータ・クリーナー・エフェクトタブ統合ウィジェット"""
+    """音声パラメータ・クリーナー・エフェクトタブ統合ウィジェット（Undo対応版）"""
     
     parameters_changed = pyqtSignal(str, dict)  # row_id, parameters
     cleaner_settings_changed = pyqtSignal(dict)  # cleaner_settings
@@ -77,12 +77,49 @@ class TabbedAudioControl(QWidget):
         self.cleaner_control.settings_changed.connect(self.cleaner_settings_changed)
         self.main_tab_widget.addTab(self.cleaner_control, "🔧 音声クリーナー")
         
-        # 3. 音声エフェクトタブ（新規追加）
+        # 3. 音声エフェクトタブ（Undo対応版）
         self.effects_control = AudioEffectsControl()
         self.effects_control.effects_settings_changed.connect(self.effects_settings_changed)
+        self.effects_control.undo_executed.connect(self.on_effects_undo_executed)
         self.main_tab_widget.addTab(self.effects_control, "🎛️ 音声エフェクト")
         
         layout.addWidget(self.main_tab_widget)
+    
+    def on_effects_undo_executed(self):
+        """エフェクトUndo実行通知"""
+        print("🔄 エフェクトUndo実行通知受信")
+    
+    # ================================
+    # Undo機能の公開メソッド
+    # ================================
+    
+    def undo_current_tab(self):
+        """現在のタブでUndo実行"""
+        current_index = self.main_tab_widget.currentIndex()
+        
+        if current_index == 0:  # 音声パラメータタブ
+            return self.emotion_control.undo_current_tab_parameters()
+        elif current_index == 1:  # 音声クリーナータブ
+            # クリーナータブにはUndo機能なし
+            print("ℹ️ 音声クリーナータブではUndo機能はありません")
+            return False
+        elif current_index == 2:  # 音声エフェクトタブ
+            return self.effects_control.undo_effects_parameters()
+        
+        return False
+    
+    def has_current_tab_undo_available(self):
+        """現在のタブでUndoが可能かどうか"""
+        current_index = self.main_tab_widget.currentIndex()
+        
+        if current_index == 0:  # 音声パラメータタブ
+            return self.emotion_control.has_current_tab_undo_available()
+        elif current_index == 1:  # 音声クリーナータブ
+            return False
+        elif current_index == 2:  # 音声エフェクトタブ
+            return self.effects_control.has_undo_available()
+        
+        return False
     
     # ================================
     # 音声パラメータ関連のプロキシメソッド
@@ -127,7 +164,7 @@ class TabbedAudioControl(QWidget):
         return self.cleaner_control.is_enabled()
     
     # ================================
-    # 音声エフェクト関連（新規追加）
+    # 音声エフェクト関連
     # ================================
     
     def get_effects_settings(self):
@@ -144,10 +181,5 @@ class TabbedAudioControl(QWidget):
     
     def load_effects_preset(self, preset_name):
         """エフェクトプリセットを読み込み"""
-        # プリセット選択を更新してから読み込み
-        index = self.effects_control.preset_combo.findText(preset_name)
-        if index >= 0:
-            self.effects_control.preset_combo.setCurrentIndex(index)
-            self.effects_control.load_preset()
-            return True
+        # エフェクトタブにはプリセット機能がないので、将来の拡張用
         return False

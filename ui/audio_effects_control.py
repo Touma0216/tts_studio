@@ -1,9 +1,34 @@
-# ui/audio_effects_control.py (ロボット・ディストーション削除版)
+# ui/audio_effects_control.py (Undo機能追加版)
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                             QTabWidget, QFrame, QSlider, QGroupBox, QGridLayout, QDoubleSpinBox, QPushButton)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont, QPainter, QBrush, QPen, QColor
 from PyQt6.QtCore import QRectF
+
+class ParameterHistory:
+    """パラメータ履歴管理クラス（1個前の状態のみ保持）"""
+    
+    def __init__(self):
+        self.previous_state = None
+        self.has_previous = False
+    
+    def save_current_state(self, parameters):
+        """現在の状態を前回状態として保存"""
+        self.previous_state = parameters.copy() if parameters else None
+        self.has_previous = True
+    
+    def get_previous_state(self):
+        """前回状態を取得"""
+        return self.previous_state.copy() if self.previous_state else None
+    
+    def has_undo_available(self):
+        """Undoが可能かどうか"""
+        return self.has_previous and self.previous_state is not None
+    
+    def clear_history(self):
+        """履歴をクリア"""
+        self.previous_state = None
+        self.has_previous = False
 
 class ToggleSwitchWidget(QWidget):
     """緑/赤のON/OFFトグルスイッチ"""
@@ -61,9 +86,10 @@ class ToggleSwitchWidget(QWidget):
             self.update()
 
 class AudioEffectsControl(QWidget):
-    """音声エフェクト制御ウィジェット（音声エフェクト｜環境エフェクト）"""
+    """音声エフェクト制御ウィジェット（Undo機能付き）"""
     
     effects_settings_changed = pyqtSignal(dict)
+    undo_executed = pyqtSignal()  # Undo実行通知
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -83,7 +109,14 @@ class AudioEffectsControl(QWidget):
             'reverb_intensity': 0.5
         }
         
+        # Undo機能追加
+        self.history = ParameterHistory()
+        self.is_loading_settings = False  # 設定読み込み中フラグ
+        
         self.init_ui()
+        
+        # 初期状態を履歴に保存
+        self.history.save_current_state(self.default_settings)
         
     def init_ui(self):
         """UIの初期化"""
@@ -249,14 +282,14 @@ class AudioEffectsControl(QWidget):
                 self.voice_change_toggle = toggle
                 slider.valueChanged.connect(self.on_voice_change_slider_changed)
                 spinbox.valueChanged.connect(self.on_voice_change_spinbox_changed)
-                toggle.toggled.connect(self.emit_settings_changed)
+                toggle.toggled.connect(self.on_toggle_changed)
             elif key == "echo":
                 self.echo_slider = slider
                 self.echo_spinbox = spinbox
                 self.echo_toggle = toggle
                 slider.valueChanged.connect(self.on_echo_slider_changed)
                 spinbox.valueChanged.connect(self.on_echo_spinbox_changed)
-                toggle.toggled.connect(self.emit_settings_changed)
+                toggle.toggled.connect(self.on_toggle_changed)
             
             # GridLayoutに配置：名前 | スライダー | 数値 | 説明 | ON/OFF
             effects_layout.addWidget(label, i, 0)
@@ -392,21 +425,21 @@ class AudioEffectsControl(QWidget):
                 self.phone_toggle = toggle
                 slider.valueChanged.connect(self.on_phone_slider_changed)
                 spinbox.valueChanged.connect(self.on_phone_spinbox_changed)
-                toggle.toggled.connect(self.emit_settings_changed)
+                toggle.toggled.connect(self.on_toggle_changed)
             elif key == "through_wall":
                 self.through_wall_slider = slider
                 self.through_wall_spinbox = spinbox
                 self.through_wall_toggle = toggle
                 slider.valueChanged.connect(self.on_through_wall_slider_changed)
                 spinbox.valueChanged.connect(self.on_through_wall_spinbox_changed)
-                toggle.toggled.connect(self.emit_settings_changed)
+                toggle.toggled.connect(self.on_toggle_changed)
             elif key == "reverb":
                 self.reverb_slider = slider
                 self.reverb_spinbox = spinbox
                 self.reverb_toggle = toggle
                 slider.valueChanged.connect(self.on_reverb_slider_changed)
                 spinbox.valueChanged.connect(self.on_reverb_spinbox_changed)
-                toggle.toggled.connect(self.emit_settings_changed)
+                toggle.toggled.connect(self.on_toggle_changed)
             
             # GridLayoutに配置：名前 | スライダー | 数値 | 説明 | ON/OFF
             env_effects_layout.addWidget(label, i, 0)
@@ -445,95 +478,180 @@ class AudioEffectsControl(QWidget):
         return widget
     
     # ================================
-    # 音声エフェクトパラメータ変更処理
+    # Undo機能の実装
+    # ================================
+    
+    def save_current_state_to_history(self):
+        """現在の状態を履歴に保存"""
+        if not self.is_loading_settings:
+            current_settings = self.get_current_settings()
+            self.history.save_current_state(current_settings)
+            print(f"💾 エフェクト履歴保存: {current_settings}")
+    
+    def undo_effects_parameters(self):
+        """エフェクトパラメータをUndoする"""
+        if not self.history.has_undo_available():
+            print("⚠️ エフェクトUndo不可: 履歴なし")
+            return False
+        
+        previous_state = self.history.get_previous_state()
+        if previous_state:
+            print(f"↩️ エフェクトUndo実行: {previous_state}")
+            
+            # 前の状態に復元
+            self.is_loading_settings = True
+            self.set_settings(previous_state)
+            self.is_loading_settings = False
+            
+            # 設定変更通知
+            self.emit_settings_changed()
+            
+            # 履歴をクリア（1回だけUndoできる仕様）
+            self.history.clear_history()
+            
+            # Undo通知
+            self.undo_executed.emit()
+            
+            return True
+        
+        return False
+    
+    def has_undo_available(self):
+        """Undoが可能かどうか"""
+        return self.history.has_undo_available()
+    
+    # ================================
+    # エフェクトパラメータ変更処理（履歴保存付き）
     # ================================
     
     def on_voice_change_slider_changed(self, value):
         """ボイスチェンジスライダー変更時"""
+        if not self.is_loading_settings:
+            self.save_current_state_to_history()
+        
         float_value = float(value)  # 半音単位なのでそのまま
         self.voice_change_spinbox.blockSignals(True)
         self.voice_change_spinbox.setValue(float_value)
         self.voice_change_spinbox.blockSignals(False)
-        self.emit_settings_changed()
+        if not self.is_loading_settings:
+            self.emit_settings_changed()
     
     def on_voice_change_spinbox_changed(self, value):
         """ボイスチェンジSpinBox変更時"""
+        if not self.is_loading_settings:
+            self.save_current_state_to_history()
+        
         int_value = int(value)
         self.voice_change_slider.blockSignals(True)
         self.voice_change_slider.setValue(int_value)
         self.voice_change_slider.blockSignals(False)
-        self.emit_settings_changed()
+        if not self.is_loading_settings:
+            self.emit_settings_changed()
     
     def on_echo_slider_changed(self, value):
         """やまびこスライダー変更時"""
+        if not self.is_loading_settings:
+            self.save_current_state_to_history()
+        
         float_value = value / 100.0
         self.echo_spinbox.blockSignals(True)
         self.echo_spinbox.setValue(float_value)
         self.echo_spinbox.blockSignals(False)
-        self.emit_settings_changed()
+        if not self.is_loading_settings:
+            self.emit_settings_changed()
     
     def on_echo_spinbox_changed(self, value):
         """やまびこSpinBox変更時"""
+        if not self.is_loading_settings:
+            self.save_current_state_to_history()
+        
         int_value = int(value * 100)
         self.echo_slider.blockSignals(True)
         self.echo_slider.setValue(int_value)
         self.echo_slider.blockSignals(False)
-        self.emit_settings_changed()
-    
-    # ================================
-    # 環境エフェクトパラメータ変更処理
-    # ================================
+        if not self.is_loading_settings:
+            self.emit_settings_changed()
     
     def on_phone_slider_changed(self, value):
         """電話音声スライダー変更時"""
+        if not self.is_loading_settings:
+            self.save_current_state_to_history()
+        
         float_value = value / 100.0
         self.phone_spinbox.blockSignals(True)
         self.phone_spinbox.setValue(float_value)
         self.phone_spinbox.blockSignals(False)
-        self.emit_settings_changed()
+        if not self.is_loading_settings:
+            self.emit_settings_changed()
     
     def on_phone_spinbox_changed(self, value):
         """電話音声SpinBox変更時"""
+        if not self.is_loading_settings:
+            self.save_current_state_to_history()
+        
         int_value = int(value * 100)
         self.phone_slider.blockSignals(True)
         self.phone_slider.setValue(int_value)
         self.phone_slider.blockSignals(False)
-        self.emit_settings_changed()
+        if not self.is_loading_settings:
+            self.emit_settings_changed()
     
     def on_through_wall_slider_changed(self, value):
         """壁越し音声スライダー変更時"""
+        if not self.is_loading_settings:
+            self.save_current_state_to_history()
+        
         float_value = value / 100.0
         self.through_wall_spinbox.blockSignals(True)
         self.through_wall_spinbox.setValue(float_value)
         self.through_wall_spinbox.blockSignals(False)
-        self.emit_settings_changed()
+        if not self.is_loading_settings:
+            self.emit_settings_changed()
     
     def on_through_wall_spinbox_changed(self, value):
         """壁越し音声SpinBox変更時"""
+        if not self.is_loading_settings:
+            self.save_current_state_to_history()
+        
         int_value = int(value * 100)
         self.through_wall_slider.blockSignals(True)
         self.through_wall_slider.setValue(int_value)
         self.through_wall_slider.blockSignals(False)
-        self.emit_settings_changed()
+        if not self.is_loading_settings:
+            self.emit_settings_changed()
 
     def on_reverb_slider_changed(self, value):
         """リバーブスライダー変更時"""
+        if not self.is_loading_settings:
+            self.save_current_state_to_history()
+        
         float_value = value / 100.0
         self.reverb_spinbox.blockSignals(True)
         self.reverb_spinbox.setValue(float_value)
         self.reverb_spinbox.blockSignals(False)
-        self.emit_settings_changed()
+        if not self.is_loading_settings:
+            self.emit_settings_changed()
     
     def on_reverb_spinbox_changed(self, value):
         """リバーブSpinBox変更時"""
+        if not self.is_loading_settings:
+            self.save_current_state_to_history()
+        
         int_value = int(value * 100)
         self.reverb_slider.blockSignals(True)
         self.reverb_slider.setValue(int_value)
         self.reverb_slider.blockSignals(False)
-        self.emit_settings_changed()
+        if not self.is_loading_settings:
+            self.emit_settings_changed()
+    
+    def on_toggle_changed(self):
+        """トグルスイッチ変更時"""
+        if not self.is_loading_settings:
+            self.save_current_state_to_history()
+            self.emit_settings_changed()
         
     def emit_settings_changed(self):
-        """設定変更シグナルを発信（サイレント）"""
+        """設定変更シグナルを発信"""
         settings = self.get_current_settings()
         self.effects_settings_changed.emit(settings)
     
@@ -544,6 +662,9 @@ class AudioEffectsControl(QWidget):
     def reset_audio_effects(self):
         """音声エフェクトをデフォルト値にリセット"""
         try:
+            # 現在の状態を履歴に保存
+            self.save_current_state_to_history()
+            
             self.blockSignals(True)
             
             # ボイスチェンジ
@@ -567,6 +688,9 @@ class AudioEffectsControl(QWidget):
     def reset_environmental_effects(self):
         """環境エフェクトをデフォルト値にリセット"""
         try:
+            # 現在の状態を履歴に保存
+            self.save_current_state_to_history()
+            
             self.blockSignals(True)
             
             # 電話音声
@@ -615,7 +739,7 @@ class AudioEffectsControl(QWidget):
         
     def set_settings(self, settings):
         """設定を適用"""
-        self.blockSignals(True)
+        self.is_loading_settings = True
         
         # 音声エフェクト
         # ボイスチェンジ
@@ -649,7 +773,7 @@ class AudioEffectsControl(QWidget):
         self.reverb_slider.setValue(int(reverb_intensity * 100))
         self.reverb_spinbox.setValue(reverb_intensity)
         
-        self.blockSignals(False)
+        self.is_loading_settings = False
         
     def is_effects_enabled(self):
         """エフェクトが有効かどうか"""

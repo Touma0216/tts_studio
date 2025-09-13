@@ -2,7 +2,7 @@ from PyQt6.QtGui import QShortcut, QKeySequence
 from PyQt6.QtCore import Qt, QObject
 
 class KeyboardShortcutManager(QObject):
-    """キーボードショートカット管理クラス（ヘルプ機能対応）"""
+    """キーボードショートカット管理クラス（Undo機能対応）"""
     
     def __init__(self, main_window):
         super().__init__()
@@ -11,13 +11,16 @@ class KeyboardShortcutManager(QObject):
         self.setup_shortcuts()
     
     def setup_shortcuts(self):
-        """全ショートカットを設定（ヘルプ機能追加）"""
+        """全ショートカットを設定（Undo機能追加）"""
         
         # ファイル操作
         self.add_shortcut("Ctrl+F", self.open_file_menu)
         
-        # ヘルプ機能（新規追加）
+        # ヘルプ機能
         self.add_shortcut("Ctrl+H", self.toggle_help_dialog)
+        
+        # Undo機能（新規追加）
+        self.add_shortcut("Ctrl+Z", self.undo_parameters)
         
         # 再生系
         self.add_shortcut("Ctrl+R", self.play_sequential)
@@ -69,6 +72,35 @@ class KeyboardShortcutManager(QObject):
                 self.main_window.help_dialog.show()
                 self.main_window.help_dialog.raise_()
                 self.main_window.help_dialog.activateWindow()
+    
+    def undo_parameters(self):
+        """現在のタブのパラメータをUndo（エフェクト対応版）"""
+        try:
+            # フォーカスがテキスト入力にある場合は、テキストのUndoを優先
+            focused_widget = self.main_window.focusWidget()
+            
+            # QTextEditの場合は標準のUndoを実行
+            if hasattr(focused_widget, 'undo'):
+                from PyQt6.QtWidgets import QTextEdit, QLineEdit
+                if isinstance(focused_widget, (QTextEdit, QLineEdit)):
+                    focused_widget.undo()
+                    print("📝 テキストUndo実行")
+                    return
+            
+            # タブ統合コントロールでUndo実行
+            tabbed_audio_control = self.main_window.tabbed_audio_control
+            success = tabbed_audio_control.undo_current_tab()
+            
+            if success:
+                current_index = tabbed_audio_control.main_tab_widget.currentIndex()
+                tab_names = ["音声パラメータ", "音声クリーナー", "音声エフェクト"]
+                tab_name = tab_names[current_index] if current_index < len(tab_names) else "不明"
+                print(f"🔄 {tab_name}タブでUndo実行")
+            else:
+                print("⚠️ Undo履歴がありません")
+                
+        except Exception as e:
+            print(f"❌ Undoエラー: {e}")
     
     def play_current_row(self):
         """現在フォーカス中の行を再生"""

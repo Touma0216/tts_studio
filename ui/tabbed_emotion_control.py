@@ -7,6 +7,31 @@ import json
 import os
 from pathlib import Path
 
+class ParameterHistory:
+    """パラメータ履歴管理クラス（1個前の状態のみ保持）"""
+    
+    def __init__(self):
+        self.previous_state = None
+        self.has_previous = False
+    
+    def save_current_state(self, parameters):
+        """現在の状態を前回状態として保存"""
+        self.previous_state = parameters.copy() if parameters else None
+        self.has_previous = True
+    
+    def get_previous_state(self):
+        """前回状態を取得"""
+        return self.previous_state.copy() if self.previous_state else None
+    
+    def has_undo_available(self):
+        """Undoが可能かどうか"""
+        return self.has_previous and self.previous_state is not None
+    
+    def clear_history(self):
+        """履歴をクリア"""
+        self.previous_state = None
+        self.has_previous = False
+
 class EmotionPresetManager:
     """感情パラメータプリセット管理クラス（統一版）"""
     
@@ -105,10 +130,11 @@ def get_global_preset_manager():
     return _global_preset_manager
 
 class SingleEmotionControl(QWidget):
-    """単一行の感情制御ウィジェット（モデル感情対応版）"""
+    """単一行の感情制御ウィジェット（スライダーUndo改善版）"""
     
     parameters_changed = pyqtSignal(str, dict)
     preset_list_changed = pyqtSignal()  # プリセットリスト変更通知
+    undo_executed = pyqtSignal(str)  # Undo実行通知
     
     def __init__(self, row_id, parameters=None, is_master=False, parent=None):
         super().__init__(parent)
@@ -120,6 +146,12 @@ class SingleEmotionControl(QWidget):
             'pitch_scale': 1.0, 'intonation_scale': 1.0, 'sdp_ratio': 0.25, 'noise': 0.35
         }
         
+        # Undo機能追加（スライダードラッグ対応版）
+        self.history = ParameterHistory()
+        self.is_loading_parameters = False  # パラメータ読み込み中フラグ
+        self.slider_dragging = False  # スライダードラッグ中フラグ
+        self.temp_state_before_drag = None  # ドラッグ開始前の状態
+        
         # 利用可能感情（モデル読み込み後に更新）
         self.available_styles = ['Neutral']  # デフォルト
         
@@ -129,6 +161,9 @@ class SingleEmotionControl(QWidget):
         self.init_ui()
         self.load_parameters()
         self.load_preset_list()
+        
+        # 初期状態を履歴に保存
+        self.history.save_current_state(self.current_params)
         
     def init_ui(self):
         layout = QVBoxLayout(self)
@@ -292,6 +327,9 @@ class SingleEmotionControl(QWidget):
         
         self.intensity_slider.setStyleSheet(slider_style)
         self.intensity_slider.valueChanged.connect(self.on_intensity_slider_changed)
+        # スライダードラッグ検出
+        self.intensity_slider.sliderPressed.connect(self.on_slider_pressed)
+        self.intensity_slider.sliderReleased.connect(self.on_slider_released)
         
         self.intensity_spinbox = QDoubleSpinBox()
         self.intensity_spinbox.setRange(0.0, 2.0)
@@ -431,6 +469,9 @@ class SingleEmotionControl(QWidget):
             desc_label.setStyleSheet("color: #666; font-size: 9pt;")
             
             slider.valueChanged.connect(lambda v, k=key: self.on_param_slider_changed(k, v))
+            # スライダードラッグ検出
+            slider.sliderPressed.connect(self.on_slider_pressed)
+            slider.sliderReleased.connect(self.on_slider_released)
             spinbox.valueChanged.connect(lambda v, k=key: self.on_param_spinbox_changed(k, v))
             
             self.param_sliders[key] = slider
@@ -591,6 +632,146 @@ class SingleEmotionControl(QWidget):
         
         return group
     
+    # ================================
+    # スライダードラッグ検出（新規追加）
+    # ================================
+    
+    def on_slider_pressed(self):
+        """スライダー押下開始時"""
+        if not self.is_loading_parameters:
+            self.slider_dragging = True
+            self.temp_state_before_drag = self.current_params.copy()
+            print(f"🖱️ スライダードラッグ開始 ({self.row_id})")
+    
+    def on_slider_released(self):
+        """スライダー押下終了時"""
+        if not self.is_loading_parameters and self.slider_dragging:
+            self.slider_dragging = False
+            # ドラッグ開始前の状態を履歴に保存
+            if self.temp_state_before_drag:
+                self.history.save_current_state(self.temp_state_before_drag)
+                print(f"💾 スライダードラッグ終了 - 履歴保存 ({self.row_id})")
+            self.temp_state_before_drag = None
+    
+    # ================================
+    # Undo機能の実装
+    # ================================
+    
+    def save_current_state_to_history(self):
+        """現在の状態を履歴に保存"""
+        if not self.is_loading_parameters:
+            self.history.save_current_state(self.current_params)
+            print(f"💾 履歴保存 ({self.row_id}): {self.current_params}")
+    
+    def undo_parameters(self):
+        """パラメータをUndoする"""
+        if not self.history.has_undo_available():
+            print(f"⚠️ Undo不可 ({self.row_id}): 履歴なし")
+            return False
+        
+        previous_state = self.history.get_previous_state()
+        if previous_state:
+            print(f"↩️ Undo実行 ({self.row_id}): {previous_state}")
+            
+            # 現在の状態を一時保存（Undoの履歴としては保存しない）
+            current_temp = self.current_params.copy()
+            
+            # 前の状態に復元
+            self.current_params = previous_state
+            self.is_loading_parameters = True
+            self.load_parameters()
+            self.is_loading_parameters = False
+            
+            # パラメータ変更通知
+            self.emit_parameters_changed()
+            
+            # 履歴をクリア（1回だけUndoできる仕様）
+            self.history.clear_history()
+            
+            # Undo通知
+            self.undo_executed.emit(self.row_id)
+            
+            return True
+        
+        return False
+    
+    def has_undo_available(self):
+        """Undoが可能かどうか"""
+        return self.history.has_undo_available()
+    
+    # ================================
+    # 既存のイベントハンドラー（スライダードラッグ対応版）
+    # ================================
+    
+    def on_emotion_changed(self, text):
+        current_data = self.emotion_combo.currentData()
+        if current_data and not self.is_loading_parameters:
+            # 変更前の状態を履歴に保存
+            self.save_current_state_to_history()
+            
+            self.current_params['style'] = current_data
+            self.emit_parameters_changed()
+    
+    def on_intensity_slider_changed(self, value):
+        if not self.is_loading_parameters and not self.slider_dragging:
+            # SpinBoxからの変更時のみ履歴保存（スライダードラッグ中は保存しない）
+            self.save_current_state_to_history()
+        
+        float_value = value / 100.0
+        self.intensity_spinbox.blockSignals(True)
+        self.intensity_spinbox.setValue(float_value)
+        self.intensity_spinbox.blockSignals(False)
+        
+        self.current_params['style_weight'] = float_value
+        if not self.is_loading_parameters:
+            self.emit_parameters_changed()
+    
+    def on_intensity_spinbox_changed(self, value):
+        if not self.is_loading_parameters:
+            # SpinBox変更時は即座に履歴保存
+            self.save_current_state_to_history()
+        
+        int_value = int(value * 100)
+        self.intensity_slider.blockSignals(True)
+        self.intensity_slider.setValue(int_value)
+        self.intensity_slider.blockSignals(False)
+        
+        self.current_params['style_weight'] = value
+        if not self.is_loading_parameters:
+            self.emit_parameters_changed()
+    
+    def on_param_slider_changed(self, param_key, value):
+        if not self.is_loading_parameters and not self.slider_dragging:
+            # SpinBoxからの変更時のみ履歴保存（スライダードラッグ中は保存しない）
+            self.save_current_state_to_history()
+        
+        float_value = value / 100.0
+        
+        spinbox = self.param_spinboxes[param_key]
+        spinbox.blockSignals(True)
+        spinbox.setValue(float_value)
+        spinbox.blockSignals(False)
+        
+        self.current_params[param_key] = float_value
+        if not self.is_loading_parameters:
+            self.emit_parameters_changed()
+    
+    def on_param_spinbox_changed(self, param_key, value):
+        if not self.is_loading_parameters:
+            # SpinBox変更時は即座に履歴保存
+            self.save_current_state_to_history()
+        
+        int_value = int(value * 100)
+        
+        slider = self.param_sliders[param_key]
+        slider.blockSignals(True)
+        slider.setValue(int_value)
+        slider.blockSignals(False)
+        
+        self.current_params[param_key] = value
+        if not self.is_loading_parameters:
+            self.emit_parameters_changed()
+    
     def load_preset_list(self):
         self.preset_combo.clear()
         
@@ -600,10 +781,16 @@ class SingleEmotionControl(QWidget):
                 self.preset_combo.addItem(preset_data['name'], preset_key)
     
     def on_preset_selected(self):
+        if self.is_loading_parameters:
+            return
+            
         preset_key = self.preset_combo.currentData()
         if preset_key:
             preset = self.preset_manager.get_preset(preset_key)
             if preset:
+                # 現在の状態を履歴に保存してからプリセット適用
+                self.save_current_state_to_history()
+                
                 self.current_params.update(preset['parameters'])
                 self.load_parameters()
                 self.emit_parameters_changed()
@@ -669,54 +856,8 @@ class SingleEmotionControl(QWidget):
                     self.preset_combo.setCurrentIndex(i)
                     break
     
-    def on_emotion_changed(self, text):
-        current_data = self.emotion_combo.currentData()
-        if current_data:
-            self.current_params['style'] = current_data
-            self.emit_parameters_changed()
-    
-    def on_intensity_slider_changed(self, value):
-        float_value = value / 100.0
-        self.intensity_spinbox.blockSignals(True)
-        self.intensity_spinbox.setValue(float_value)
-        self.intensity_spinbox.blockSignals(False)
-        
-        self.current_params['style_weight'] = float_value
-        self.emit_parameters_changed()
-    
-    def on_intensity_spinbox_changed(self, value):
-        int_value = int(value * 100)
-        self.intensity_slider.blockSignals(True)
-        self.intensity_slider.setValue(int_value)
-        self.intensity_slider.blockSignals(False)
-        
-        self.current_params['style_weight'] = value
-        self.emit_parameters_changed()
-    
-    def on_param_slider_changed(self, param_key, value):
-        float_value = value / 100.0
-        
-        spinbox = self.param_spinboxes[param_key]
-        spinbox.blockSignals(True)
-        spinbox.setValue(float_value)
-        spinbox.blockSignals(False)
-        
-        self.current_params[param_key] = float_value
-        self.emit_parameters_changed()
-    
-    def on_param_spinbox_changed(self, param_key, value):
-        int_value = int(value * 100)
-        
-        slider = self.param_sliders[param_key]
-        slider.blockSignals(True)
-        slider.setValue(int_value)
-        slider.blockSignals(False)
-        
-        self.current_params[param_key] = value
-        self.emit_parameters_changed()
-    
     def load_parameters(self):
-        self.blockSignals(True)
+        self.is_loading_parameters = True
         
         # 感情選択を更新（available_stylesに基づく）
         for i in range(self.emotion_combo.count()):
@@ -733,7 +874,7 @@ class SingleEmotionControl(QWidget):
                 self.param_sliders[key].setValue(int(value * 100))
                 self.param_spinboxes[key].setValue(value)
         
-        self.blockSignals(False)
+        self.is_loading_parameters = False
     
     def emit_parameters_changed(self):
         self.parameters_changed.emit(self.row_id, self.current_params.copy())
@@ -742,6 +883,9 @@ class SingleEmotionControl(QWidget):
         return self.current_params.copy()
     
     def update_parameters_from_master(self, master_params):
+        # マスターからの更新は履歴に保存
+        self.save_current_state_to_history()
+        
         self.current_params.update(master_params)
         self.load_parameters()
     
@@ -822,7 +966,7 @@ class SingleEmotionControl(QWidget):
             traceback.print_exc()
 
 class TabbedEmotionControl(QWidget):
-    """タブ式感情制御ウィジェット（モデル感情対応版）"""
+    """タブ式感情制御ウィジェット（スライダーUndo対応版）"""
     
     parameters_changed = pyqtSignal(str, dict)
     master_parameters_changed = pyqtSignal(dict)
@@ -892,6 +1036,7 @@ class TabbedEmotionControl(QWidget):
         self.master_control = SingleEmotionControl("master", is_master=True)
         self.master_control.parameters_changed.connect(self.on_master_parameters_changed)
         self.master_control.preset_list_changed.connect(self.on_preset_list_changed)
+        self.master_control.undo_executed.connect(self.on_undo_executed)
         
         self.tab_widget.insertTab(0, self.master_control, "★")
         self.tab_widget.setTabToolTip(0, "デフォルトパラメータ - ここを変更すると全てのタブに反映されます")
@@ -910,6 +1055,36 @@ class TabbedEmotionControl(QWidget):
         for control in self.emotion_controls.values():
             control.refresh_preset_list()
     
+    def on_undo_executed(self, row_id):
+        """Undo実行通知"""
+        print(f"🔄 Undo実行通知受信: {row_id}")
+    
+    # ================================
+    # Undo機能の公開メソッド
+    # ================================
+    
+    def undo_current_tab_parameters(self):
+        """現在のタブのパラメータをUndoする"""
+        current_widget = self.tab_widget.currentWidget()
+        if isinstance(current_widget, SingleEmotionControl):
+            success = current_widget.undo_parameters()
+            if success:
+                print(f"✅ タブ '{current_widget.row_id}' のUndo実行")
+                return True
+            else:
+                print(f"⚠️ タブ '{current_widget.row_id}' のUndo失敗（履歴なし）")
+                return False
+        
+        print("⚠️ 現在のタブでUndo実行不可")
+        return False
+    
+    def has_current_tab_undo_available(self):
+        """現在のタブでUndoが可能かどうか"""
+        current_widget = self.tab_widget.currentWidget()
+        if isinstance(current_widget, SingleEmotionControl):
+            return current_widget.has_undo_available()
+        return False
+    
     def add_text_row(self, row_id, row_number, parameters=None):
         if row_id not in self.emotion_controls:
             base_params = self.master_control.get_current_parameters() if self.master_control else {}
@@ -919,6 +1094,7 @@ class TabbedEmotionControl(QWidget):
             control = SingleEmotionControl(row_id, base_params)
             control.parameters_changed.connect(self.parameters_changed)
             control.preset_list_changed.connect(self.on_preset_list_changed)
+            control.undo_executed.connect(self.on_undo_executed)
             
             # 👈 新しいタブにも現在の利用可能感情を適用
             if hasattr(self, 'current_available_styles'):
