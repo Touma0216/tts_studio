@@ -8,29 +8,64 @@ import os
 from pathlib import Path
 
 class ParameterHistory:
-    """パラメータ履歴管理クラス（1個前の状態のみ保持）"""
+    """改良版パラメータ履歴管理クラス（複数回Undo対応）"""
     
-    def __init__(self):
-        self.previous_state = None
-        self.has_previous = False
+    def __init__(self, max_history=20):
+        self.history_stack = []  # 履歴スタック
+        self.current_index = -1  # 現在位置
+        self.max_history = max_history  # 最大履歴数
+        self.is_undoing = False  # Undo/Redo実行中フラグ
     
     def save_current_state(self, parameters):
-        """現在の状態を前回状態として保存"""
-        self.previous_state = parameters.copy() if parameters else None
-        self.has_previous = True
+        """現在の状態を履歴に保存"""
+        if not parameters or self.is_undoing:
+            return
+        
+        # 新しい状態を保存する前に、現在位置以降の履歴を削除
+        if self.current_index < len(self.history_stack) - 1:
+            self.history_stack = self.history_stack[:self.current_index + 1]
+        
+        # 新しい状態を追加
+        self.history_stack.append(parameters.copy())
+        self.current_index = len(self.history_stack) - 1
+        
+        # 最大履歴数を超えた場合、古い履歴を削除
+        if len(self.history_stack) > self.max_history:
+            self.history_stack.pop(0)
+            self.current_index -= 1
     
     def get_previous_state(self):
-        """前回状態を取得"""
-        return self.previous_state.copy() if self.previous_state else None
+        """前の状態を取得してポインタを移動"""
+        if not self.has_undo_available():
+            return None
+        
+        self.current_index -= 1
+        return self.history_stack[self.current_index].copy()
+    
+    def get_next_state(self):
+        """次の状態を取得してポインタを移動"""
+        if not self.has_redo_available():
+            return None
+        
+        self.current_index += 1
+        return self.history_stack[self.current_index].copy()
     
     def has_undo_available(self):
         """Undoが可能かどうか"""
-        return self.has_previous and self.previous_state is not None
+        return self.current_index > 0
+    
+    def has_redo_available(self):
+        """Redoが可能かどうか"""
+        return self.current_index < len(self.history_stack) - 1
     
     def clear_history(self):
         """履歴をクリア"""
-        self.previous_state = None
-        self.has_previous = False
+        self.history_stack.clear()
+        self.current_index = -1
+    
+    def set_undoing_flag(self, flag):
+        """Undo/Redo実行中フラグを設定"""
+        self.is_undoing = flag
 
 class EmotionPresetManager:
     """感情パラメータプリセット管理クラス（統一版）"""
@@ -130,7 +165,7 @@ def get_global_preset_manager():
     return _global_preset_manager
 
 class SingleEmotionControl(QWidget):
-    """単一行の感情制御ウィジェット（スライダーUndo改善版）"""
+    """単一行の感情制御ウィジェット（複数Undo対応版）"""
     
     parameters_changed = pyqtSignal(str, dict)
     preset_list_changed = pyqtSignal()  # プリセットリスト変更通知
@@ -146,8 +181,8 @@ class SingleEmotionControl(QWidget):
             'pitch_scale': 1.0, 'intonation_scale': 1.0, 'sdp_ratio': 0.25, 'noise': 0.35
         }
         
-        # Undo機能追加（スライダードラッグ対応版）
-        self.history = ParameterHistory()
+        # 改良版履歴管理（複数Undo対応）
+        self.history = ParameterHistory(max_history=20)
         self.is_loading_parameters = False  # パラメータ読み込み中フラグ
         self.slider_dragging = False  # スライダードラッグ中フラグ
         self.temp_state_before_drag = None  # ドラッグ開始前の状態
@@ -633,7 +668,42 @@ class SingleEmotionControl(QWidget):
         return group
     
     # ================================
-    # スライダードラッグ検出（新規追加）
+    # 改良版Undo機能の実装
+    # ================================
+    
+    def save_current_state_to_history(self):
+        """現在の状態を履歴に保存"""
+        if not self.is_loading_parameters:
+            self.history.save_current_state(self.current_params)
+    
+    def undo_parameters(self):
+        """パラメータをUndoする（改良版）"""
+        if not self.history.has_undo_available():
+            return False
+        
+        self.history.set_undoing_flag(True)
+        previous_state = self.history.get_previous_state()
+        
+        if previous_state:
+            # 前の状態に復元
+            self.current_params = previous_state
+            self.load_parameters()
+            
+            # パラメータ変更通知
+            self.emit_parameters_changed()
+            
+            # Undo通知
+            self.undo_executed.emit(self.row_id)
+            
+        self.history.set_undoing_flag(False)
+        return True
+    
+    def has_undo_available(self):
+        """Undoが可能かどうか"""
+        return self.history.has_undo_available()
+    
+    # ================================
+    # スライダードラッグ検出
     # ================================
     
     def on_slider_pressed(self):
@@ -641,7 +711,6 @@ class SingleEmotionControl(QWidget):
         if not self.is_loading_parameters:
             self.slider_dragging = True
             self.temp_state_before_drag = self.current_params.copy()
-            print(f"🖱️ スライダードラッグ開始 ({self.row_id})")
     
     def on_slider_released(self):
         """スライダー押下終了時"""
@@ -650,57 +719,10 @@ class SingleEmotionControl(QWidget):
             # ドラッグ開始前の状態を履歴に保存
             if self.temp_state_before_drag:
                 self.history.save_current_state(self.temp_state_before_drag)
-                print(f"💾 スライダードラッグ終了 - 履歴保存 ({self.row_id})")
             self.temp_state_before_drag = None
     
     # ================================
-    # Undo機能の実装
-    # ================================
-    
-    def save_current_state_to_history(self):
-        """現在の状態を履歴に保存"""
-        if not self.is_loading_parameters:
-            self.history.save_current_state(self.current_params)
-            print(f"💾 履歴保存 ({self.row_id}): {self.current_params}")
-    
-    def undo_parameters(self):
-        """パラメータをUndoする"""
-        if not self.history.has_undo_available():
-            print(f"⚠️ Undo不可 ({self.row_id}): 履歴なし")
-            return False
-        
-        previous_state = self.history.get_previous_state()
-        if previous_state:
-            print(f"↩️ Undo実行 ({self.row_id}): {previous_state}")
-            
-            # 現在の状態を一時保存（Undoの履歴としては保存しない）
-            current_temp = self.current_params.copy()
-            
-            # 前の状態に復元
-            self.current_params = previous_state
-            self.is_loading_parameters = True
-            self.load_parameters()
-            self.is_loading_parameters = False
-            
-            # パラメータ変更通知
-            self.emit_parameters_changed()
-            
-            # 履歴をクリア（1回だけUndoできる仕様）
-            self.history.clear_history()
-            
-            # Undo通知
-            self.undo_executed.emit(self.row_id)
-            
-            return True
-        
-        return False
-    
-    def has_undo_available(self):
-        """Undoが可能かどうか"""
-        return self.history.has_undo_available()
-    
-    # ================================
-    # 既存のイベントハンドラー（スライダードラッグ対応版）
+    # 既存のイベントハンドラー（改良版）
     # ================================
     
     def on_emotion_changed(self, text):
@@ -714,7 +736,7 @@ class SingleEmotionControl(QWidget):
     
     def on_intensity_slider_changed(self, value):
         if not self.is_loading_parameters and not self.slider_dragging:
-            # SpinBoxからの変更時のみ履歴保存（スライダードラッグ中は保存しない）
+            # SpinBoxからの変更時のみ履歴保存
             self.save_current_state_to_history()
         
         float_value = value / 100.0
@@ -742,7 +764,7 @@ class SingleEmotionControl(QWidget):
     
     def on_param_slider_changed(self, param_key, value):
         if not self.is_loading_parameters and not self.slider_dragging:
-            # SpinBoxからの変更時のみ履歴保存（スライダードラッグ中は保存しない）
+            # SpinBoxからの変更時のみ履歴保存
             self.save_current_state_to_history()
         
         float_value = value / 100.0
@@ -896,11 +918,8 @@ class SingleEmotionControl(QWidget):
     def update_emotion_combo(self, available_styles):
         """モデルから取得した感情リストでコンボボックスを更新（統一版）"""
         try:
-            print(f"🔄 感情UI更新: {self.row_id} -> {available_styles}")
-            
             # 現在の選択を保存
             current_selection = self.emotion_combo.currentData()
-            print(f"  現在選択: {current_selection}")
             
             # 利用可能感情を更新
             self.available_styles = available_styles
@@ -929,27 +948,23 @@ class SingleEmotionControl(QWidget):
                 emoji, japanese = emotion_mapping.get(style.lower(), ('🎭', style))
                 display_name = f"{emoji} {japanese}"
                 self.emotion_combo.addItem(display_name, style)
-                print(f"  追加: {display_name} -> {style}")
             
             # 以前の選択を復元
             if current_selection and current_selection in available_styles:
                 for i in range(self.emotion_combo.count()):
                     if self.emotion_combo.itemData(i) == current_selection:
                         self.emotion_combo.setCurrentIndex(i)
-                        print(f"  復元: {current_selection}")
                         break
             else:
                 # デフォルト選択（Neutral系を優先）
                 for i in range(self.emotion_combo.count()):
                     if self.emotion_combo.itemData(i).lower() in ['neutral', 'ニュートラル']:
                         self.emotion_combo.setCurrentIndex(i)
-                        print(f"  デフォルト選択: {self.emotion_combo.itemData(i)}")
                         break
                 else:
                     # Neutralがない場合は最初の項目
                     if self.emotion_combo.count() > 0:
                         self.emotion_combo.setCurrentIndex(0)
-                        print(f"  最初選択: {self.emotion_combo.itemData(0)}")
             
             # パラメータを更新
             current_style = self.emotion_combo.currentData()
@@ -958,15 +973,11 @@ class SingleEmotionControl(QWidget):
             
             self.emotion_combo.blockSignals(False)
             
-            print(f"✅ 感情UI更新完了: {self.row_id}")
-            
         except Exception as e:
             print(f"❌ 感情UI更新エラー ({self.row_id}): {e}")
-            import traceback
-            traceback.print_exc()
 
 class TabbedEmotionControl(QWidget):
-    """タブ式感情制御ウィジェット（スライダーUndo対応版）"""
+    """タブ式感情制御ウィジェット（複数Undo対応版）"""
     
     parameters_changed = pyqtSignal(str, dict)
     master_parameters_changed = pyqtSignal(dict)
@@ -1057,10 +1068,10 @@ class TabbedEmotionControl(QWidget):
     
     def on_undo_executed(self, row_id):
         """Undo実行通知"""
-        print(f"🔄 Undo実行通知受信: {row_id}")
+        pass
     
     # ================================
-    # Undo機能の公開メソッド
+    # 改良版Undo機能の公開メソッド
     # ================================
     
     def undo_current_tab_parameters(self):
@@ -1069,13 +1080,10 @@ class TabbedEmotionControl(QWidget):
         if isinstance(current_widget, SingleEmotionControl):
             success = current_widget.undo_parameters()
             if success:
-                print(f"✅ タブ '{current_widget.row_id}' のUndo実行")
                 return True
             else:
-                print(f"⚠️ タブ '{current_widget.row_id}' のUndo失敗（履歴なし）")
                 return False
         
-        print("⚠️ 現在のタブでUndo実行不可")
         return False
     
     def has_current_tab_undo_available(self):
@@ -1102,8 +1110,6 @@ class TabbedEmotionControl(QWidget):
             
             self.emotion_controls[row_id] = control
             self.tab_widget.addTab(control, str(row_number))
-            
-            print(f"🆕 新しいタブ追加: {row_id} (感情: {self.current_available_styles})")
     
     def remove_text_row(self, row_id):
         if row_id in self.emotion_controls:
@@ -1143,24 +1149,16 @@ class TabbedEmotionControl(QWidget):
     def update_emotion_list(self, available_styles):
         """モデル読み込み後に全タブの感情リストを更新"""
         try:
-            print(f"🎭 全タブ感情更新開始: {available_styles}")
-            
             # 現在の利用可能感情を保存
             self.current_available_styles = available_styles
             
             # マスタータブを更新
             if self.master_control:
-                print("  マスタータブ更新中...")
                 self.master_control.update_emotion_combo(available_styles)
             
             # 各個別タブを更新
             for row_id, control in self.emotion_controls.items():
-                print(f"  タブ {row_id} 更新中...")
                 control.update_emotion_combo(available_styles)
-            
-            print(f"✅ 全タブ感情更新完了: {len(self.emotion_controls)}個のタブ")
             
         except Exception as e:
             print(f"❌ 全タブ感情更新エラー: {e}")
-            import traceback
-            traceback.print_exc()

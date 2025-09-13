@@ -1,4 +1,4 @@
-# ui/audio_effects_control.py (Undo機能追加版)
+# ui/audio_effects_control.py (複数Undo機能対応版)
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                             QTabWidget, QFrame, QSlider, QGroupBox, QGridLayout, QDoubleSpinBox, QPushButton)
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -6,29 +6,64 @@ from PyQt6.QtGui import QFont, QPainter, QBrush, QPen, QColor
 from PyQt6.QtCore import QRectF
 
 class ParameterHistory:
-    """パラメータ履歴管理クラス（1個前の状態のみ保持）"""
+    """改良版パラメータ履歴管理クラス（複数回Undo対応）"""
     
-    def __init__(self):
-        self.previous_state = None
-        self.has_previous = False
+    def __init__(self, max_history=20):
+        self.history_stack = []  # 履歴スタック
+        self.current_index = -1  # 現在位置
+        self.max_history = max_history  # 最大履歴数
+        self.is_undoing = False  # Undo/Redo実行中フラグ
     
     def save_current_state(self, parameters):
-        """現在の状態を前回状態として保存"""
-        self.previous_state = parameters.copy() if parameters else None
-        self.has_previous = True
+        """現在の状態を履歴に保存"""
+        if not parameters or self.is_undoing:
+            return
+        
+        # 新しい状態を保存する前に、現在位置以降の履歴を削除
+        if self.current_index < len(self.history_stack) - 1:
+            self.history_stack = self.history_stack[:self.current_index + 1]
+        
+        # 新しい状態を追加
+        self.history_stack.append(parameters.copy())
+        self.current_index = len(self.history_stack) - 1
+        
+        # 最大履歴数を超えた場合、古い履歴を削除
+        if len(self.history_stack) > self.max_history:
+            self.history_stack.pop(0)
+            self.current_index -= 1
     
     def get_previous_state(self):
-        """前回状態を取得"""
-        return self.previous_state.copy() if self.previous_state else None
+        """前の状態を取得してポインタを移動"""
+        if not self.has_undo_available():
+            return None
+        
+        self.current_index -= 1
+        return self.history_stack[self.current_index].copy()
+    
+    def get_next_state(self):
+        """次の状態を取得してポインタを移動"""
+        if not self.has_redo_available():
+            return None
+        
+        self.current_index += 1
+        return self.history_stack[self.current_index].copy()
     
     def has_undo_available(self):
         """Undoが可能かどうか"""
-        return self.has_previous and self.previous_state is not None
+        return self.current_index > 0
+    
+    def has_redo_available(self):
+        """Redoが可能かどうか"""
+        return self.current_index < len(self.history_stack) - 1
     
     def clear_history(self):
         """履歴をクリア"""
-        self.previous_state = None
-        self.has_previous = False
+        self.history_stack.clear()
+        self.current_index = -1
+    
+    def set_undoing_flag(self, flag):
+        """Undo/Redo実行中フラグを設定"""
+        self.is_undoing = flag
 
 class ToggleSwitchWidget(QWidget):
     """緑/赤のON/OFFトグルスイッチ"""
@@ -86,7 +121,7 @@ class ToggleSwitchWidget(QWidget):
             self.update()
 
 class AudioEffectsControl(QWidget):
-    """音声エフェクト制御ウィジェット（Undo機能付き）"""
+    """音声エフェクト制御ウィジェット（複数Undo機能付き）"""
     
     effects_settings_changed = pyqtSignal(dict)
     undo_executed = pyqtSignal()  # Undo実行通知
@@ -109,9 +144,11 @@ class AudioEffectsControl(QWidget):
             'reverb_intensity': 0.5
         }
         
-        # Undo機能追加
-        self.history = ParameterHistory()
+        # 改良版履歴機能（複数Undo対応）
+        self.history = ParameterHistory(max_history=20)
         self.is_loading_settings = False  # 設定読み込み中フラグ
+        self.slider_dragging = False  # スライダードラッグ中フラグ
+        self.temp_state_before_drag = None  # ドラッグ開始前の状態
         
         self.init_ui()
         
@@ -281,6 +318,8 @@ class AudioEffectsControl(QWidget):
                 self.voice_change_spinbox = spinbox
                 self.voice_change_toggle = toggle
                 slider.valueChanged.connect(self.on_voice_change_slider_changed)
+                slider.sliderPressed.connect(self.on_slider_pressed)
+                slider.sliderReleased.connect(self.on_slider_released)
                 spinbox.valueChanged.connect(self.on_voice_change_spinbox_changed)
                 toggle.toggled.connect(self.on_toggle_changed)
             elif key == "echo":
@@ -288,6 +327,8 @@ class AudioEffectsControl(QWidget):
                 self.echo_spinbox = spinbox
                 self.echo_toggle = toggle
                 slider.valueChanged.connect(self.on_echo_slider_changed)
+                slider.sliderPressed.connect(self.on_slider_pressed)
+                slider.sliderReleased.connect(self.on_slider_released)
                 spinbox.valueChanged.connect(self.on_echo_spinbox_changed)
                 toggle.toggled.connect(self.on_toggle_changed)
             
@@ -424,6 +465,8 @@ class AudioEffectsControl(QWidget):
                 self.phone_spinbox = spinbox
                 self.phone_toggle = toggle
                 slider.valueChanged.connect(self.on_phone_slider_changed)
+                slider.sliderPressed.connect(self.on_slider_pressed)
+                slider.sliderReleased.connect(self.on_slider_released)
                 spinbox.valueChanged.connect(self.on_phone_spinbox_changed)
                 toggle.toggled.connect(self.on_toggle_changed)
             elif key == "through_wall":
@@ -431,6 +474,8 @@ class AudioEffectsControl(QWidget):
                 self.through_wall_spinbox = spinbox
                 self.through_wall_toggle = toggle
                 slider.valueChanged.connect(self.on_through_wall_slider_changed)
+                slider.sliderPressed.connect(self.on_slider_pressed)
+                slider.sliderReleased.connect(self.on_slider_released)
                 spinbox.valueChanged.connect(self.on_through_wall_spinbox_changed)
                 toggle.toggled.connect(self.on_toggle_changed)
             elif key == "reverb":
@@ -438,6 +483,8 @@ class AudioEffectsControl(QWidget):
                 self.reverb_spinbox = spinbox
                 self.reverb_toggle = toggle
                 slider.valueChanged.connect(self.on_reverb_slider_changed)
+                slider.sliderPressed.connect(self.on_slider_pressed)
+                slider.sliderReleased.connect(self.on_slider_released)
                 spinbox.valueChanged.connect(self.on_reverb_spinbox_changed)
                 toggle.toggled.connect(self.on_toggle_changed)
             
@@ -478,7 +525,7 @@ class AudioEffectsControl(QWidget):
         return widget
     
     # ================================
-    # Undo機能の実装
+    # 改良版Undo機能の実装
     # ================================
     
     def save_current_state_to_history(self):
@@ -486,47 +533,58 @@ class AudioEffectsControl(QWidget):
         if not self.is_loading_settings:
             current_settings = self.get_current_settings()
             self.history.save_current_state(current_settings)
-            print(f"💾 エフェクト履歴保存: {current_settings}")
     
     def undo_effects_parameters(self):
-        """エフェクトパラメータをUndoする"""
+        """エフェクトパラメータをUndoする（改良版）"""
         if not self.history.has_undo_available():
-            print("⚠️ エフェクトUndo不可: 履歴なし")
             return False
         
+        self.history.set_undoing_flag(True)
         previous_state = self.history.get_previous_state()
+        
         if previous_state:
-            print(f"↩️ エフェクトUndo実行: {previous_state}")
-            
             # 前の状態に復元
-            self.is_loading_settings = True
             self.set_settings(previous_state)
-            self.is_loading_settings = False
             
             # 設定変更通知
             self.emit_settings_changed()
             
-            # 履歴をクリア（1回だけUndoできる仕様）
-            self.history.clear_history()
-            
             # Undo通知
             self.undo_executed.emit()
             
-            return True
-        
-        return False
+        self.history.set_undoing_flag(False)
+        return True
     
     def has_undo_available(self):
         """Undoが可能かどうか"""
         return self.history.has_undo_available()
     
     # ================================
-    # エフェクトパラメータ変更処理（履歴保存付き）
+    # スライダードラッグ検出
+    # ================================
+    
+    def on_slider_pressed(self):
+        """スライダー押下開始時"""
+        if not self.is_loading_settings:
+            self.slider_dragging = True
+            self.temp_state_before_drag = self.get_current_settings()
+    
+    def on_slider_released(self):
+        """スライダー押下終了時"""
+        if not self.is_loading_settings and self.slider_dragging:
+            self.slider_dragging = False
+            # ドラッグ開始前の状態を履歴に保存
+            if self.temp_state_before_drag:
+                self.history.save_current_state(self.temp_state_before_drag)
+            self.temp_state_before_drag = None
+    
+    # ================================
+    # エフェクトパラメータ変更処理（改良版）
     # ================================
     
     def on_voice_change_slider_changed(self, value):
         """ボイスチェンジスライダー変更時"""
-        if not self.is_loading_settings:
+        if not self.is_loading_settings and not self.slider_dragging:
             self.save_current_state_to_history()
         
         float_value = float(value)  # 半音単位なのでそのまま
@@ -550,7 +608,7 @@ class AudioEffectsControl(QWidget):
     
     def on_echo_slider_changed(self, value):
         """やまびこスライダー変更時"""
-        if not self.is_loading_settings:
+        if not self.is_loading_settings and not self.slider_dragging:
             self.save_current_state_to_history()
         
         float_value = value / 100.0
@@ -574,7 +632,7 @@ class AudioEffectsControl(QWidget):
     
     def on_phone_slider_changed(self, value):
         """電話音声スライダー変更時"""
-        if not self.is_loading_settings:
+        if not self.is_loading_settings and not self.slider_dragging:
             self.save_current_state_to_history()
         
         float_value = value / 100.0
@@ -598,7 +656,7 @@ class AudioEffectsControl(QWidget):
     
     def on_through_wall_slider_changed(self, value):
         """壁越し音声スライダー変更時"""
-        if not self.is_loading_settings:
+        if not self.is_loading_settings and not self.slider_dragging:
             self.save_current_state_to_history()
         
         float_value = value / 100.0
@@ -622,7 +680,7 @@ class AudioEffectsControl(QWidget):
 
     def on_reverb_slider_changed(self, value):
         """リバーブスライダー変更時"""
-        if not self.is_loading_settings:
+        if not self.is_loading_settings and not self.slider_dragging:
             self.save_current_state_to_history()
         
         float_value = value / 100.0
@@ -680,8 +738,6 @@ class AudioEffectsControl(QWidget):
             self.blockSignals(False)
             self.emit_settings_changed()
             
-            print("🔄 音声エフェクトをリセットしました")
-            
         except Exception as e:
             print(f"音声エフェクトリセットエラー: {e}")
     
@@ -710,8 +766,6 @@ class AudioEffectsControl(QWidget):
             
             self.blockSignals(False)
             self.emit_settings_changed()
-            
-            print("🔄 環境エフェクトをリセットしました")
             
         except Exception as e:
             print(f"環境エフェクトリセットエラー: {e}")

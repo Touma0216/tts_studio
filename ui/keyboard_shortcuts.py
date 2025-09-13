@@ -2,7 +2,7 @@ from PyQt6.QtGui import QShortcut, QKeySequence
 from PyQt6.QtCore import Qt, QObject
 
 class KeyboardShortcutManager(QObject):
-    """キーボードショートカット管理クラス（Undo機能対応）"""
+    """キーボードショートカット管理クラス（Undo/Redo機能対応）"""
     
     def __init__(self, main_window):
         super().__init__()
@@ -11,7 +11,7 @@ class KeyboardShortcutManager(QObject):
         self.setup_shortcuts()
     
     def setup_shortcuts(self):
-        """全ショートカットを設定（Undo機能追加）"""
+        """全ショートカットを設定（Undo/Redo機能追加）"""
         
         # ファイル操作
         self.add_shortcut("Ctrl+F", self.open_file_menu)
@@ -19,8 +19,10 @@ class KeyboardShortcutManager(QObject):
         # ヘルプ機能
         self.add_shortcut("Ctrl+H", self.toggle_help_dialog)
         
-        # Undo機能（新規追加）
+        # Undo/Redo機能（改良版）
         self.add_shortcut("Ctrl+Z", self.undo_parameters)
+        self.add_shortcut("Ctrl+Y", self.redo_parameters)  # ← 新規追加
+        self.add_shortcut("Ctrl+Shift+Z", self.redo_parameters)  # ← 新規追加（代替）
         
         # 再生系
         self.add_shortcut("Ctrl+R", self.play_sequential)
@@ -56,7 +58,107 @@ class KeyboardShortcutManager(QObject):
         self.shortcuts[key_sequence] = shortcut
     
     # ========================
-    # ショートカット実行関数
+    # Undo/Redo関連機能（改良版）
+    # ========================
+    
+    def undo_parameters(self):
+        """現在のタブのパラメータをUndo（改良版複数Undo対応）"""
+        try:
+            # フォーカスがテキスト入力にある場合は、テキストのUndoを優先
+            focused_widget = self.main_window.focusWidget()
+            
+            # QTextEditの場合は標準のUndoを実行
+            if hasattr(focused_widget, 'undo'):
+                from PyQt6.QtWidgets import QTextEdit, QLineEdit
+                if isinstance(focused_widget, (QTextEdit, QLineEdit)):
+                    focused_widget.undo()
+                    return
+            
+            # タブ統合コントロールでUndo実行
+            tabbed_audio_control = self.main_window.tabbed_audio_control
+            success = tabbed_audio_control.undo_current_tab()
+            
+            if success:
+                current_index = tabbed_audio_control.main_tab_widget.currentIndex()
+                tab_names = ["音声パラメータ", "音声クリーナー", "音声エフェクト"]
+                tab_name = tab_names[current_index] if current_index < len(tab_names) else "不明"
+                # print(f"🔄 {tab_name}タブでUndo実行")  # ログ出力を削除
+                
+        except Exception as e:
+            print(f"❌ Undoエラー: {e}")
+    
+    def redo_parameters(self):
+        """現在のタブのパラメータをRedo（新機能）"""
+        try:
+            # フォーカスがテキスト入力にある場合は、テキストのRedoを優先
+            focused_widget = self.main_window.focusWidget()
+            
+            # QTextEditの場合は標準のRedoを実行
+            if hasattr(focused_widget, 'redo'):
+                from PyQt6.QtWidgets import QTextEdit, QLineEdit
+                if isinstance(focused_widget, (QTextEdit, QLineEdit)):
+                    focused_widget.redo()
+                    return
+            
+            # タブ統合コントロールでRedo実行
+            tabbed_audio_control = self.main_window.tabbed_audio_control
+            
+            # Redo機能をタブ統合コントロールに追加（動的）
+            if not hasattr(tabbed_audio_control, 'redo_current_tab'):
+                tabbed_audio_control.redo_current_tab = self._create_redo_method(tabbed_audio_control)
+            
+            success = tabbed_audio_control.redo_current_tab()
+            
+            if success:
+                current_index = tabbed_audio_control.main_tab_widget.currentIndex()
+                tab_names = ["音声パラメータ", "音声クリーナー", "音声エフェクト"]
+                tab_name = tab_names[current_index] if current_index < len(tab_names) else "不明"
+                # print(f"🔄 {tab_name}タブでRedo実行")  # ログ出力を削除
+                
+        except Exception as e:
+            print(f"❌ Redoエラー: {e}")
+    
+    def _create_redo_method(self, tabbed_audio_control):
+        """タブ統合コントロール用のRedo機能を動的作成"""
+        def redo_current_tab():
+            current_index = tabbed_audio_control.main_tab_widget.currentIndex()
+            
+            if current_index == 0:  # 音声パラメータタブ
+                # 現在のタブがUndo可能な場合のみ実行
+                current_widget = tabbed_audio_control.emotion_control.tab_widget.currentWidget()
+                if current_widget and hasattr(current_widget, 'history'):
+                    if current_widget.history.has_redo_available():
+                        # Redo実行
+                        current_widget.history.set_undoing_flag(True)
+                        next_state = current_widget.history.get_next_state()
+                        if next_state:
+                            current_widget.current_params = next_state
+                            current_widget.load_parameters()
+                            current_widget.emit_parameters_changed()
+                        current_widget.history.set_undoing_flag(False)
+                        return True
+                return False
+            elif current_index == 1:  # 音声クリーナータブ
+                return False
+            elif current_index == 2:  # 音声エフェクトタブ
+                effects_control = tabbed_audio_control.effects_control
+                if hasattr(effects_control, 'history') and effects_control.history.has_redo_available():
+                    # Redo実行
+                    effects_control.history.set_undoing_flag(True)
+                    next_state = effects_control.history.get_next_state()
+                    if next_state:
+                        effects_control.set_settings(next_state)
+                        effects_control.emit_settings_changed()
+                    effects_control.history.set_undoing_flag(False)
+                    return True
+                return False
+            
+            return False
+        
+        return redo_current_tab
+    
+    # ========================
+    # 既存のショートカット実行関数
     # ========================
     
     def open_file_menu(self):
@@ -72,35 +174,6 @@ class KeyboardShortcutManager(QObject):
                 self.main_window.help_dialog.show()
                 self.main_window.help_dialog.raise_()
                 self.main_window.help_dialog.activateWindow()
-    
-    def undo_parameters(self):
-        """現在のタブのパラメータをUndo（エフェクト対応版）"""
-        try:
-            # フォーカスがテキスト入力にある場合は、テキストのUndoを優先
-            focused_widget = self.main_window.focusWidget()
-            
-            # QTextEditの場合は標準のUndoを実行
-            if hasattr(focused_widget, 'undo'):
-                from PyQt6.QtWidgets import QTextEdit, QLineEdit
-                if isinstance(focused_widget, (QTextEdit, QLineEdit)):
-                    focused_widget.undo()
-                    print("📝 テキストUndo実行")
-                    return
-            
-            # タブ統合コントロールでUndo実行
-            tabbed_audio_control = self.main_window.tabbed_audio_control
-            success = tabbed_audio_control.undo_current_tab()
-            
-            if success:
-                current_index = tabbed_audio_control.main_tab_widget.currentIndex()
-                tab_names = ["音声パラメータ", "音声クリーナー", "音声エフェクト"]
-                tab_name = tab_names[current_index] if current_index < len(tab_names) else "不明"
-                print(f"🔄 {tab_name}タブでUndo実行")
-            else:
-                print("⚠️ Undo履歴がありません")
-                
-        except Exception as e:
-            print(f"❌ Undoエラー: {e}")
     
     def play_current_row(self):
         """現在フォーカス中の行を再生"""

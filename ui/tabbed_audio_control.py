@@ -8,7 +8,7 @@ from .audio_cleaner_control import AudioCleanerControl
 from .audio_effects_control import AudioEffectsControl
 
 class TabbedAudioControl(QWidget):
-    """音声パラメータ・クリーナー・エフェクトタブ統合ウィジェット（Undo対応版）"""
+    """音声パラメータ・クリーナー・エフェクトタブ統合ウィジェット（複数Undo対応版）"""
     
     parameters_changed = pyqtSignal(str, dict)  # row_id, parameters
     cleaner_settings_changed = pyqtSignal(dict)  # cleaner_settings
@@ -77,7 +77,7 @@ class TabbedAudioControl(QWidget):
         self.cleaner_control.settings_changed.connect(self.cleaner_settings_changed)
         self.main_tab_widget.addTab(self.cleaner_control, "🔧 音声クリーナー")
         
-        # 3. 音声エフェクトタブ（Undo対応版）
+        # 3. 音声エフェクトタブ（複数Undo対応版）
         self.effects_control = AudioEffectsControl()
         self.effects_control.effects_settings_changed.connect(self.effects_settings_changed)
         self.effects_control.undo_executed.connect(self.on_effects_undo_executed)
@@ -87,24 +87,58 @@ class TabbedAudioControl(QWidget):
     
     def on_effects_undo_executed(self):
         """エフェクトUndo実行通知"""
-        print("🔄 エフェクトUndo実行通知受信")
+        pass
     
     # ================================
-    # Undo機能の公開メソッド
+    # 改良版Undo/Redo機能の公開メソッド
     # ================================
     
     def undo_current_tab(self):
-        """現在のタブでUndo実行"""
+        """現在のタブでUndo実行（改良版）"""
         current_index = self.main_tab_widget.currentIndex()
         
         if current_index == 0:  # 音声パラメータタブ
             return self.emotion_control.undo_current_tab_parameters()
         elif current_index == 1:  # 音声クリーナータブ
             # クリーナータブにはUndo機能なし
-            print("ℹ️ 音声クリーナータブではUndo機能はありません")
             return False
         elif current_index == 2:  # 音声エフェクトタブ
             return self.effects_control.undo_effects_parameters()
+        
+        return False
+    
+    def redo_current_tab(self):
+        """現在のタブでRedo実行（新機能）"""
+        current_index = self.main_tab_widget.currentIndex()
+        
+        if current_index == 0:  # 音声パラメータタブ
+            # 現在のタブウィジェット取得
+            current_widget = self.emotion_control.tab_widget.currentWidget()
+            if current_widget and hasattr(current_widget, 'history'):
+                if current_widget.history.has_redo_available():
+                    # Redo実行
+                    current_widget.history.set_undoing_flag(True)
+                    next_state = current_widget.history.get_next_state()
+                    if next_state:
+                        current_widget.current_params = next_state
+                        current_widget.load_parameters()
+                        current_widget.emit_parameters_changed()
+                    current_widget.history.set_undoing_flag(False)
+                    return True
+            return False
+        elif current_index == 1:  # 音声クリーナータブ
+            return False
+        elif current_index == 2:  # 音声エフェクトタブ
+            # エフェクト制御でRedo実行
+            if hasattr(self.effects_control, 'history') and self.effects_control.history.has_redo_available():
+                self.effects_control.history.set_undoing_flag(True)
+                next_state = self.effects_control.history.get_next_state()
+                if next_state:
+                    self.effects_control.set_settings(next_state)
+                    self.effects_control.emit_settings_changed()
+                self.effects_control.history.set_undoing_flag(False)
+                return True
+            return False
         
         return False
     
@@ -118,6 +152,24 @@ class TabbedAudioControl(QWidget):
             return False
         elif current_index == 2:  # 音声エフェクトタブ
             return self.effects_control.has_undo_available()
+        
+        return False
+    
+    def has_current_tab_redo_available(self):
+        """現在のタブでRedoが可能かどうか（新機能）"""
+        current_index = self.main_tab_widget.currentIndex()
+        
+        if current_index == 0:  # 音声パラメータタブ
+            current_widget = self.emotion_control.tab_widget.currentWidget()
+            if current_widget and hasattr(current_widget, 'history'):
+                return current_widget.history.has_redo_available()
+            return False
+        elif current_index == 1:  # 音声クリーナータブ
+            return False
+        elif current_index == 2:  # 音声エフェクトタブ
+            if hasattr(self.effects_control, 'history'):
+                return self.effects_control.history.has_redo_available()
+            return False
         
         return False
     
