@@ -24,22 +24,10 @@ class AudioEffectsProcessor:
         processed_audio = audio.copy().astype(np.float32)
         
         # 音声エフェクト（声質変更系）
-        if effects_settings.get('robot_enabled', False):
-            processed_audio = self.apply_robot_voice(
-                processed_audio, 
-                effects_settings.get('robot_intensity', 0.5)
-            )
-            
         if effects_settings.get('voice_change_enabled', False):
             processed_audio = self.apply_voice_change(
                 processed_audio,
                 effects_settings.get('voice_change_intensity', 0.0)
-            )
-            
-        if effects_settings.get('distortion_enabled', False):
-            processed_audio = self.apply_distortion(
-                processed_audio,
-                effects_settings.get('distortion_intensity', 0.4)
             )
             
         if effects_settings.get('echo_enabled', False):
@@ -76,121 +64,6 @@ class AudioEffectsProcessor:
     # 音声エフェクト（声質変更系）
     # ================================
     
-    def apply_robot_voice(self, audio, intensity):
-        """
-        ロボット音声エフェクト - 本格的専門処理（制約なし）
-        """
-        try:
-            import librosa
-            from scipy.signal import butter, filtfilt, hilbert
-            
-            # 1. 高品質ピッチシフト
-            shifted_audio = librosa.effects.pitch_shift(
-                audio, 
-                sr=self.sample_rate, 
-                n_steps=-3 + intensity * 2  # -3〜-1半音で機械的に
-            )
-            
-            # 2. マルチバンド・ボコーダー処理
-            nyquist = self.sample_rate / 2
-            bands = [
-                (80, 200), (200, 400), (400, 800), (800, 1600), 
-                (1600, 3200), (3200, 6400), (6400, 12800)
-            ]
-            
-            vocoded_result = np.zeros_like(audio)
-            
-            for i, (low_f, high_f) in enumerate(bands):
-                if high_f > nyquist:
-                    high_f = nyquist * 0.95
-                
-                # バンドパスフィルター
-                low_norm = low_f / nyquist
-                high_norm = high_f / nyquist
-                
-                b, a = butter(6, [low_norm, high_norm], btype='band')
-                band_signal = filtfilt(b, a, shifted_audio)
-                
-                # エンベロープ検出（Hilbert変換）
-                analytic_signal = hilbert(band_signal)
-                envelope = np.abs(analytic_signal)
-                
-                # キャリア周波数（バンドごと）
-                carrier_freq = (low_f + high_f) / 2
-                t = np.arange(len(audio)) / self.sample_rate
-                
-                # 複数キャリア波の合成
-                carrier1 = np.sin(2 * np.pi * carrier_freq * t)
-                carrier2 = np.sin(2 * np.pi * carrier_freq * 1.5 * t) * 0.5
-                carrier3 = np.sin(2 * np.pi * carrier_freq * 2.0 * t) * 0.25
-                
-                combined_carrier = carrier1 + carrier2 + carrier3
-                
-                # エンベロープ適用
-                band_vocoded = envelope * combined_carrier * (0.15 + intensity * 0.1)
-                
-                vocoded_result += band_vocoded
-            
-            # 3. リングモジュレーション強化
-            ring_freq = 100 + intensity * 400  # 100-500Hz
-            ring_carrier = np.sin(2 * np.pi * ring_freq * t)
-            ring_modulated = vocoded_result * ring_carrier
-            
-            # 4. ビットクラッシュ（デジタル感）
-            bits = max(3, int(12 - intensity * 8))  # 12bit→3bit
-            levels = 2 ** bits
-            bit_crushed = np.round(ring_modulated * levels) / levels
-            
-            # 5. フォルマント変更（librosa高度処理）
-            if intensity > 0.5:
-                # スペクトログラム操作
-                stft = librosa.stft(bit_crushed, n_fft=2048)
-                magnitude = np.abs(stft)
-                phase = np.angle(stft)
-                
-                # フォルマント圧縮（ロボット的に）
-                freq_shift = int(intensity * 20)  # 周波数ビンシフト
-                if freq_shift > 0:
-                    shifted_magnitude = np.roll(magnitude, freq_shift, axis=0)
-                    modified_stft = shifted_magnitude * np.exp(1j * phase)
-                    bit_crushed = librosa.istft(modified_stft)
-            
-            # 6. ディストーション（アナログ風）
-            drive = 1.0 + intensity * 5.0
-            distorted = np.tanh(bit_crushed * drive) * 0.7
-            
-            # 7. 高周波エンハンサー
-            high_cutoff = 4000 / nyquist
-            if high_cutoff < 0.95:
-                b, a = butter(4, high_cutoff, btype='high')
-                highs = filtfilt(b, a, distorted)
-                distorted += highs * intensity * 0.3
-            
-            # 8. コムフィルター（金属的響き）
-            delay_samples = int(0.001 * self.sample_rate)  # 1ms遅延
-            comb_filtered = distorted.copy()
-            if delay_samples < len(distorted):
-                comb_filtered[delay_samples:] += distorted[:-delay_samples] * 0.4 * intensity
-            
-            # 9. 最終ミックス
-            robot_mix = 0.1 + intensity * 0.9  # 10%〜100%
-            result = (1 - robot_mix) * audio + robot_mix * comb_filtered
-            
-            # 10. 正規化
-            max_val = np.abs(result).max()
-            if max_val > 0.8:
-                result = result * (0.8 / max_val)
-            
-            return result.astype(np.float32)
-            
-        except ImportError as e:
-            print(f"⚠️ ライブラリが不足: {e}")
-            print("pip install librosa scipy")
-            return audio
-        except Exception as e:
-            print(f"ロボット音声エラー: {e}")
-            return audio
-    
     def apply_voice_change(self, audio, semitones):
         """
         ボイスチェンジ（ピッチシフト）
@@ -220,37 +93,6 @@ class AudioEffectsProcessor:
             return audio
         except Exception as e:
             print(f"ボイスチェンジエラー: {e}")
-            return audio
-    
-    def apply_distortion(self, audio, intensity):
-        """
-        ディストーション（歪み）エフェクト - 強化版
-        """
-        try:
-            # より強力なドライブ
-            drive = 1.0 + intensity * 15.0  # 1.0 ~ 16.0（大幅強化）
-            
-            # ハードディストーション
-            driven_audio = audio * drive
-            distorted_audio = np.tanh(driven_audio)
-            
-            # 追加の歪み処理
-            if intensity > 0.3:
-                # ハードクリッピング追加
-                clip_threshold = 0.7 - intensity * 0.4  # 0.7 → 0.3
-                distorted_audio = np.clip(distorted_audio, -clip_threshold, clip_threshold)
-            
-            # 音量補正（歪み具合に応じて調整）
-            distorted_audio *= (0.8 - intensity * 0.2)  # 強い歪みほど音量下げる
-            
-            # より強いミックス比率
-            mix_ratio = intensity * 0.95  # 最大95%（大幅強化）
-            result = (1 - mix_ratio) * audio + mix_ratio * distorted_audio
-            
-            return result
-            
-        except Exception as e:
-            print(f"ディストーションエラー: {e}")
             return audio
     
     def apply_echo(self, audio, intensity):
@@ -447,13 +289,9 @@ class AudioEffectsProcessor:
         active_effects = []
         
         # 音声エフェクト
-        if effects_settings.get('robot_enabled'):
-            active_effects.append(f"ロボット音声({effects_settings.get('robot_intensity', 0):.2f})")
         if effects_settings.get('voice_change_enabled'):
             semitones = effects_settings.get('voice_change_intensity', 0)
             active_effects.append(f"ボイスチェンジ({semitones:+.0f}半音)")
-        if effects_settings.get('distortion_enabled'):
-            active_effects.append(f"ディストーション({effects_settings.get('distortion_intensity', 0):.2f})")
         if effects_settings.get('echo_enabled'):
             active_effects.append(f"やまびこ({effects_settings.get('echo_intensity', 0):.2f})")
         
@@ -464,7 +302,5 @@ class AudioEffectsProcessor:
             active_effects.append(f"壁越し({effects_settings.get('through_wall_intensity', 0):.2f})")
         if effects_settings.get('reverb_enabled'):
             active_effects.append(f"閉鎖空間({effects_settings.get('reverb_intensity', 0):.2f})")
-        if effects_settings.get('underwater_enabled'):
-            active_effects.append(f"水中音声({effects_settings.get('underwater_intensity', 0):.2f})")
         
         return active_effects

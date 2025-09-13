@@ -1,6 +1,6 @@
 {
   "audio_cleaner": {
-    "enabled": false,
+    "enabled": true,
     "last_preset": "light_processing"
   },
   "ui_preferences": {

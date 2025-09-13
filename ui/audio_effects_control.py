@@ -1,4 +1,4 @@
-# ui/audio_effects_control.py (完全版 - 音声エフェクト｜環境エフェクト + リセットボタン付き)
+# ui/audio_effects_control.py (ロボット・ディストーション削除版)
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                             QTabWidget, QFrame, QSlider, QGroupBox, QGridLayout, QDoubleSpinBox, QPushButton)
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -70,10 +70,6 @@ class AudioEffectsControl(QWidget):
         
         self.default_settings = {
             # 音声エフェクト
-            'robot_enabled': False,
-            'robot_intensity': 0.5,
-            'distortion_enabled': False,
-            'distortion_intensity': 0.4,
             'voice_change_enabled': False,
             'voice_change_intensity': 0.0,  # 半音単位
             'echo_enabled': False,
@@ -205,8 +201,6 @@ class AudioEffectsControl(QWidget):
         
         # 音声エフェクト設定：(名前, key, 最小値, 最大値, デフォルト値, 説明)
         audio_effects_params = [
-            ("ロボット音声", "robot", 0.0, 1.0, 0.5, "人間 ← → ロボット"),
-            ("ディストーション", "distortion", 0.1, 1.0, 0.4, "クリア ← → 歪み"),
             ("ボイスチェンジ", "voice_change", -12.0, 12.0, 0.0, "低音 ← → 高音"),
             ("やまびこ", "echo", 0.1, 1.0, 0.3, "弱い ← → 強い")
         ]
@@ -249,21 +243,7 @@ class AudioEffectsControl(QWidget):
             toggle = ToggleSwitchWidget(False)
             
             # シグナル接続
-            if key == "robot":
-                self.robot_slider = slider
-                self.robot_spinbox = spinbox
-                self.robot_toggle = toggle
-                slider.valueChanged.connect(self.on_robot_slider_changed)
-                spinbox.valueChanged.connect(self.on_robot_spinbox_changed)
-                toggle.toggled.connect(self.emit_settings_changed)
-            elif key == "distortion":
-                self.distortion_slider = slider
-                self.distortion_spinbox = spinbox
-                self.distortion_toggle = toggle
-                slider.valueChanged.connect(self.on_distortion_slider_changed)
-                spinbox.valueChanged.connect(self.on_distortion_spinbox_changed)
-                toggle.toggled.connect(self.emit_settings_changed)
-            elif key == "voice_change":
+            if key == "voice_change":
                 self.voice_change_slider = slider
                 self.voice_change_spinbox = spinbox
                 self.voice_change_toggle = toggle
@@ -468,38 +448,6 @@ class AudioEffectsControl(QWidget):
     # 音声エフェクトパラメータ変更処理
     # ================================
     
-    def on_robot_slider_changed(self, value):
-        """ロボット音声スライダー変更時"""
-        float_value = value / 100.0
-        self.robot_spinbox.blockSignals(True)
-        self.robot_spinbox.setValue(float_value)
-        self.robot_spinbox.blockSignals(False)
-        self.emit_settings_changed()
-    
-    def on_robot_spinbox_changed(self, value):
-        """ロボット音声SpinBox変更時"""
-        int_value = int(value * 100)
-        self.robot_slider.blockSignals(True)
-        self.robot_slider.setValue(int_value)
-        self.robot_slider.blockSignals(False)
-        self.emit_settings_changed()
-    
-    def on_distortion_slider_changed(self, value):
-        """ディストーションスライダー変更時"""
-        float_value = value / 100.0
-        self.distortion_spinbox.blockSignals(True)
-        self.distortion_spinbox.setValue(float_value)
-        self.distortion_spinbox.blockSignals(False)
-        self.emit_settings_changed()
-    
-    def on_distortion_spinbox_changed(self, value):
-        """ディストーションSpinBox変更時"""
-        int_value = int(value * 100)
-        self.distortion_slider.blockSignals(True)
-        self.distortion_slider.setValue(int_value)
-        self.distortion_slider.blockSignals(False)
-        self.emit_settings_changed()
-    
     def on_voice_change_slider_changed(self, value):
         """ボイスチェンジスライダー変更時"""
         float_value = float(value)  # 半音単位なのでそのまま
@@ -598,16 +546,6 @@ class AudioEffectsControl(QWidget):
         try:
             self.blockSignals(True)
             
-            # ロボット音声
-            self.robot_toggle.setChecked(False)
-            self.robot_slider.setValue(int(0.5 * 100))
-            self.robot_spinbox.setValue(0.5)
-            
-            # ディストーション
-            self.distortion_toggle.setChecked(False)
-            self.distortion_slider.setValue(int(0.4 * 100))
-            self.distortion_spinbox.setValue(0.4)
-            
             # ボイスチェンジ
             self.voice_change_toggle.setChecked(False)
             self.voice_change_slider.setValue(0)
@@ -662,10 +600,6 @@ class AudioEffectsControl(QWidget):
         """現在の設定を取得"""
         return {
             # 音声エフェクト
-            'robot_enabled': self.robot_toggle.isChecked(),
-            'robot_intensity': self.robot_spinbox.value(),
-            'distortion_enabled': self.distortion_toggle.isChecked(),
-            'distortion_intensity': self.distortion_spinbox.value(),
             'voice_change_enabled': self.voice_change_toggle.isChecked(),
             'voice_change_intensity': self.voice_change_spinbox.value(),
             'echo_enabled': self.echo_toggle.isChecked(),
@@ -684,18 +618,6 @@ class AudioEffectsControl(QWidget):
         self.blockSignals(True)
         
         # 音声エフェクト
-        # ロボット音声
-        self.robot_toggle.setChecked(settings.get('robot_enabled', False))
-        robot_intensity = settings.get('robot_intensity', 0.5)
-        self.robot_slider.setValue(int(robot_intensity * 100))
-        self.robot_spinbox.setValue(robot_intensity)
-        
-        # ディストーション
-        self.distortion_toggle.setChecked(settings.get('distortion_enabled', False))
-        distortion_intensity = settings.get('distortion_intensity', 0.4)
-        self.distortion_slider.setValue(int(distortion_intensity * 100))
-        self.distortion_spinbox.setValue(distortion_intensity)
-        
         # ボイスチェンジ
         self.voice_change_toggle.setChecked(settings.get('voice_change_enabled', False))
         voice_change_intensity = settings.get('voice_change_intensity', 0.0)
@@ -732,8 +654,6 @@ class AudioEffectsControl(QWidget):
     def is_effects_enabled(self):
         """エフェクトが有効かどうか"""
         return (# 音声エフェクト
-                self.robot_toggle.isChecked() or 
-                self.distortion_toggle.isChecked() or 
                 self.voice_change_toggle.isChecked() or
                 self.echo_toggle.isChecked() or
                 # 環境エフェクト
