@@ -4,18 +4,28 @@ from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, pyqtSignal, QRect
 from PyQt6.QtGui import QFont, QColor
 
 class SlidingMenuWidget(QFrame):
-    """上から下にスライドするメニューウィジェット"""
+    """上から下にスライドするメニューウィジェット（画像メニュー対応版）"""
     
     # シグナル定義
+    # 音声モデル関連
     load_model_clicked = pyqtSignal()
     load_from_history_clicked = pyqtSignal()
+    
+    # 画像関連（新規追加）
+    load_image_clicked = pyqtSignal()
+    load_image_from_history_clicked = pyqtSignal()
+    
+    # 将来のLive2D対応用（コメントアウト）
+    # load_live2d_clicked = pyqtSignal()
+    # load_live2d_from_history_clicked = pyqtSignal()
+    
     menu_closed = pyqtSignal()
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent_widget = parent
         self.is_visible = False
-        self.target_height = 120  # 展開時の高さ
+        self.target_height = 200  # 展開時の高さ（項目が増えたので拡張）
         
         self.init_ui()
         self.setup_animation()
@@ -25,16 +35,15 @@ class SlidingMenuWidget(QFrame):
         self.hide()
         
     def init_ui(self):
-        """UIを初期化"""
+        """UIを初期化（画像メニュー項目追加版）"""
         self.setFrameStyle(QFrame.Shape.StyledPanel)
         
-        # --- スタイルシートを修正（box-shadowを削除） ---
         self.setStyleSheet("""
             QFrame {
                 background-color: white;
                 border: 1px solid #ddd;
                 border-top: none;
-                border-radius: 0px 0px 8px 8px; /* 角の丸みを少し大きく */
+                border-radius: 0px 0px 8px 8px;
             }
             QPushButton {
                 background-color: transparent;
@@ -51,6 +60,10 @@ class SlidingMenuWidget(QFrame):
             QPushButton:pressed {
                 background-color: #e3f2fd;
             }
+            QPushButton:disabled {
+                color: #999;
+                background-color: #f5f5f5;
+            }
         """)
         
         # レイアウト
@@ -58,25 +71,80 @@ class SlidingMenuWidget(QFrame):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         
-        # メニュー項目
-        self.load_model_btn = QPushButton("📂 モデルを読み込み")
+        # === 音声モデル関連 ===
+        model_section_label = self.create_section_label("🎤 音声モデル")
+        layout.addWidget(model_section_label)
+        
+        self.load_model_btn = QPushButton("📂 音声モデルを読み込み")
         self.load_model_btn.setToolTip("Style-Bert-VITS2モデルを読み込む")
         self.load_model_btn.clicked.connect(self.on_load_model_clicked)
         
-        self.load_history_btn = QPushButton("📋 モデル履歴から読み込み")
+        self.load_history_btn = QPushButton("📋 音声モデルを履歴から読み込み")
         self.load_history_btn.setToolTip("過去に読み込んだモデルから選択")
         self.load_history_btn.clicked.connect(self.on_load_from_history_clicked)
         
+        layout.addWidget(self.load_model_btn)
+        layout.addWidget(self.load_history_btn)
+        
         # セパレーター
+        separator1 = self.create_separator()
+        layout.addWidget(separator1)
+        
+        # === 画像・キャラクター関連（新規追加） ===
+        image_section_label = self.create_section_label("🎨 キャラクター")
+        layout.addWidget(image_section_label)
+        
+        self.load_image_btn = QPushButton("🖼️ 立ち絵画像を読み込み")
+        self.load_image_btn.setToolTip("PNG/JPEG画像を立ち絵として読み込む")
+        self.load_image_btn.clicked.connect(self.on_load_image_clicked)
+        
+        self.load_image_history_btn = QPushButton("📸 立ち絵を履歴から読み込み")
+        self.load_image_history_btn.setToolTip("過去に読み込んだ立ち絵から選択")
+        self.load_image_history_btn.clicked.connect(self.on_load_image_from_history_clicked)
+        # 履歴機能は後で実装するので、一旦無効化
+        self.load_image_history_btn.setEnabled(False)
+        
+        layout.addWidget(self.load_image_btn)
+        layout.addWidget(self.load_image_history_btn)
+        
+        # 将来のLive2D対応用（コメントアウト）
+        # separator2 = self.create_separator()
+        # layout.addWidget(separator2)
+        # 
+        # live2d_section_label = self.create_section_label("🎭 Live2D")
+        # layout.addWidget(live2d_section_label)
+        # 
+        # self.load_live2d_btn = QPushButton("🎪 Live2Dモデルを読み込み")
+        # self.load_live2d_btn.setToolTip("Live2Dモデルを読み込む")
+        # self.load_live2d_btn.clicked.connect(self.on_load_live2d_clicked)
+        # self.load_live2d_btn.setEnabled(False)  # 未実装
+        # 
+        # layout.addWidget(self.load_live2d_btn)
+        
+        layout.addStretch()
+    
+    def create_section_label(self, text):
+        """セクションラベルを作成"""
+        label = QLabel(text)
+        label.setStyleSheet("""
+            QLabel {
+                background-color: #f8f9fa;
+                color: #495057;
+                border: none;
+                padding: 6px 20px;
+                font-weight: bold;
+                font-size: 12px;
+            }
+        """)
+        return label
+    
+    def create_separator(self):
+        """セパレーターを作成"""
         separator = QFrame()
         separator.setFrameShape(QFrame.Shape.HLine)
         separator.setFrameShadow(QFrame.Shadow.Sunken)
-        separator.setStyleSheet("color: #eee; margin: 0px 10px;")
-        
-        layout.addWidget(self.load_model_btn)
-        layout.addWidget(separator)
-        layout.addWidget(self.load_history_btn)
-        layout.addStretch()
+        separator.setStyleSheet("color: #eee; margin: 4px 10px;")
+        return separator
         
     def setup_shadow(self):
         """ドロップシャドウエフェクトを設定"""
@@ -90,10 +158,7 @@ class SlidingMenuWidget(QFrame):
         """アニメーションを設定"""
         self.animation = QPropertyAnimation(self, b"geometry")
         self.animation.setDuration(300)
-        
-        # --- アニメーションカーブをより滑らかなものに変更 ---
         self.animation.setEasingCurve(QEasingCurve.Type.OutQuint) 
-        
         self.animation.finished.connect(self.on_animation_finished)
         
     def show_menu(self):
@@ -145,15 +210,33 @@ class SlidingMenuWidget(QFrame):
         else:
             self.show_menu()
     
+    # === 音声モデル関連のイベントハンドラー ===
     def on_load_model_clicked(self):
-        """モデル読み込みボタンクリック"""
+        """音声モデル読み込みボタンクリック"""
         self.hide_menu()
         self.load_model_clicked.emit()
     
     def on_load_from_history_clicked(self):
-        """履歴から読み込みボタンクリック"""
+        """音声モデル履歴から読み込みボタンクリック"""
         self.hide_menu()
         self.load_from_history_clicked.emit()
+    
+    # === 画像関連のイベントハンドラー（新規追加） ===
+    def on_load_image_clicked(self):
+        """立ち絵画像読み込みボタンクリック"""
+        self.hide_menu()
+        self.load_image_clicked.emit()
+    
+    def on_load_image_from_history_clicked(self):
+        """立ち絵履歴から読み込みボタンクリック"""
+        self.hide_menu()
+        self.load_image_from_history_clicked.emit()
+    
+    # === 将来のLive2D対応用（コメントアウト） ===
+    # def on_load_live2d_clicked(self):
+    #     """Live2D読み込みボタンクリック"""
+    #     self.hide_menu()
+    #     self.load_live2d_clicked.emit()
     
     def mousePressEvent(self, event):
         """マウスクリックイベント（メニュー内クリックは伝播させない）"""

@@ -1,11 +1,11 @@
-# ui/main_window.py (エフェクトプロセッサー統合版)
+# ui/main_window.py (エフェクトプロセッサー統合版 + 画像機能追加)
 import os
 import numpy as np
 from pathlib import Path
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-                            QPushButton, QLabel, QFileDialog, QStyle, QFrame, QApplication, QMessageBox)
+                            QPushButton, QLabel, QFileDialog, QStyle, QFrame, QApplication, QMessageBox, QScrollArea)
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QAction
+from PyQt6.QtGui import QFont, QAction, QPixmap
 
 # 自作モジュール
 from .model_history import ModelHistoryWidget
@@ -37,16 +37,24 @@ class TTSStudioMainWindow(QMainWindow):
         self.last_generated_audio = None  # 解析用に最新の音声を保存
         self.last_sample_rate = None
         
+        # 画像管理関連（新規追加）
+        self.current_image_path = None  # 現在読み込まれている画像パス
+        self.image_history = []  # 画像履歴（将来の実装用）
+        
         self.init_ui()
         self.help_dialog = HelpDialog(self)
         
         # 音声処理統合設定（クリーナー + エフェクト）
         self.setup_audio_processing_integration()
         
-        # スライド式メニューを作成
+        # スライド式メニューを作成（画像シグナル追加）
         self.sliding_menu = SlidingMenuWidget(self)
+        # 音声モデル関連
         self.sliding_menu.load_model_clicked.connect(self.open_model_loader)
         self.sliding_menu.load_from_history_clicked.connect(self.show_model_history_dialog)
+        # 画像関連（新規追加）
+        self.sliding_menu.load_image_clicked.connect(self.load_character_image)
+        self.sliding_menu.load_image_from_history_clicked.connect(self.show_image_history_dialog)
         
         # キーボードショートカット設定
         self.keyboard_shortcuts = KeyboardShortcutManager(self)
@@ -118,22 +126,173 @@ class TTSStudioMainWindow(QMainWindow):
         left.addWidget(self.tabbed_audio_control, 1)
         left.addLayout(controls)
 
-        # 右ペイン（ダミー）
-        self.live2d_widget = QWidget()
-        self.live2d_widget.setMaximumWidth(300)
-        self.live2d_widget.setMinimumWidth(250)
-        self.live2d_widget.setStyleSheet("""
-            QWidget { background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 4px; }
-        """)
-        live2d_layout = QVBoxLayout(self.live2d_widget)
-        live2d_label = QLabel("Live2D\nリップシンクエリア")
-        live2d_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        live2d_label.setStyleSheet("color: #666; font-size: 14px; border: none;")
-        live2d_layout.addWidget(live2d_label)
+        # 右ペイン（キャラクター表示エリアに変更）
+        self.character_display_widget = self.create_character_display_widget()
 
         content.addLayout(left, 1)
-        content.addWidget(self.live2d_widget, 0)
+        content.addWidget(self.character_display_widget, 0)
         main.addLayout(content)
+
+    def create_character_display_widget(self):
+        """キャラクター表示ウィジェット作成（ズーム機能付き）"""
+        widget = QWidget()
+        widget.setMaximumWidth(300)
+        widget.setMinimumWidth(250)
+        widget.setStyleSheet("""
+            QWidget { 
+                background-color: #ffffff; 
+                border: 1px solid #dee2e6; 
+                border-radius: 4px; 
+            }
+        """)
+        
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+        
+        # ヘッダーラベル
+        header_label = QLabel("キャラクター表示")
+        header_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header_label.setFont(QFont("", 12, QFont.Weight.Bold))
+        header_label.setStyleSheet("color: #333; border: none; padding: 5px;")
+        
+        # ズームコントロール
+        zoom_layout = QHBoxLayout()
+        zoom_layout.setSpacing(4)
+        
+        # ズームアウトボタン
+        self.zoom_out_btn = QPushButton("➖")
+        self.zoom_out_btn.setFixedSize(24, 24)
+        self.zoom_out_btn.setToolTip("縮小")
+        self.zoom_out_btn.setEnabled(False)
+        
+        # ズーム率表示
+        self.zoom_label = QLabel("フィット")
+        self.zoom_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.zoom_label.setMinimumWidth(60)
+        self.zoom_label.setStyleSheet("color: #666; font-size: 10px; border: none;")
+        
+        # ズームインボタン
+        self.zoom_in_btn = QPushButton("➕")
+        self.zoom_in_btn.setFixedSize(24, 24)
+        self.zoom_in_btn.setToolTip("拡大")
+        self.zoom_in_btn.setEnabled(False)
+        
+        # フィットボタン
+        self.zoom_fit_btn = QPushButton("📐")
+        self.zoom_fit_btn.setFixedSize(24, 24)
+        self.zoom_fit_btn.setToolTip("枠内にフィット")
+        self.zoom_fit_btn.setEnabled(False)
+        
+        zoom_btn_style = """
+            QPushButton {
+                background-color: #f8f9fa;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                font-size: 10px;
+            }
+            QPushButton:hover:enabled {
+                background-color: #e2e6ea;
+                border-color: #adb5bd;
+            }
+            QPushButton:disabled {
+                color: #999;
+                background-color: #f5f5f5;
+            }
+        """
+        
+        self.zoom_out_btn.setStyleSheet(zoom_btn_style)
+        self.zoom_in_btn.setStyleSheet(zoom_btn_style)
+        self.zoom_fit_btn.setStyleSheet(zoom_btn_style)
+        
+        # シグナル接続
+        self.zoom_out_btn.clicked.connect(self.zoom_out_image)
+        self.zoom_in_btn.clicked.connect(self.zoom_in_image)
+        self.zoom_fit_btn.clicked.connect(self.zoom_fit_image)
+        
+        zoom_layout.addWidget(self.zoom_out_btn)
+        zoom_layout.addWidget(self.zoom_label, 1)
+        zoom_layout.addWidget(self.zoom_in_btn)
+        zoom_layout.addWidget(self.zoom_fit_btn)
+        
+        # 画像表示エリア（スクロール対応）
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(False)  # 手動サイズ管理
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setStyleSheet("""
+            QScrollArea {
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                background-color: #f8f9fa;
+            }
+        """)
+        
+        # 画像表示ラベル
+        self.character_image_label = QLabel()
+        self.character_image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.character_image_label.setMinimumSize(200, 200)
+        self.character_image_label.setStyleSheet("""
+            QLabel {
+                background-color: #f8f9fa;
+                border: 2px dashed #adb5bd;
+                border-radius: 6px;
+                color: #6c757d;
+                font-size: 14px;
+                padding: 20px;
+            }
+        """)
+        self.character_image_label.setText("画像が読み込まれていません\n\nファイルメニューから\n「立ち絵画像を読み込み」\nを選択してください")
+        self.character_image_label.setWordWrap(True)
+        
+        self.scroll_area.setWidget(self.character_image_label)
+        
+        # 画像情報ラベル
+        self.image_info_label = QLabel("")
+        self.image_info_label.setStyleSheet("color: #666; font-size: 10px; border: none;")
+        self.image_info_label.setWordWrap(True)
+        
+        # ボタン行
+        button_layout = QHBoxLayout()
+        
+        self.image_clear_btn = QPushButton("🗑️")
+        self.image_clear_btn.setFixedSize(30, 30)
+        self.image_clear_btn.setToolTip("画像をクリア")
+        self.image_clear_btn.setEnabled(False)
+        self.image_clear_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f8f9fa;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                font-size: 12px;
+            }
+            QPushButton:hover:enabled {
+                background-color: #f5c6cb;
+                border-color: #f1556c;
+            }
+            QPushButton:disabled {
+                color: #999;
+            }
+        """)
+        self.image_clear_btn.clicked.connect(self.clear_character_image)
+        
+        button_layout.addStretch()
+        button_layout.addWidget(self.image_clear_btn)
+        
+        # レイアウト組み立て
+        layout.addWidget(header_label)
+        layout.addLayout(zoom_layout)
+        layout.addWidget(self.scroll_area, 1)  # 伸縮
+        layout.addWidget(self.image_info_label)
+        layout.addLayout(button_layout)
+        
+        # ズーム関連の変数
+        self.original_pixmap = None  # 元画像
+        self.current_zoom_level = 0  # 0: フィット, 1-8: 固定サイズ
+        self.zoom_levels = [25, 50, 75, 100, 150, 200, 300, 400]  # パーセント
+        self.is_fit_mode = True  # フィットモードかどうか
+        
+        return widget
 
     # --- ボタン用CSS ---
     def _blue_btn_css(self) -> str:
@@ -203,6 +362,229 @@ class TTSStudioMainWindow(QMainWindow):
         if self.sliding_menu.is_visible and not self.sliding_menu.geometry().contains(event.pos()):
             self.sliding_menu.hide_menu()
         super().mousePressEvent(event)
+
+    # ================================
+    # 画像関連の新機能
+    # ================================
+    def load_character_image(self):
+        """立ち絵画像を読み込む（ズーム機能対応版）"""
+        try:
+            # ファイル選択ダイアログ
+            file_path, _ = QFileDialog.getOpenFileName(
+                self,
+                "立ち絵画像を選択",
+                "",
+                "画像ファイル (*.png *.jpg *.jpeg *.bmp *.gif);;PNG files (*.png);;JPEG files (*.jpg *.jpeg);;All files (*.*)"
+            )
+            
+            if file_path:
+                # 画像読み込み
+                pixmap = QPixmap(file_path)
+                
+                if pixmap.isNull():
+                    QMessageBox.warning(self, "エラー", "画像ファイルの読み込みに失敗しました。")
+                    return
+                
+                # 元画像を保存
+                self.original_pixmap = pixmap
+                
+                # フィットモードで表示
+                self.is_fit_mode = True
+                self.current_zoom_level = 0
+                self.update_image_display()
+                
+                # スタイル更新（枠線を実線に）
+                self.character_image_label.setStyleSheet("""
+                    QLabel {
+                        background-color: white;
+                        border: none;
+                    }
+                """)
+                
+                # 画像情報を表示
+                file_info = Path(file_path)
+                image_size = pixmap.size()
+                self.image_info_label.setText(
+                    f"📁 {file_info.name}\n"
+                    f"📏 {image_size.width()} × {image_size.height()}px\n"
+                    f"💾 {file_info.stat().st_size // 1024} KB"
+                )
+                
+                # 現在の画像パスを保存
+                self.current_image_path = file_path
+                
+                # ボタンを有効化
+                self.image_clear_btn.setEnabled(True)
+                self.zoom_in_btn.setEnabled(True)
+                self.zoom_out_btn.setEnabled(True)
+                self.zoom_fit_btn.setEnabled(True)
+                
+                # ズーム表示更新
+                self.update_zoom_label()
+                
+                # 将来の履歴機能用
+                self.add_image_to_history(file_path)
+                
+                print(f"✅ 立ち絵画像読み込み完了: {file_path}")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "エラー", f"画像読み込み中にエラーが発生しました:\n{str(e)}")
+            print(f"❌ 画像読み込みエラー: {e}")
+
+    def clear_character_image(self):
+        """キャラクター画像をクリア（ズーム機能対応版）"""
+        # 画像をクリア
+        self.character_image_label.clear()
+        self.character_image_label.setText("画像が読み込まれていません\n\nファイルメニューから\n「立ち絵画像を読み込み」\nを選択してください")
+        
+        # スタイルを元に戻す
+        self.character_image_label.setStyleSheet("""
+            QLabel {
+                background-color: #f8f9fa;
+                border: 2px dashed #adb5bd;
+                border-radius: 6px;
+                color: #6c757d;
+                font-size: 14px;
+                padding: 20px;
+            }
+        """)
+        
+        # ズーム関連をリセット
+        self.original_pixmap = None
+        self.current_zoom_level = 0
+        self.is_fit_mode = True
+        
+        # 情報をクリア
+        self.image_info_label.setText("")
+        self.current_image_path = None
+        
+        # ボタンを無効化
+        self.image_clear_btn.setEnabled(False)
+        self.zoom_in_btn.setEnabled(False)
+        self.zoom_out_btn.setEnabled(False)
+        self.zoom_fit_btn.setEnabled(False)
+        
+        # ズーム表示をリセット
+        self.zoom_label.setText("フィット")
+        
+        print("🗑️ 立ち絵画像クリア完了")
+
+    def add_image_to_history(self, image_path):
+        """画像を履歴に追加（将来の実装用）"""
+        if image_path not in self.image_history:
+            self.image_history.insert(0, image_path)
+            # 履歴は最大10件まで
+            if len(self.image_history) > 10:
+                self.image_history = self.image_history[:10]
+
+    def show_image_history_dialog(self):
+        """画像履歴ダイアログを表示（将来の実装用）"""
+        QMessageBox.information(self, "未実装", "画像履歴機能は今後実装予定です。")
+
+    # ================================
+    # ズーム機能の実装
+    # ================================
+    def update_image_display(self):
+        """現在のズームレベルに基づいて画像を更新"""
+        if not self.original_pixmap:
+            return
+        
+        if self.is_fit_mode:
+            # フィットモード：枠内に収まるようにリサイズ
+            container_size = self.scroll_area.size()
+            max_width = max(container_size.width() - 20, 200)
+            max_height = max(container_size.height() - 20, 200)
+            
+            scaled_pixmap = self.original_pixmap.scaled(
+                max_width, max_height,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+        else:
+            # 固定ズームモード：指定倍率で表示
+            zoom_percent = self.zoom_levels[self.current_zoom_level]
+            original_size = self.original_pixmap.size()
+            new_width = int(original_size.width() * zoom_percent / 100)
+            new_height = int(original_size.height() * zoom_percent / 100)
+            
+            scaled_pixmap = self.original_pixmap.scaled(
+                new_width, new_height,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+        
+        # 画像を表示
+        self.character_image_label.setPixmap(scaled_pixmap)
+        self.character_image_label.setText("")
+        
+        # ラベルサイズを画像に合わせる（スクロール用）
+        self.character_image_label.resize(scaled_pixmap.size())
+    
+    def zoom_in_image(self):
+        """画像をズームイン"""
+        if not self.original_pixmap:
+            return
+        
+        if self.is_fit_mode:
+            # フィットモードから100%に変更
+            self.is_fit_mode = False
+            self.current_zoom_level = 3  # 100%
+        else:
+            # 次の拡大レベルに
+            if self.current_zoom_level < len(self.zoom_levels) - 1:
+                self.current_zoom_level += 1
+        
+        self.update_image_display()
+        self.update_zoom_label()
+        print(f"🔍 ズームイン: {self.get_current_zoom_text()}")
+    
+    def zoom_out_image(self):
+        """画像をズームアウト"""
+        if not self.original_pixmap:
+            return
+        
+        if self.is_fit_mode:
+            # フィットモードの場合は何もしない
+            return
+        else:
+            # 前の縮小レベルに
+            if self.current_zoom_level > 0:
+                self.current_zoom_level -= 1
+            else:
+                # 最小レベルに達したらフィットモードに
+                self.is_fit_mode = True
+        
+        self.update_image_display()
+        self.update_zoom_label()
+        print(f"🔍 ズームアウト: {self.get_current_zoom_text()}")
+    
+    def zoom_fit_image(self):
+        """画像をフィット表示"""
+        if not self.original_pixmap:
+            return
+        
+        self.is_fit_mode = True
+        self.current_zoom_level = 0
+        
+        self.update_image_display()
+        self.update_zoom_label()
+        print(f"📐 フィット表示")
+    
+    def update_zoom_label(self):
+        """ズーム表示ラベルを更新"""
+        if self.is_fit_mode:
+            self.zoom_label.setText("フィット")
+        else:
+            zoom_percent = self.zoom_levels[self.current_zoom_level]
+            self.zoom_label.setText(f"{zoom_percent}%")
+    
+    def get_current_zoom_text(self):
+        """現在のズーム状態をテキストで取得"""
+        if self.is_fit_mode:
+            return "フィット"
+        else:
+            zoom_percent = self.zoom_levels[self.current_zoom_level]
+            return f"{zoom_percent}%"
     
     # ================================
     # 音声処理統合設定（クリーナー + エフェクト）
