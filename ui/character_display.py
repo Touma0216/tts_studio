@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
-                             QFileDialog, QFrame, QApplication, QMessageBox, 
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
+                             QFileDialog, QFrame, QApplication, QMessageBox,
                              QScrollArea, QSlider, QDialog)
 from PyQt6.QtCore import Qt, QRect, QPoint, QTimer
 from PyQt6.QtGui import QFont, QPixmap, QPainter, QPen, QColor
@@ -10,14 +10,14 @@ from core.image_manager import ImageManager
 
 class MiniMapWidget(QLabel):
     """右上に表示されるミニマップウィジェット"""
-    
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedSize(120, 90)
         self.character_display = None
         self.original_pixmap = None
         self.view_rect = QRect()
-        
+
         self.setStyleSheet("""
             QLabel {
                 background-color: rgba(255, 255, 255, 200);
@@ -28,52 +28,52 @@ class MiniMapWidget(QLabel):
         self.setText("ミニマップ")
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setWordWrap(True)
-        
+
     def set_character_display_widget(self, character_display):
         self.character_display = character_display
-        
+
     def update_minimap(self, original_pixmap, view_rect):
         if not original_pixmap or original_pixmap.isNull():
             self.clear()
             self.setText("ミニマップ")
             return
-            
+
         self.original_pixmap = original_pixmap
         self.view_rect = view_rect
         mini_pixmap = original_pixmap.scaled(
-            self.size(), 
+            self.size(),
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation
         )
-        
+
         if not view_rect.isNull():
             painter = QPainter(mini_pixmap)
             painter.setPen(QPen(QColor(255, 0, 0, 200), 2))
             scale_x = mini_pixmap.width() / original_pixmap.width()
             scale_y = mini_pixmap.height() / original_pixmap.height()
             mini_view_rect = QRect(
-                int(view_rect.x() * scale_x), int(view_rect.y() * scale_y),
-                int(view_rect.width() * scale_x), int(view_rect.height() * scale_y)
+                round(view_rect.x() * scale_x), round(view_rect.y() * scale_y),
+                round(view_rect.width() * scale_x), round(view_rect.height() * scale_y)
             )
             painter.drawRect(mini_view_rect)
             painter.end()
-        
+
         self.setPixmap(mini_pixmap)
-    
+
     def mousePressEvent(self, event):
         if not self.character_display or not self.original_pixmap:
             return
-            
+
         click_pos = event.position().toPoint()
         scale_x = self.original_pixmap.width() / self.width()
         scale_y = self.original_pixmap.height() / self.height()
-        target_x = int(click_pos.x() * scale_x)
-        target_y = int(click_pos.y() * scale_y)
+        target_x = round(click_pos.x() * scale_x)
+        target_y = round(click_pos.y() * scale_y)
         self.character_display.move_view_to_position(target_x, target_y)
 
 class DraggableImageLabel(QLabel):
     """ドラッグで移動可能な画像表示ラベル"""
-    
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.scroll_area = None
@@ -82,37 +82,37 @@ class DraggableImageLabel(QLabel):
         self.is_dragging = False
         self.setMouseTracking(True)
         self.setCursor(Qt.CursorShape.OpenHandCursor)
-    
+
     def set_scroll_area(self, scroll_area):
         self.scroll_area = scroll_area
-    
+
     def set_character_display_widget(self, character_display):
         self.character_display = character_display
-    
+
     def wheelEvent(self, event):
         if not self.pixmap() or not self.character_display:
             super().wheelEvent(event)
             return
-        
+
         delta = event.angleDelta().y()
         zoom_step = 5
         current_zoom = self.character_display.zoom_slider.value()
-        
+
         if delta > 0:
             new_zoom = min(150, current_zoom + zoom_step)
         else:
             new_zoom = max(20, current_zoom - zoom_step)
-        
+
         self.character_display.zoom_slider.setValue(new_zoom)
         event.accept()
-    
+
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton and self.pixmap():
             self.last_pan_pos = event.position().toPoint()
             self.is_dragging = True
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
         super().mousePressEvent(event)
-    
+
     def mouseMoveEvent(self, event):
         if self.is_dragging and self.last_pan_pos and self.scroll_area:
             delta = event.position().toPoint() - self.last_pan_pos
@@ -121,13 +121,13 @@ class DraggableImageLabel(QLabel):
             h_scroll.setValue(h_scroll.value() - delta.x())
             v_scroll.setValue(v_scroll.value() - delta.y())
             self.last_pan_pos = event.position().toPoint()
-            
+
             if self.character_display:
                 self.character_display.update_minimap_view()
                 self.character_display.update_custom_scrollbars()
-        
+
         super().mouseMoveEvent(event)
-    
+
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.is_dragging = False
@@ -136,12 +136,12 @@ class DraggableImageLabel(QLabel):
             if self.character_display:
                 self.character_display.save_ui_settings()
         super().mouseReleaseEvent(event)
-    
+
     def enterEvent(self, event):
         if self.pixmap():
             self.setCursor(Qt.CursorShape.OpenHandCursor)
         super().enterEvent(event)
-    
+
     def leaveEvent(self, event):
         if not self.is_dragging:
             self.setCursor(Qt.CursorShape.ArrowCursor)
@@ -151,15 +151,19 @@ class CharacterDisplayWidget(QWidget):
     """キャラクター表示エリア専門ウィジェット（画像履歴統合版）"""
     def __init__(self, parent=None):
         super().__init__(parent)
-        
+
         self.image_manager = ImageManager()
         self.current_image_path = None
         self.current_image_id = None
         self.original_pixmap = None
         self.current_zoom_percent = 50
-        
+
         self.init_ui()
-        
+
+        self.resize_timer = QTimer(self)
+        self.resize_timer.setSingleShot(True)
+        self.resize_timer.timeout.connect(self.update_image_display)
+
         QTimer.singleShot(100, self.load_last_image)
 
     def init_ui(self):
@@ -167,7 +171,9 @@ class CharacterDisplayWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(8)
-        
+
+        # ... (UI setup code remains the same) ...
+        # (The rest of init_ui is unchanged, so it's omitted for brevity)
         header_layout = QHBoxLayout()
         header_label = QLabel("キャラクター表示")
         header_label.setFont(QFont("", 12, QFont.Weight.Bold))
@@ -258,12 +264,13 @@ class CharacterDisplayWidget(QWidget):
         layout.addWidget(image_container, 1)
         layout.addWidget(self.image_info_label)
         layout.addLayout(button_layout)
-        
+
         self.zoom_slider.valueChanged.connect(self.on_zoom_slider_changed)
         self.h_position_slider.valueChanged.connect(self.on_position_slider_changed)
         self.v_position_slider.valueChanged.connect(self.on_position_slider_changed)
         self.toggle_minimap_btn.toggled.connect(self.toggle_minimap)
         self.image_clear_btn.clicked.connect(self.clear_character_image)
+
 
     def load_last_image(self):
         self.image_manager.cleanup_missing_images()
@@ -289,7 +296,6 @@ class CharacterDisplayWidget(QWidget):
         ui_settings = self.image_manager.get_ui_settings(self.current_image_id)
         
         self.restore_ui_settings(ui_settings)
-        self.update_image_display()
         
         self.character_image_label.setStyleSheet("QLabel { background-color: white; border: none; }")
         file_info = Path(image_path)
@@ -330,38 +336,31 @@ class CharacterDisplayWidget(QWidget):
         self.zoom_label.setText("50%")
         self.minimap.hide()
 
-    # ★★★ このメソッドのロジックを大幅に変更しました ★★★
     def restore_ui_settings(self, ui_settings):
-        # まずUIの状態を読み込む
         zoom = ui_settings.get('zoom_percent', 50)
         h_pos = ui_settings.get('h_position', 50)
         v_pos = ui_settings.get('v_position', 50)
         minimap_visible = ui_settings.get('minimap_visible', False)
         
-        # ズーム率を内部変数とスライダーに設定（イベントは一時的に無効化）
         self.zoom_slider.blockSignals(True)
         self.current_zoom_percent = zoom
         self.zoom_slider.setValue(zoom)
         self.zoom_label.setText(f"{zoom}%")
         self.zoom_slider.blockSignals(False)
 
-        # 画像を表示してスクロール範囲を計算させる
         self.update_image_display()
         
-        # スクロール範囲が確定した後、直接スクロールバーの位置を設定
         h_scroll = self.scroll_area.horizontalScrollBar()
         v_scroll = self.scroll_area.verticalScrollBar()
         if h_scroll.maximum() > 0:
-            h_value = int(h_scroll.maximum() * h_pos / 100)
+            h_value = round(h_scroll.maximum() * h_pos / 100)
             h_scroll.setValue(h_value)
         if v_scroll.maximum() > 0:
-            v_value = int(v_scroll.maximum() * (100 - v_pos) / 100)
+            v_value = round(v_scroll.maximum() * (100 - v_pos) / 100)
             v_scroll.setValue(v_value)
             
-        # スクロールバーの位置からスライダーの表示を更新
         self.update_custom_scrollbars()
 
-        # 最後にミニマップの表示状態を復元
         self.toggle_minimap_btn.setChecked(minimap_visible)
         self.toggle_minimap(minimap_visible)
 
@@ -376,7 +375,6 @@ class CharacterDisplayWidget(QWidget):
             'minimap_visible': self.toggle_minimap_btn.isChecked()
         }
         self.image_manager.update_ui_settings(self.current_image_id, ui_settings)
-        print(f"UI設定を保存しました: ID={self.current_image_id}")
 
     def show_image_history_dialog(self):
         from .image_history import ImageHistoryWidget
@@ -406,25 +404,57 @@ class CharacterDisplayWidget(QWidget):
             QMessageBox.critical(self, "エラー", f"画像履歴ダイアログでエラーが発生しました:\n{str(e)}")
 
     def on_zoom_slider_changed(self, value):
-        if not self.original_pixmap: return
-        self.current_zoom_percent = value
-        self.update_image_display()
-        self.update_zoom_label()
-        self.save_ui_settings()
+        if not self.original_pixmap:
+            return
+        
+        # ★★★ 変更点 1: 画面更新を一時停止 ★★★
+        self.setUpdatesEnabled(False)
+        try:
+            scroll_area = self.scroll_area
+            h_scroll = scroll_area.horizontalScrollBar()
+            v_scroll = scroll_area.verticalScrollBar()
+            
+            old_label_size = self.character_image_label.size()
+            viewport_size = scroll_area.viewport().size()
+            
+            if old_label_size.width() > 0 and old_label_size.height() > 0:
+                center_x_ratio = (h_scroll.value() + viewport_size.width() / 2) / old_label_size.width()
+                center_y_ratio = (v_scroll.value() + viewport_size.height() / 2) / old_label_size.height()
+            else:
+                center_x_ratio = 0.5
+                center_y_ratio = 0.5
+
+            self.current_zoom_percent = value
+            self.update_image_display()
+            self.update_zoom_label()
+
+            new_label_size = self.character_image_label.size()
+            
+            new_h_scroll_value = round((new_label_size.width() * center_x_ratio) - (viewport_size.width() / 2))
+            new_v_scroll_value = round((new_label_size.height() * center_y_ratio) - (viewport_size.height() / 2))
+            
+            h_scroll.setValue(new_h_scroll_value)
+            v_scroll.setValue(new_v_scroll_value)
+            
+            self.update_custom_scrollbars()
+            self.save_ui_settings()
+        finally:
+            # ★★★ 変更点 2: 画面更新を再開 ★★★
+            self.setUpdatesEnabled(True)
 
     def update_image_display(self):
         if not self.original_pixmap: return
         self.current_zoom_percent = self.zoom_slider.value()
         original_size = self.original_pixmap.size()
-        new_width = int(original_size.width() * self.current_zoom_percent / 100)
-        new_height = int(original_size.height() * self.current_zoom_percent / 100)
+        new_width = round(original_size.width() * self.current_zoom_percent / 100)
+        new_height = round(original_size.height() * self.current_zoom_percent / 100)
         scaled_pixmap = self.original_pixmap.scaled(new_width, new_height, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         self.character_image_label.setPixmap(scaled_pixmap)
         self.character_image_label.resize(scaled_pixmap.size())
         
-        QApplication.processEvents()
+        # ★★★ 変更点 3: ちらつきの原因だったため削除 ★★★
+        # QApplication.processEvents()
         
-        self.update_custom_scrollbars()
         self.update_minimap_view()
 
     def update_zoom_label(self):
@@ -438,9 +468,9 @@ class CharacterDisplayWidget(QWidget):
         v_max = v_scroll.maximum()
 
         if h_max > 0:
-            h_scroll.setValue(int(h_max * self.h_position_slider.value() / 100))
+            h_scroll.setValue(round(h_max * self.h_position_slider.value() / 100))
         if v_max > 0:
-            v_scroll.setValue(int(v_max * (100 - self.v_position_slider.value()) / 100))
+            v_scroll.setValue(round(v_max * (100 - self.v_position_slider.value()) / 100))
         
         self.update_minimap_view()
         if not self.h_position_slider.signalsBlocked():
@@ -448,7 +478,8 @@ class CharacterDisplayWidget(QWidget):
 
     def update_custom_scrollbars(self):
         if not self.original_pixmap: return
-        QApplication.processEvents()
+        # ★★★ 変更点 4: ちらつきの原因だったため削除 ★★★
+        # QApplication.processEvents()
         h_scroll = self.scroll_area.horizontalScrollBar()
         v_scroll = self.scroll_area.verticalScrollBar()
         h_max = h_scroll.maximum()
@@ -457,8 +488,8 @@ class CharacterDisplayWidget(QWidget):
         self.h_position_slider.blockSignals(True)
         self.v_position_slider.blockSignals(True)
         
-        self.h_position_slider.setValue(int(100 * h_scroll.value() / h_max) if h_max > 0 else 50)
-        self.v_position_slider.setValue(100 - int(100 * v_scroll.value() / v_max) if v_max > 0 else 50)
+        self.h_position_slider.setValue(round(100 * h_scroll.value() / h_max) if h_max > 0 else 50)
+        self.v_position_slider.setValue(100 - round(100 * v_scroll.value() / v_max) if v_max > 0 else 50)
         
         self.h_position_slider.blockSignals(False)
         self.v_position_slider.blockSignals(False)
@@ -484,8 +515,8 @@ class CharacterDisplayWidget(QWidget):
         scale_x = self.original_pixmap.width() / img_w
         scale_y = self.original_pixmap.height() / img_h
         view_rect = QRect(
-            int(h_scroll.value() * scale_x), int(v_scroll.value() * scale_y),
-            int(view_w * scale_x), int(view_h * scale_y)
+            round(h_scroll.value() * scale_x), round(v_scroll.value() * scale_y),
+            round(view_w * scale_x), round(view_h * scale_y)
         )
         self.minimap.update_minimap(self.original_pixmap, view_rect)
     
@@ -495,8 +526,8 @@ class CharacterDisplayWidget(QWidget):
         img_h = self.character_image_label.height()
         scale_x = img_w / self.original_pixmap.width()
         scale_y = img_h / self.original_pixmap.height()
-        scroll_x = int(target_x * scale_x - self.scroll_area.viewport().width() / 2)
-        scroll_y = int(target_y * scale_y - self.scroll_area.viewport().height() / 2)
+        scroll_x = round(target_x * scale_x - self.scroll_area.viewport().width() / 2)
+        scroll_y = round(target_y * scale_y - self.scroll_area.viewport().height() / 2)
         
         self.scroll_area.horizontalScrollBar().setValue(scroll_x)
         self.scroll_area.verticalScrollBar().setValue(scroll_y)
@@ -511,6 +542,6 @@ class CharacterDisplayWidget(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        QTimer.singleShot(50, self.update_minimap_position)
+        self.update_minimap_position()
         if self.original_pixmap:
-            self.update_image_display()
+            self.resize_timer.start(150)
