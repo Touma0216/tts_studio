@@ -117,6 +117,25 @@ class ImageManager:
             self.save_history(quiet=True)
         return changed
 
+    # ★★★ 新規追加：画像名更新機能 ★★★
+    def update_image_name(self, image_id: str, new_name: str) -> bool:
+        """指定された画像の名前を更新"""
+        img = self.get_image_by_id(image_id)
+        if not img:
+            return False
+        img['name'] = new_name
+        self.save_history(quiet=True)
+        return True
+
+    def update_note(self, image_id: str, note: str) -> bool:
+        """指定された画像のメモを更新"""
+        img = self.get_image_by_id(image_id)
+        if not img:
+            return False
+        img['note'] = note
+        self.save_history(quiet=True)
+        return True
+
     # ---------- UI設定関連（ここが追加・修正された箇所です！）----------
     def get_ui_settings(self, image_id: str) -> Dict:
         """指定された画像のUI設定を取得"""

@@ -101,8 +101,8 @@ class SlidingMenuWidget(QFrame):
         self.load_image_history_btn = QPushButton("📸 立ち絵を履歴から読み込み")
         self.load_image_history_btn.setToolTip("過去に読み込んだ立ち絵から選択")
         self.load_image_history_btn.clicked.connect(self.on_load_image_from_history_clicked)
-        # 履歴機能は後で実装するので、一旦無効化
-        self.load_image_history_btn.setEnabled(False)
+        # ★★★ 修正：履歴機能が実装されたので有効化 ★★★
+        self.load_image_history_btn.setEnabled(True)
         
         layout.addWidget(self.load_image_btn)
         layout.addWidget(self.load_image_history_btn)

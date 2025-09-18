@@ -1,14 +1,14 @@
 {
   "images": [
     {
-      "id": "80c0fad9090e",
+      "id": "52d1be20300e",
       "name": "零音ほのか　立ち絵",
       "note": "",
-      "image_path": "C:\\Users\\masa2\\OneDrive\\画像\\零音ほのか\\零音ほのか　立ち絵.png",
+      "image_path": "F:\\零音ほのか　データ\\零音ほのか　立ち絵.png",
       "ui_settings": {
-        "zoom_percent": 80,
-        "h_position": 49,
-        "v_position": 84,
+        "zoom_percent": 30,
+        "h_position": 52,
+        "v_position": 97,
         "minimap_visible": true
       }
     }
