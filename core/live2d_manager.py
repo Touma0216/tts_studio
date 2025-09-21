@@ -1,6 +1,7 @@
 import json
 import os
 import uuid
+import glob
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Any
@@ -10,8 +11,17 @@ class Live2DManager:
     
     def __init__(self, history_file: str = "live2d_history.json"):
         self.history_file = Path(history_file)
+        # ★追加: Live2Dモデルのベースディレクトリを定義
+        # main_window.pyからlive2d_urlを渡されることを想定
+        self.base_dir = Path(os.path.dirname(os.path.abspath(__file__))).parent / 'assets' / 'live2d_dist'
         self.models_data: List[Dict[str, Any]] = []
         self.load_history()
+
+    def get_relative_path(self, absolute_path: str) -> Optional[str]:
+        try:
+            return str(Path(absolute_path).relative_to(self.base_dir).as_posix())
+        except ValueError:
+            return None
     
     def load_history(self) -> None:
         """履歴ファイルを読み込み"""
@@ -128,6 +138,24 @@ class Live2DManager:
             'lip_sync_gain': 1.0,
             'background_visible': True
         }
+    
+    # ★追加: find_model3_json メソッドを追加
+    def find_model3_json(self, folder_path: str) -> Optional[str]:
+        """
+        指定されたフォルダ内から.model3.jsonファイルを探索する。
+        見つかった場合、そのファイルの絶対パスを返す。
+        """
+        model_json_files = glob.glob(os.path.join(folder_path, '*.model3.json'))
+        if model_json_files:
+            return model_json_files[0]
+        
+        # サブディレクトリも探索する
+        for root, dirs, files in os.walk(folder_path):
+            for file in files:
+                if file.endswith('.model3.json'):
+                    return os.path.join(root, file)
+                    
+        return None
     
     def validate_model_folder(self, folder_path: str) -> Dict[str, Any]:
         """Live2Dモデルフォルダの検証"""
