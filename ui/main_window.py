@@ -284,18 +284,57 @@ class TTSStudioMainWindow(QMainWindow):
                 QMessageBox.critical(self, "エラー", "モデルの読み込みに失敗しました。")
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"モデル読み込み中にエラーが発生しました:\n{str(e)}")
+
+    # ★★★ 修正された load_last_model メソッド ★★★
     def load_last_model(self):
+        """アプリ起動時の自動復元：音声モデル + Live2Dモデル"""
+        # 1. 音声モデルの自動復元
         models = self.model_manager.get_all_models()
-        if not models: return
-        last = models[0]
-        if not self.model_manager.validate_model_files(last): return
-        paths = {k: last[k] for k in ["model_path", "config_path", "style_path"]}
-        if self.tts_engine.load_model(**paths):
-            for btn in [self.sequential_play_btn, self.save_individual_btn, self.save_continuous_btn]:
-                btn.setEnabled(True)
-            model_name = Path(paths["model_path"]).parent.name
-            self.setWindowTitle(f"TTSスタジオ - {model_name}")
-            self.update_emotion_ui_after_model_load()
+        if models:
+            last = models[0]
+            if self.model_manager.validate_model_files(last):
+                paths = {k: last[k] for k in ["model_path", "config_path", "style_path"]}
+                if self.tts_engine.load_model(**paths):
+                    for btn in [self.sequential_play_btn, self.save_individual_btn, self.save_continuous_btn]:
+                        btn.setEnabled(True)
+                    model_name = Path(paths["model_path"]).parent.name
+                    self.setWindowTitle(f"TTSスタジオ - {model_name}")
+                    self.update_emotion_ui_after_model_load()
+                    print(f"✅ 音声モデル自動復元完了: {model_name}")
+        
+        # 2. ★新規追加：Live2Dモデルの自動復元★
+        self.load_last_live2d_model()
+
+    def load_last_live2d_model(self):
+        """最後に使用したLive2Dモデルを自動復元"""
+        try:
+            # character_displayのLive2Dマネージャーから最後のモデルを取得
+            if hasattr(self.character_display, 'live2d_manager'):
+                last_live2d = self.character_display.live2d_manager.get_last_model()
+                
+                if last_live2d:
+                    model_folder_path = last_live2d['model_folder_path']
+                    
+                    # フォルダが存在するかチェック
+                    if Path(model_folder_path).exists():
+                        # Live2Dモデルの有効性をチェック
+                        validation = self.character_display.live2d_manager.validate_model_folder(model_folder_path)
+                        
+                        if validation['is_valid']:
+                            # 自動でLive2Dモデルを読み込み（成功判定は内部で行う）
+                            self.character_display.load_live2d_model_from_data(last_live2d)
+                            
+                            # ウィンドウタイトル更新（モデル読み込み成功時に内部で行われる）
+                            # print(f"✅ Live2Dモデル自動復元完了: {last_live2d['name']}")
+                        else:
+                            print(f"⚠️ Live2Dモデルファイルが不完全: {model_folder_path}")
+                    else:
+                        print(f"⚠️ Live2Dモデルフォルダが見つかりません: {model_folder_path}")
+                else:
+                    print("ℹ️ Live2D履歴なし")
+        except Exception as e:
+            print(f"Live2D自動復元エラー: {e}")
+
     def apply_audio_cleaning(self, audio, sample_rate):
         if not self.tabbed_audio_control.is_cleaner_enabled(): return audio
         try:
