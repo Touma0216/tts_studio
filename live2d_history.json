@@ -5,10 +5,10 @@
       "model_folder_path": "C:\\Users\\masa2\\Downloads\\LiveroiD_A-Y01",
       "name": "LiveroiD_A-Y01",
       "created_at": "2025-09-21T13:02:11.049184",
-      "last_used": "2025-09-21T21:07:00.767617",
+      "last_used": "2025-09-21T21:09:26.934899",
       "ui_settings": {
         "scale": 1.0,
-        "position_x": -0.2,
+        "position_x": -0.4,
         "position_y": 0.0,
         "auto_breath": false,
         "auto_eye_blink": false,
@@ -17,5 +17,5 @@
       }
     }
   ],
-  "last_updated": "2025-09-21T21:07:00.767617"
+  "last_updated": "2025-09-21T21:09:26.934899"
 }

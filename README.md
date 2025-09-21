@@ -5,31 +5,17 @@ tts_studio-main/
 ├── image_history.json                # 画像履歴データ（自動生成）
 ├── live2d_history.json               # Live2Dモデル履歴データ（自動生成）
 ├── assets/                           # 静的アセット
-│   └── live2d_dist/                  # Live2D SDK・リソース
-│       ├── index.html
-│       ├── back_class_normal.png
-│       ├── icon_gear.png
-│       ├── Core/
-│       │   ├── CHANGELOG.md
-│       │   ├── LICENSE.md
-│       │   ├── live2dcubismcore.d.ts
-│       │   ├── live2dcubismcore.js
-│       │   ├── live2dcubismcore.js.map
-│       │   ├── live2dcubismcore.min.js
-│       │   ├── README.ja.md
-│       │   ├── README.md
-│       │   └── redistributablefiles.txt
-│       ├── assets/
-│       │   ├── index-DAhHvHok.js
-│       │   └── index-DAhHvHok.js.map
-│       └── Resources/
-│           ├── Haru/
-│           ├── Hiyori/
-│           ├── Mao/
-│           ├── Mark/
-│           ├── Natori/
-│           ├── Rice/
-│           └── Wanko/
+│   └── live2d_dist/                  # Live2D環境（クリーンアップ済み）
+│       ├── index.html                # Live2Dビューアー用HTML
+│       ├── main.js                   # Live2D制御JavaScript
+│       └── libs/
+│           └── node_modules/
+│               ├── pixi.js/
+│               │   └── dist/
+│               │       └── pixi.mjs  # PixiJS v7コアライブラリ
+│               └── pixi-live2d-display-lipsyncpatch/
+│                   └── dist/
+│                       └── index.es.js  # Live2D統合ライブラリ（リップシンク対応版）
 ├── core/                             # コア機能モジュール
 │   ├── __init__.py                   # パッケージ初期化
 │   ├── audio_analyzer.py             # 音声品質解析エンジン

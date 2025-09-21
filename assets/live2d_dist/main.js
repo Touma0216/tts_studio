@@ -66,12 +66,18 @@ window.loadLive2DModel = async function(modelJsonPath) {
 window.setLipSyncValue = function(volume) {
     if (currentModel && currentModel.internalModel) {
         try {
-            const clampedVolume = Math.max(0, Math.min(1.0, volume * 1.5));
+            // より自然な音量処理
+            const normalizedVolume = Math.max(0, Math.min(1.0, volume * 0.8));
+            
+            // スムーズ補間のための減衰
+            const smoothedVolume = normalizedVolume * 0.7 + (window.lastLipVolume || 0) * 0.3;
+            window.lastLipVolume = smoothedVolume;
+            
             // 複数のリップシンクパラメータを試行
             const lipParams = ['ParamMouthOpenY', 'PARAM_MOUTH_OPEN_Y', 'MouthOpenY'];
             for (const param of lipParams) {
                 try {
-                    currentModel.internalModel.coreModel.setParameterValueById(param, clampedVolume);
+                    currentModel.internalModel.coreModel.setParameterValueById(param, smoothedVolume);
                     break;
                 } catch (e) {
                     // 次のパラメータを試行
