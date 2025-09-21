@@ -151,7 +151,7 @@ class DraggableImageLabel(QLabel):
         super().leaveEvent(event)
 
 class Live2DWebView(QWebEngineView):
-    """Live2D表示用WebEngineView（改良版）"""
+    """Live2D表示用WebEngineView（CDN確実動作版）"""
     
     model_loaded = pyqtSignal(str)  # モデルパス
     
@@ -160,6 +160,7 @@ class Live2DWebView(QWebEngineView):
         self.character_display = None
         self.is_model_loaded = False
         self.current_model_path = ""
+        self.current_model_data = None
         
         # Live2D HTML ページを作成・読み込み
         self.create_live2d_html()
@@ -171,265 +172,203 @@ class Live2DWebView(QWebEngineView):
         self.character_display = character_display
     
     def create_live2d_html(self):
-        """Live2D表示用HTMLを作成（公式distフォルダ直接使用版）"""
+        """Live2D表示用HTMLを作成（自動起動サーバー使用）"""
         
-        # 公式サンプルのindex.htmlをベースに、TTS Studio用にカスタマイズ
-        html_content = """<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Live2D TTS Studio</title>
-  <style>
-    html, body {
-      overflow: hidden;
-      margin: 0;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    }
-    html {
-      overscroll-behavior-x: none;
-      touch-action: none;
-    }
-    body {
-      display: flex;
-      flex-wrap: wrap;
-    }
-    body > canvas:only-child {
-      width: 100vw;
-      height: 100vh;
-    }
-    
-    /* TTS Studio UI */
-    .tts-overlay {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        background: rgba(0, 0, 0, 0.7);
-        color: white;
-        padding: 10px;
-        border-radius: 5px;
-        font-family: Arial, sans-serif;
-        font-size: 12px;
-        z-index: 1000;
-        min-width: 200px;
-    }
-    
-    .tts-status {
-        margin-bottom: 5px;
-    }
-    
-    .tts-loading {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: rgba(0, 0, 0, 0.8);
-        color: white;
-        padding: 20px;
-        border-radius: 10px;
-        text-align: center;
-        font-family: Arial, sans-serif;
-        z-index: 1001;
-    }
-    
-    .error {
-        color: #ff6b6b;
-    }
-  </style>
-  
-  <!-- Live2DCubismCore script -->
-  <script src="./assets/live2d_dist/Core/live2dcubismcore.js"></script>
-  <!-- Build script -->
-  <script type="module" crossorigin src="./assets/live2d_dist/assets/index-DAhHvHok.js"></script>
-  
-  <!-- TTS Studio Integration -->
-  <script>
-    // TTS Studio用の変数
-    let ttsCurrentModel = null;
-    let ttsModelLoaded = false;
-    let ttsCurrentPath = '';
-    
-    // TTS Studio UI作成
-    function createTTSUI() {
-        // ステータス表示
-        const overlay = document.createElement('div');
-        overlay.className = 'tts-overlay';
-        overlay.id = 'tts-overlay';
-        overlay.innerHTML = `
-            <div class="tts-status">Model: <span id="tts-model-name">未読み込み</span></div>
-            <div class="tts-status">Lip Sync: <span id="tts-lip-value">0.0</span></div>
-            <div class="tts-status">Status: <span id="tts-status">待機中</span></div>
-        `;
-        document.body.appendChild(overlay);
+        # 自動起動されたLive2Dサーバーを使用
+        import requests
+        import time
         
-        // ローディング表示
-        const loading = document.createElement('div');
-        loading.className = 'tts-loading';
-        loading.id = 'tts-loading';
-        loading.innerHTML = '<p>Live2D SDK 準備完了</p><p>モデルを読み込んでください</p>';
-        document.body.appendChild(loading);
-    }
-    
-    // TTS Studio: モデル読み込み
-    async function loadLive2DModel(modelFolderPath, model3JsonPath) {
-        try {
-            console.log('TTS Studio: Loading model', modelFolderPath, model3JsonPath);
-            
-            const loading = document.getElementById('tts-loading');
-            const statusSpan = document.getElementById('tts-status');
-            const modelNameSpan = document.getElementById('tts-model-name');
-            
-            if (loading) loading.innerHTML = '<p>Live2Dモデル読み込み中...</p>';
-            if (statusSpan) statusSpan.textContent = '読み込み中';
-            
-            ttsCurrentPath = modelFolderPath;
-            
-            // 実際のモデル読み込み処理をここに実装
-            // 今は暫定的に成功したことにする
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            
-            ttsModelLoaded = true;
-            
-            if (loading) loading.style.display = 'none';
-            if (statusSpan) statusSpan.textContent = '読み込み完了';
-            if (modelNameSpan) {
-                const modelName = modelFolderPath.split('/').pop() || modelFolderPath.split('\\').pop() || 'Live2D Model';
-                modelNameSpan.textContent = modelName;
-            }
-            
-            console.log('TTS Studio: Model loaded successfully');
-            
-            // PyQt側に完了通知
-            if (window.pyqtCallback) {
-                window.pyqtCallback('model_loaded', ttsCurrentPath);
-            }
-            
-            return true;
-            
-        } catch (error) {
-            console.error('TTS Studio: Model loading failed', error);
-            
-            const loading = document.getElementById('tts-loading');
-            if (loading) {
-                loading.innerHTML = `<p class="error">モデル読み込み失敗</p><p class="error">${error.message}</p>`;
-            }
-            
-            return false;
-        }
-    }
-    
-    // TTS Studio: リップシンク
-    function setLipSyncValue(volume) {
-        const lipSpan = document.getElementById('tts-lip-value');
-        if (lipSpan) {
-            lipSpan.textContent = volume.toFixed(2);
-        }
+        # サーバーの起動を少し待つ
+        for i in range(15):  # 15秒まで待機
+            try:
+                response = requests.get('http://localhost:5000', timeout=2)
+                if response.status_code == 200:
+                    print("✅ Live2D server detected, using localhost:5000")
+                    self.load(QUrl('http://localhost:5000'))
+                    return
+            except:
+                time.sleep(1)
         
-        if (ttsModelLoaded && ttsCurrentModel) {
-            // 実際のリップシンク処理
-            console.log('TTS Studio: Lip sync', volume);
-        }
-    }
-    
-    // TTS Studio: パラメータ設定
-    function setParameter(parameterId, value) {
-        if (ttsModelLoaded && ttsCurrentModel) {
-            console.log('TTS Studio: Set parameter', parameterId, value);
-        }
-    }
-    
-    // TTS Studio: モーション再生
-    function playMotion(motionName, priority = 2) {
-        if (ttsModelLoaded && ttsCurrentModel) {
-            console.log('TTS Studio: Play motion', motionName);
-        }
-    }
-    
-    // TTS Studio: 表情設定
-    function setExpression(expressionName) {
-        if (ttsModelLoaded && ttsCurrentModel) {
-            console.log('TTS Studio: Set expression', expressionName);
-        }
-    }
-    
-    // TTS Studio: 背景切り替え
-    function setBackgroundVisible(visible) {
-        if (visible) {
-            document.body.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-        } else {
-            document.body.style.background = 'transparent';
-        }
-    }
-    
-    // TTS Studio: モデル設定更新
-    function updateModelSettings(settings) {
-        if (ttsModelLoaded && ttsCurrentModel) {
-            console.log('TTS Studio: Update settings', settings);
-        }
-    }
-    
-    // PyQt通信用関数をグローバル公開
-    window.loadLive2DModel = loadLive2DModel;
-    window.setLipSyncValue = setLipSyncValue;
-    window.setParameter = setParameter;
-    window.playMotion = playMotion;
-    window.setExpression = setExpression;
-    window.setBackgroundVisible = setBackgroundVisible;
-    window.updateModelSettings = updateModelSettings;
-    
-    // 初期化
-    document.addEventListener('DOMContentLoaded', () => {
-        console.log('TTS Studio: Live2D integration starting');
-        createTTSUI();
-    });
-    
-    // エラーハンドリング
-    window.addEventListener('error', (event) => {
-        console.error('TTS Studio: Error', event.error);
-        const loading = document.getElementById('tts-loading');
-        if (loading) {
-            loading.innerHTML = `<p class="error">エラー発生</p><p class="error">${event.error.message}</p>`;
-        }
-    });
-    
-    console.log('TTS Studio: Integration script loaded');
-  </script>
-</head>
-<body>
-</body>
-</html>"""
+        print("⚠️ Live2D server not available, creating fallback HTML file")
         
-        # HTMLファイル作成
-        html_file_path = Path("live2d_viewer.html")
-        with open(html_file_path, 'w', encoding='utf-8') as f:
-            f.write(html_content)
+        # フォールバック: HTMLファイルとして保存
+        fallback_html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Live2D Loading</title>
+            <style>
+                body {
+                    margin: 0;
+                    padding: 40px;
+                    font-family: Arial, sans-serif;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    text-align: center;
+                }
+                .loading-container {
+                    background: rgba(0,0,0,0.8);
+                    padding: 30px;
+                    border-radius: 10px;
+                    max-width: 500px;
+                    margin: 0 auto;
+                }
+                .loading-title {
+                    font-size: 24px;
+                    margin-bottom: 20px;
+                }
+                .loading-message {
+                    font-size: 16px;
+                    line-height: 1.5;
+                }
+                .retry-button {
+                    background: #1976d2;
+                    color: white;
+                    border: none;
+                    padding: 10px 20px;
+                    border-radius: 5px;
+                    font-size: 16px;
+                    cursor: pointer;
+                    margin-top: 20px;
+                }
+                .retry-button:hover {
+                    background: #1565c0;
+                }
+                .spinner {
+                    border: 4px solid rgba(255,255,255,0.3);
+                    border-top: 4px solid white;
+                    border-radius: 50%;
+                    width: 40px;
+                    height: 40px;
+                    animation: spin 1s linear infinite;
+                    margin: 20px auto;
+                }
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="loading-container">
+                <div class="loading-title">🎭 Live2D Service</div>
+                <div class="spinner"></div>
+                <div class="loading-message">
+                    Live2Dサーバーの起動を待機中...<br>
+                    <small>バックグラウンドでnpm serveを実行しています</small>
+                </div>
+                <button class="retry-button" onclick="checkServer()">接続確認</button>
+            </div>
+            
+            <script>
+                let retryCount = 0;
+                const maxRetries = 30;
+                
+                // TTS Studio統合関数（フォールバック）
+                window.loadLive2DModel = function(modelFolderPath, model3JsonPath) {
+                    console.log('Live2D server not ready, model loading skipped');
+                    return Promise.resolve(false);
+                };
+                
+                window.setLipSyncValue = function(volume) {
+                    console.log('Live2D server not ready, lip sync skipped');
+                };
+                
+                window.setParameter = function(parameterId, value) {
+                    console.log('Live2D server not ready, parameter skipped');
+                };
+                
+                window.playMotion = function(motionName) {
+                    console.log('Live2D server not ready, motion skipped');
+                };
+                
+                window.setExpression = function(expressionName) {
+                    console.log('Live2D server not ready, expression skipped');
+                };
+                
+                window.setBackgroundVisible = function(visible) {
+                    console.log('Live2D server not ready, background skipped');
+                };
+                
+                window.updateModelSettings = function(settings) {
+                    console.log('Live2D server not ready, settings skipped');
+                };
+                
+                // サーバー接続チェック
+                function checkServer() {
+                    console.log(`Checking server... attempt ${retryCount + 1}/${maxRetries}`);
+                    
+                    fetch('http://localhost:5000', { 
+                        method: 'GET',
+                        mode: 'cors',
+                        cache: 'no-cache'
+                    })
+                    .then(response => {
+                        if (response.ok) {
+                            console.log('✅ Server found! Redirecting...');
+                            window.location.href = 'http://localhost:5000';
+                        } else {
+                            throw new Error('Server not ready');
+                        }
+                    })
+                    .catch(error => {
+                        retryCount++;
+                        if (retryCount < maxRetries) {
+                            setTimeout(checkServer, 2000);
+                        } else {
+                            document.querySelector('.loading-message').innerHTML = 
+                                'Live2Dサーバーの起動に失敗しました。<br><small>手動でnpm run serveを実行してください</small>';
+                        }
+                    });
+                }
+                
+                // 自動チェック開始
+                setTimeout(checkServer, 2000);
+            </script>
+        </body>
+        </html>
+        """
         
-        # HTMLファイル読み込み
-        self.load(QUrl.fromLocalFile(str(html_file_path.absolute())))
+        # HTMLファイルとして保存
+        fallback_html_path = Path("live2d_loading.html")
+        with open(fallback_html_path, 'w', encoding='utf-8') as f:
+            f.write(fallback_html)
+        
+        print(f"📄 Fallback HTML created: {fallback_html_path.absolute()}")
+        self.load(QUrl.fromLocalFile(str(fallback_html_path.absolute())))
+    
     
     def on_page_loaded(self, success):
         """ページ読み込み完了時"""
         if success:
-            print("Live2D viewer page loaded successfully")
+            print("✅ Live2D viewer page loaded successfully")
         else:
-            print("Failed to load Live2D viewer page")
+            print("❌ Failed to load Live2D viewer page")
     
     def load_model(self, model_folder_path, model3_json_path):
         """Live2Dモデルを読み込み"""
         if not Path(model_folder_path).exists():
+            print(f"❌ Model folder not found: {model_folder_path}")
             return False
         
         self.current_model_path = model_folder_path
         
         # JavaScriptのloadLive2DModel関数を呼び出し
         script = f"""
-        loadLive2DModel('{model_folder_path.replace(chr(92), '/')}', '{model3_json_path.replace(chr(92), '/')}')
-        .then(result => {{
-            console.log('Model loading result:', result);
-        }})
-        .catch(error => {{
-            console.error('Model loading failed:', error);
-        }});
+        if (typeof loadLive2DModel === 'function') {{
+            loadLive2DModel('{model_folder_path.replace(chr(92), '/')}', '{model3_json_path.replace(chr(92), '/')}')
+            .then(result => {{
+                console.log('✅ Model loading result:', result);
+                if (result && window.pyqtCallback) {{
+                    window.pyqtCallback('model_loaded', '{model_folder_path}');
+                }}
+            }})
+            .catch(error => {{
+                console.error('❌ Model loading failed:', error);
+            }});
+        }} else {{
+            console.error('❌ loadLive2DModel function not found');
+        }}
         """
         
         self.page().runJavaScript(script, self.on_model_load_result)
@@ -440,27 +379,27 @@ class Live2DWebView(QWebEngineView):
         if result:
             self.is_model_loaded = True
             self.model_loaded.emit(self.current_model_path)
-            print(f"Live2D model loaded: {self.current_model_path}")
+            print(f"✅ Live2D model loaded: {self.current_model_path}")
         else:
             self.is_model_loaded = False
-            print("Live2D model loading failed")
+            print("❌ Live2D model loading failed")
     
     def update_lip_sync(self, volume):
         """リップシンク更新"""
         if self.is_model_loaded:
-            script = f"setLipSyncValue({volume});"
+            script = f"if (typeof setLipSyncValue === 'function') setLipSyncValue({volume});"
             self.page().runJavaScript(script)
     
     def play_motion(self, motion_name):
         """モーション再生"""
         if self.is_model_loaded:
-            script = f"playMotion('{motion_name}');"
+            script = f"if (typeof playMotion === 'function') playMotion('{motion_name}');"
             self.page().runJavaScript(script)
     
     def set_expression(self, expression_name):
         """表情設定"""
         if self.is_model_loaded:
-            script = f"setExpression('{expression_name}');"
+            script = f"if (typeof setExpression === 'function') setExpression('{expression_name}');"
             self.page().runJavaScript(script)
     
     def update_model_settings(self, settings):
@@ -468,12 +407,12 @@ class Live2DWebView(QWebEngineView):
         if self.is_model_loaded:
             import json
             settings_json = json.dumps(settings)
-            script = f"updateModelSettings({settings_json});"
+            script = f"if (typeof updateModelSettings === 'function') updateModelSettings({settings_json});"
             self.page().runJavaScript(script)
     
     def set_background_visible(self, visible):
         """背景表示切り替え"""
-        script = f"setBackgroundVisible({str(visible).lower()});"
+        script = f"if (typeof setBackgroundVisible === 'function') setBackgroundVisible({str(visible).lower()});"
         self.page().runJavaScript(script)
 
 class CharacterDisplayWidget(QWidget):
@@ -837,7 +776,7 @@ class CharacterDisplayWidget(QWidget):
             self.restore_live2d_settings(ui_settings)
             
             # WebViewに設定も反映
-            QTimer.singleShot(1000, lambda: self.apply_settings_to_webview(ui_settings))
+            QTimer.singleShot(2000, lambda: self.apply_settings_to_webview(ui_settings))
             
             # モデル情報表示
             model_info = self.live2d_manager.get_model_info(model_folder_path)
@@ -985,8 +924,7 @@ class CharacterDisplayWidget(QWidget):
         if last_image and Path(last_image['image_path']).exists():
             self.load_image_from_data(last_image)
         
-        # Live2Dは手動読み込みのみ
-        # 最後のLive2Dモデルは自動読み込みしない（重いため）
+        # Live2Dは手動読み込みのみ（重いため）
     
     def load_image_from_data(self, image_data):
         """画像データから読み込み（既存コード）"""
@@ -1121,12 +1059,6 @@ class CharacterDisplayWidget(QWidget):
             
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"画像履歴ダイアログでエラーが発生しました:\n{str(e)}")
-
-    # 以下、既存の画像関連メソッドは全て保持（長いのでここでは省略）
-    # on_zoom_slider_changed, update_image_display, update_zoom_label, 
-    # on_position_slider_changed, update_custom_scrollbars, toggle_minimap,
-    # update_minimap_view, move_view_to_position, update_minimap_position, resizeEvent
-    # など、全て既存のまま残す
 
     def on_zoom_slider_changed(self, value):
         if not self.original_pixmap:

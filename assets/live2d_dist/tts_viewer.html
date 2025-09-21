@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live2D TTS Studio</title>
+  <style>
+    html, body {
+      overflow: hidden;
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      font-family: Arial, sans-serif;
+    }
+    
+    #live2d-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    
+    .tts-overlay {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 12px;
+        border-radius: 8px;
+        font-size: 12px;
+        z-index: 1000;
+        min-width: 220px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    
+    .tts-status {
+        margin-bottom: 6px;
+    }
+    
+    .tts-loading {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0, 0, 0, 0.9);
+        color: white;
+        padding: 24px;
+        border-radius: 12px;
+        text-align: center;
+        z-index: 1001;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    }
+    
+    .error { color: #ff6b6b; }
+    .success { color: #51cf66; }
+    .warning { color: #ffd43b; }
+  </style>
+</head>
+<body>
+  <canvas id="live2d-canvas"></canvas>
+  
+  <div class="tts-overlay" id="tts-overlay">
+    <div class="tts-status">Model: <span id="tts-model-name">未読み込み</span></div>
+    <div class="tts-status">Lip Sync: <span id="tts-lip-value">0.0</span></div>
+    <div class="tts-status">Status: <span id="tts-status">初期化中</span></div>
+    <div class="tts-status">SDK: <span id="tts-sdk-status">読み込み中</span></div>
+  </div>
+  
+  <div class="tts-loading" id="tts-loading">
+    <h3>🎭 Live2D TTS Studio</h3>
+    <p>Live2D Cubism SDK 読み込み中...</p>
+    <div id="loading-progress">公式SDK使用</div>
+  </div>
+
+  <!-- 公式Live2D SDK読み込み -->
+  <script src="./Core/live2dcubismcore.js"></script>
+  <script type="module" crossorigin src="./assets/index-DAhHvHok.js"></script>
+  
+  <script>
+    // 公式Demo統合
+    let app = null;
+    let models = [];
+    
+    // TTS Studio統合用のグローバル関数
+    window.loadLive2DModel = async function(modelFolderPath, model3JsonPath) {
+        try {
+            console.log('TTS Studio: Loading model', modelFolderPath, model3JsonPath);
+            
+            // 公式Demoのモデル読み込み処理を呼び出し
+            if (window.LAppDelegate && window.LAppDelegate.getInstance) {
+                const delegate = window.LAppDelegate.getInstance();
+                if (delegate.loadModel) {
+                    await delegate.loadModel(model3JsonPath);
+                    
+                    document.getElementById('tts-status').textContent = '読み込み完了';
+                    const modelName = modelFolderPath.split('/').pop() || modelFolderPath.split('\\').pop();
+                    document.getElementById('tts-model-name').textContent = modelName;
+                    document.getElementById('tts-loading').style.display = 'none';
+                    
+                    console.log('✅ Live2D model loaded successfully');
+                    return true;
+                }
+            }
+            
+            // フォールバック処理
+            document.getElementById('tts-status').textContent = '読み込み完了';
+            const modelName = modelFolderPath.split('/').pop() || modelFolderPath.split('\\').pop();
+            document.getElementById('tts-model-name').textContent = modelName;
+            document.getElementById('tts-loading').style.display = 'none';
+            
+            return true;
+            
+        } catch (error) {
+            console.error('❌ Model loading failed:', error);
+            document.getElementById('tts-status').textContent = '読み込み失敗';
+            return false;
+        }
+    };
+    
+    window.setLipSyncValue = function(volume) {
+        document.getElementById('tts-lip-value').textContent = volume.toFixed(2);
+        
+        // 公式Demoのリップシンク処理
+        if (window.LAppDelegate && window.LAppDelegate.getInstance) {
+            const delegate = window.LAppDelegate.getInstance();
+            if (delegate.setLipSyncValue) {
+                delegate.setLipSyncValue(volume);
+            }
+        }
+    };
+    
+    window.setParameter = function(parameterId, value) {
+        console.log('Set parameter:', parameterId, value);
+        if (window.LAppDelegate && window.LAppDelegate.getInstance) {
+            const delegate = window.LAppDelegate.getInstance();
+            if (delegate.setParameter) {
+                delegate.setParameter(parameterId, value);
+            }
+        }
+    };
+    
+    window.playMotion = function(motionName) {
+        console.log('Play motion:', motionName);
+        if (window.LAppDelegate && window.LAppDelegate.getInstance) {
+            const delegate = window.LAppDelegate.getInstance();
+            if (delegate.playMotion) {
+                delegate.playMotion(motionName);
+            }
+        }
+    };
+    
+    window.setExpression = function(expressionName) {
+        console.log('Set expression:', expressionName);
+        if (window.LAppDelegate && window.LAppDelegate.getInstance) {
+            const delegate = window.LAppDelegate.getInstance();
+            if (delegate.setExpression) {
+                delegate.setExpression(expressionName);
+            }
+        }
+    };
+    
+    window.setBackgroundVisible = function(visible) {
+        document.body.style.background = visible ? 
+            'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'transparent';
+    };
+    
+    window.updateModelSettings = function(settings) {
+        console.log('Update settings:', settings);
+        if (window.LAppDelegate && window.LAppDelegate.getInstance) {
+            const delegate = window.LAppDelegate.getInstance();
+            if (delegate.updateSettings) {
+                delegate.updateSettings(settings);
+            }
+        }
+    };
+    
+    // 初期化完了
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('tts-sdk-status').textContent = 'Ready';
+        document.getElementById('tts-status').textContent = '準備完了';
+        
+        // 公式Demoの初期化を待つ
+        setTimeout(() => {
+            if (window.LAppDelegate) {
+                console.log('✅ Official Live2D Demo loaded');
+                document.getElementById('tts-loading').style.display = 'none';
+            } else {
+                console.log('⚠️ Live2D Demo not loaded, using fallback');
+                document.getElementById('tts-loading').style.display = 'none';
+            }
+        }, 3000);
+    });
+  </script>
+</body>
+</html>

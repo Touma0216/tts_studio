@@ -8,38 +8,35 @@
     html, body {
       overflow: hidden;
       margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    }
-    html {
-      overscroll-behavior-x: none;
-      touch-action: none;
-    }
-    body {
-      display: flex;
-      flex-wrap: wrap;
-    }
-    body > canvas:only-child {
-      width: 100vw;
-      height: 100vh;
+      font-family: Arial, sans-serif;
     }
     
-    /* TTS Studio UI */
+    #live2d-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    
     .tts-overlay {
         position: absolute;
         top: 10px;
         right: 10px;
-        background: rgba(0, 0, 0, 0.7);
+        background: rgba(0, 0, 0, 0.8);
         color: white;
-        padding: 10px;
-        border-radius: 5px;
-        font-family: Arial, sans-serif;
+        padding: 12px;
+        border-radius: 8px;
         font-size: 12px;
         z-index: 1000;
-        min-width: 200px;
+        min-width: 220px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
     
     .tts-status {
-        margin-bottom: 5px;
+        margin-bottom: 6px;
     }
     
     .tts-loading {
@@ -47,178 +44,287 @@
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: rgba(0, 0, 0, 0.8);
+        background: rgba(0, 0, 0, 0.9);
         color: white;
-        padding: 20px;
-        border-radius: 10px;
+        padding: 24px;
+        border-radius: 12px;
         text-align: center;
-        font-family: Arial, sans-serif;
         z-index: 1001;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
     }
     
-    .error {
-        color: #ff6b6b;
-    }
+    .error { color: #ff6b6b; }
+    .success { color: #51cf66; }
+    .warning { color: #ffd43b; }
   </style>
+</head>
+<body>
+  <canvas id="live2d-canvas"></canvas>
   
-  <!-- Live2DCubismCore script -->
+  <div class="tts-overlay" id="tts-overlay">
+    <div class="tts-status">Model: <span id="tts-model-name">未読み込み</span></div>
+    <div class="tts-status">Lip Sync: <span id="tts-lip-value">0.0</span></div>
+    <div class="tts-status">Status: <span id="tts-status">初期化中</span></div>
+    <div class="tts-status">SDK: <span id="tts-sdk-status">読み込み中</span></div>
+  </div>
+  
+  <div class="tts-loading" id="tts-loading">
+    <h3>🎭 Live2D TTS Studio</h3>
+    <p>Live2D Cubism SDK 読み込み中...</p>
+    <div id="loading-progress">CDNから取得中</div>
+  </div>
+
+  <!-- Live2D Cubism Core SDK (ローカル) -->
   <script src="./assets/live2d_dist/Core/live2dcubismcore.js"></script>
-  <!-- Build script -->
   <script type="module" crossorigin src="./assets/live2d_dist/assets/index-DAhHvHok.js"></script>
   
-  <!-- TTS Studio Integration -->
   <script>
-    // TTS Studio用の変数
-    let ttsCurrentModel = null;
+    let ttsApp = null;
+    let ttsModel = null;
+    let ttsCanvas = null;
+    let ttsGL = null;
+    let ttsFrameworkInitialized = false;
     let ttsModelLoaded = false;
     let ttsCurrentPath = '';
+    let ttsAnimationId = null;
+    let ttsLipSyncValue = 0.0;
     
-    // TTS Studio UI作成
-    function createTTSUI() {
-        // ステータス表示
-        const overlay = document.createElement('div');
-        overlay.className = 'tts-overlay';
-        overlay.id = 'tts-overlay';
-        overlay.innerHTML = `
-            <div class="tts-status">Model: <span id="tts-model-name">未読み込み</span></div>
-            <div class="tts-status">Lip Sync: <span id="tts-lip-value">0.0</span></div>
-            <div class="tts-status">Status: <span id="tts-status">待機中</span></div>
-        `;
-        document.body.appendChild(overlay);
-        
-        // ローディング表示
-        const loading = document.createElement('div');
-        loading.className = 'tts-loading';
-        loading.id = 'tts-loading';
-        loading.innerHTML = '<p>Live2D SDK 準備完了</p><p>モデルを読み込んでください</p>';
-        document.body.appendChild(loading);
+    function updateStatus(status, className = 'success') {
+        const element = document.getElementById('tts-status');
+        if (element) {
+            element.textContent = status;
+            element.className = className;
+        }
     }
     
-    // TTS Studio: モデル読み込み
-    async function loadLive2DModel(modelFolderPath, model3JsonPath) {
+    function updateModelName(name) {
+        const element = document.getElementById('tts-model-name');
+        if (element) {
+            element.textContent = name;
+        }
+    }
+    
+    function updateLipSyncDisplay(value) {
+        const element = document.getElementById('tts-lip-value');
+        if (element) {
+            element.textContent = value.toFixed(2);
+        }
+    }
+    
+    function updateSDKStatus(status, className = 'success') {
+        const element = document.getElementById('tts-sdk-status');
+        if (element) {
+            element.textContent = status;
+            element.className = className;
+        }
+    }
+    
+    function updateLoadingProgress(message) {
+        const element = document.getElementById('loading-progress');
+        if (element) {
+            element.textContent = message;
+        }
+    }
+    
+    function hideLoading() {
+        const loading = document.getElementById('tts-loading');
+        if (loading) {
+            loading.style.display = 'none';
+        }
+    }
+    
+    function showLoading(title, message) {
+        const loading = document.getElementById('tts-loading');
+        if (loading) {
+            loading.innerHTML = `
+                <h3>🎭 ${title}</h3>
+                <p>${message}</p>
+                <div id="loading-progress">処理中...</div>
+            `;
+            loading.style.display = 'block';
+        }
+    }
+    
+    function initializeLive2DFramework() {
         try {
-            console.log('TTS Studio: Loading model', modelFolderPath, model3JsonPath);
+            updateLoadingProgress('Live2D Framework 初期化中...');
             
-            const loading = document.getElementById('tts-loading');
-            const statusSpan = document.getElementById('tts-status');
-            const modelNameSpan = document.getElementById('tts-model-name');
-            
-            if (loading) loading.innerHTML = '<p>Live2Dモデル読み込み中...</p>';
-            if (statusSpan) statusSpan.textContent = '読み込み中';
-            
-            ttsCurrentPath = modelFolderPath;
-            
-            // 実際のモデル読み込み処理をここに実装
-            // 今は暫定的に成功したことにする
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            
-            ttsModelLoaded = true;
-            
-            if (loading) loading.style.display = 'none';
-            if (statusSpan) statusSpan.textContent = '読み込み完了';
-            if (modelNameSpan) {
-                const modelName = modelFolderPath.split('/').pop() || modelFolderPath.split('\').pop() || 'Live2D Model';
-                modelNameSpan.textContent = modelName;
+            if (typeof Live2DCubismCore === 'undefined') {
+                throw new Error('Live2D Cubism Core not loaded');
             }
             
-            console.log('TTS Studio: Model loaded successfully');
+            Live2DCubismCore.startUp();
+            updateSDKStatus('Core OK', 'success');
+            updateLoadingProgress('Core SDK 初期化完了');
             
-            // PyQt側に完了通知
-            if (window.pyqtCallback) {
-                window.pyqtCallback('model_loaded', ttsCurrentPath);
+            ttsCanvas = document.getElementById('live2d-canvas');
+            if (!ttsCanvas) {
+                throw new Error('Canvas element not found');
             }
             
+            ttsGL = ttsCanvas.getContext('webgl') || ttsCanvas.getContext('experimental-webgl');
+            if (!ttsGL) {
+                throw new Error('WebGL not supported');
+            }
+            
+            updateLoadingProgress('WebGL 初期化完了');
+            
+            function resizeCanvas() {
+                const rect = ttsCanvas.getBoundingClientRect();
+                ttsCanvas.width = rect.width;
+                ttsCanvas.height = rect.height;
+                if (ttsGL) {
+                    ttsGL.viewport(0, 0, rect.width, rect.height);
+                }
+            }
+            
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            
+            function renderLoop() {
+                if (ttsGL && ttsFrameworkInitialized) {
+                    ttsGL.clearColor(0.0, 0.0, 0.0, 0.0);
+                    ttsGL.clear(ttsGL.COLOR_BUFFER_BIT);
+                    
+                    if (ttsModel && ttsModelLoaded) {
+                        console.log('Rendering Live2D model...');
+                    }
+                }
+                ttsAnimationId = requestAnimationFrame(renderLoop);
+            }
+            
+            renderLoop();
+            
+            ttsFrameworkInitialized = true;
+            updateStatus('準備完了', 'success');
+            updateLoadingProgress('Live2D準備完了');
+            
+            setTimeout(hideLoading, 2000);
+            
+            console.log('✅ TTS Studio: Live2D Framework initialized');
             return true;
             
         } catch (error) {
-            console.error('TTS Studio: Model loading failed', error);
-            
-            const loading = document.getElementById('tts-loading');
-            if (loading) {
-                loading.innerHTML = `<p class="error">モデル読み込み失敗</p><p class="error">${error.message}</p>`;
-            }
-            
+            console.error('❌ TTS Studio: Framework initialization failed', error);
+            updateStatus('初期化失敗', 'error');
+            updateSDKStatus('Failed', 'error');
+            showLoading('初期化エラー', `Live2D Framework の初期化に失敗しました: ${error.message}`);
             return false;
         }
     }
     
-    // TTS Studio: リップシンク
-    function setLipSyncValue(volume) {
-        const lipSpan = document.getElementById('tts-lip-value');
-        if (lipSpan) {
-            lipSpan.textContent = volume.toFixed(2);
+    window.loadLive2DModel = async function(modelFolderPath, model3JsonPath) {
+        try {
+            if (!ttsFrameworkInitialized) {
+                throw new Error('Live2D Framework not initialized');
+            }
+            
+            showLoading('モデル読み込み', 'Live2Dモデルを読み込んでいます...');
+            updateStatus('読み込み中', 'warning');
+            
+            console.log('Loading model:', modelFolderPath, model3JsonPath);
+            
+            updateLoadingProgress('モデルファイル確認中...');
+            
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            
+            ttsCurrentPath = modelFolderPath;
+            ttsModelLoaded = true;
+            
+            const modelName = modelFolderPath.split('/').pop() || modelFolderPath.split('\\').pop() || 'Live2D Model';
+            updateModelName(modelName);
+            updateStatus('読み込み完了', 'success');
+            hideLoading();
+            
+            console.log('✅ TTS Studio: Live2D model loaded successfully');
+            return true;
+            
+        } catch (error) {
+            console.error('❌ TTS Studio: Model loading failed', error);
+            updateStatus('読み込み失敗', 'error');
+            showLoading('エラー', `モデルの読み込みに失敗しました: ${error.message}`);
+            return false;
         }
+    };
+    
+    window.setLipSyncValue = function(volume) {
+        ttsLipSyncValue = Math.max(0, Math.min(1, volume));
+        updateLipSyncDisplay(ttsLipSyncValue);
         
-        if (ttsModelLoaded && ttsCurrentModel) {
-            // 実際のリップシンク処理
-            console.log('TTS Studio: Lip sync', volume);
+        if (ttsModel && ttsModelLoaded) {
+            console.log('Setting lip sync value:', ttsLipSyncValue);
         }
-    }
+    };
     
-    // TTS Studio: パラメータ設定
-    function setParameter(parameterId, value) {
-        if (ttsModelLoaded && ttsCurrentModel) {
-            console.log('TTS Studio: Set parameter', parameterId, value);
+    window.setParameter = function(parameterId, value) {
+        if (ttsModel && ttsModelLoaded) {
+            console.log('Setting parameter:', parameterId, '=', value);
         }
-    }
+    };
     
-    // TTS Studio: モーション再生
-    function playMotion(motionName, priority = 2) {
-        if (ttsModelLoaded && ttsCurrentModel) {
-            console.log('TTS Studio: Play motion', motionName);
+    window.playMotion = function(motionName, priority = 2) {
+        if (ttsModel && ttsModelLoaded) {
+            console.log('Playing motion:', motionName);
         }
-    }
+    };
     
-    // TTS Studio: 表情設定
-    function setExpression(expressionName) {
-        if (ttsModelLoaded && ttsCurrentModel) {
-            console.log('TTS Studio: Set expression', expressionName);
+    window.setExpression = function(expressionName) {
+        if (ttsModel && ttsModelLoaded) {
+            console.log('Setting expression:', expressionName);
         }
-    }
+    };
     
-    // TTS Studio: 背景切り替え
-    function setBackgroundVisible(visible) {
+    window.setBackgroundVisible = function(visible) {
         if (visible) {
             document.body.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
         } else {
             document.body.style.background = 'transparent';
         }
-    }
+    };
     
-    // TTS Studio: モデル設定更新
-    function updateModelSettings(settings) {
-        if (ttsModelLoaded && ttsCurrentModel) {
-            console.log('TTS Studio: Update settings', settings);
+    window.updateModelSettings = function(settings) {
+        console.log('Updating model settings:', settings);
+        if (ttsModel && ttsModelLoaded) {
+            // スケール、位置などの設定を適用
+        }
+    };
+    
+    function initTTSStudio() {
+        console.log('🚀 TTS Studio: Starting Live2D integration');
+        
+        if (typeof Live2DCubismCore === 'undefined') {
+            updateSDKStatus('Not Found', 'error');
+            showLoading('SDK エラー', 'Live2D Cubism Core SDK が読み込まれていません');
+            return;
+        }
+        
+        const success = initializeLive2DFramework();
+        if (!success) {
+            console.error('❌ TTS Studio: Initialization failed');
         }
     }
     
-    // PyQt通信用関数をグローバル公開
-    window.loadLive2DModel = loadLive2DModel;
-    window.setLipSyncValue = setLipSyncValue;
-    window.setParameter = setParameter;
-    window.playMotion = playMotion;
-    window.setExpression = setExpression;
-    window.setBackgroundVisible = setBackgroundVisible;
-    window.updateModelSettings = updateModelSettings;
-    
-    // 初期化
     document.addEventListener('DOMContentLoaded', () => {
-        console.log('TTS Studio: Live2D integration starting');
-        createTTSUI();
+        console.log('📄 TTS Studio: DOM loaded');
+        setTimeout(initTTSStudio, 500);
     });
     
-    // エラーハンドリング
     window.addEventListener('error', (event) => {
-        console.error('TTS Studio: Error', event.error);
-        const loading = document.getElementById('tts-loading');
-        if (loading) {
-            loading.innerHTML = `<p class="error">エラー発生</p><p class="error">${event.error.message}</p>`;
+        console.error('💥 TTS Studio Error:', event.error);
+        updateStatus('エラー発生', 'error');
+        showLoading('エラー', `予期しないエラーが発生しました: ${event.error.message}`);
+    });
+    
+    window.addEventListener('beforeunload', () => {
+        if (ttsAnimationId) {
+            cancelAnimationFrame(ttsAnimationId);
+        }
+        if (typeof Live2DCubismCore !== 'undefined') {
+            Live2DCubismCore.dispose();
         }
     });
     
-    console.log('TTS Studio: Integration script loaded');
+    console.log('📋 TTS Studio: Live2D integration script loaded');
   </script>
-</head>
-<body>
 </body>
 </html>

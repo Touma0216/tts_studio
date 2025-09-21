@@ -1,0 +1,136 @@
+
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Live2D Loading</title>
+            <style>
+                body {
+                    margin: 0;
+                    padding: 40px;
+                    font-family: Arial, sans-serif;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    text-align: center;
+                }
+                .loading-container {
+                    background: rgba(0,0,0,0.8);
+                    padding: 30px;
+                    border-radius: 10px;
+                    max-width: 500px;
+                    margin: 0 auto;
+                }
+                .loading-title {
+                    font-size: 24px;
+                    margin-bottom: 20px;
+                }
+                .loading-message {
+                    font-size: 16px;
+                    line-height: 1.5;
+                }
+                .retry-button {
+                    background: #1976d2;
+                    color: white;
+                    border: none;
+                    padding: 10px 20px;
+                    border-radius: 5px;
+                    font-size: 16px;
+                    cursor: pointer;
+                    margin-top: 20px;
+                }
+                .retry-button:hover {
+                    background: #1565c0;
+                }
+                .spinner {
+                    border: 4px solid rgba(255,255,255,0.3);
+                    border-top: 4px solid white;
+                    border-radius: 50%;
+                    width: 40px;
+                    height: 40px;
+                    animation: spin 1s linear infinite;
+                    margin: 20px auto;
+                }
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="loading-container">
+                <div class="loading-title">🎭 Live2D Service</div>
+                <div class="spinner"></div>
+                <div class="loading-message">
+                    Live2Dサーバーの起動を待機中...<br>
+                    <small>バックグラウンドでnpm serveを実行しています</small>
+                </div>
+                <button class="retry-button" onclick="checkServer()">接続確認</button>
+            </div>
+            
+            <script>
+                let retryCount = 0;
+                const maxRetries = 30;
+                
+                // TTS Studio統合関数（フォールバック）
+                window.loadLive2DModel = function(modelFolderPath, model3JsonPath) {
+                    console.log('Live2D server not ready, model loading skipped');
+                    return Promise.resolve(false);
+                };
+                
+                window.setLipSyncValue = function(volume) {
+                    console.log('Live2D server not ready, lip sync skipped');
+                };
+                
+                window.setParameter = function(parameterId, value) {
+                    console.log('Live2D server not ready, parameter skipped');
+                };
+                
+                window.playMotion = function(motionName) {
+                    console.log('Live2D server not ready, motion skipped');
+                };
+                
+                window.setExpression = function(expressionName) {
+                    console.log('Live2D server not ready, expression skipped');
+                };
+                
+                window.setBackgroundVisible = function(visible) {
+                    console.log('Live2D server not ready, background skipped');
+                };
+                
+                window.updateModelSettings = function(settings) {
+                    console.log('Live2D server not ready, settings skipped');
+                };
+                
+                // サーバー接続チェック
+                function checkServer() {
+                    console.log(`Checking server... attempt ${retryCount + 1}/${maxRetries}`);
+                    
+                    fetch('http://localhost:5000', { 
+                        method: 'GET',
+                        mode: 'cors',
+                        cache: 'no-cache'
+                    })
+                    .then(response => {
+                        if (response.ok) {
+                            console.log('✅ Server found! Redirecting...');
+                            window.location.href = 'http://localhost:5000';
+                        } else {
+                            throw new Error('Server not ready');
+                        }
+                    })
+                    .catch(error => {
+                        retryCount++;
+                        if (retryCount < maxRetries) {
+                            setTimeout(checkServer, 2000);
+                        } else {
+                            document.querySelector('.loading-message').innerHTML = 
+                                'Live2Dサーバーの起動に失敗しました。<br><small>手動でnpm run serveを実行してください</small>';
+                        }
+                    });
+                }
+                
+                // 自動チェック開始
+                setTimeout(checkServer, 2000);
+            </script>
+        </body>
+        </html>
+        
