@@ -23,8 +23,13 @@ from core.audio_analyzer import AudioAnalyzer
 from core.audio_effects_processor import AudioEffectsProcessor
 
 class TTSStudioMainWindow(QMainWindow):
-    def __init__(self):
+    # ★修正箇所: __init__メソッドで live2d_url を受け取れるように変更
+    def __init__(self, live2d_url=None):
         super().__init__()
+        
+        # ★修正箇所: 受け取った live2d_url をインスタンス変数として保存
+        self.live2d_url = live2d_url
+        
         self.tts_engine = TTSEngine()
         self.model_manager = ModelManager()
         
@@ -134,7 +139,8 @@ class TTSStudioMainWindow(QMainWindow):
         left_layout.addLayout(controls)
 
         # --- 右ペイン（キャラクター表示エリア - Live2D統合版） ---
-        self.character_display = CharacterDisplayWidget(self)
+        # ★修正箇所: CharacterDisplayWidgetのインスタンス化時に live2d_url を渡す
+        self.character_display = CharacterDisplayWidget(live2d_url=self.live2d_url, parent=self)
 
         # --- スプリッター組み立て ---
         self.main_splitter.addWidget(left_widget)
@@ -146,7 +152,6 @@ class TTSStudioMainWindow(QMainWindow):
         
         main.addWidget(self.main_splitter)
 
-    # --- ボタン用CSS ---
     def _blue_btn_css(self) -> str:
         return """
             QPushButton {
@@ -225,20 +230,12 @@ class TTSStudioMainWindow(QMainWindow):
                     self.main_splitter.setSizes([new_left_width, new_right_width])
     
     def resizeEvent(self, event):
-        """ウィンドウリサイズ時の処理"""
         super().resizeEvent(event)
-        # character_displayが自身のresizeEventで内部ウィジェットを処理する
-    
-    # ================================
-    # Live2D関連メソッド（新規追加）
-    # ================================
     
     def on_live2d_model_loaded(self, model_path):
-        """Live2Dモデル読み込み完了時"""
         model_name = Path(model_path).name
         print(f"Live2Dモデルが読み込まれました: {model_name}")
         
-        # ウィンドウタイトルを更新
         current_title = self.windowTitle()
         if " - " in current_title:
             base_title = current_title.split(" - ")[0]
@@ -248,38 +245,28 @@ class TTSStudioMainWindow(QMainWindow):
         self.setWindowTitle(f"{base_title} - {model_name} (Live2D)")
     
     def on_lip_sync_update_requested(self, volume):
-        """リップシンク更新要求時"""
         self.current_audio_volume = volume
         self.character_display.update_lip_sync(volume)
     
     def start_lipsync_monitoring(self):
-        """リップシンクモニタリング開始"""
         if not self.lipsync_timer.isActive():
-            self.lipsync_timer.start(50)  # 20fps でリップシンク更新
+            self.lipsync_timer.start(50)
     
     def stop_lipsync_monitoring(self):
-        """リップシンクモニタリング停止"""
         if self.lipsync_timer.isActive():
             self.lipsync_timer.stop()
         self.current_audio_volume = 0.0
         self.character_display.update_lip_sync(0.0)
     
     def update_lipsync(self):
-        """リップシンク更新（タイマーから呼ばれる）"""
-        # 実際の音声再生中の音量を取得する処理
-        # 現在は簡易実装
         if self.last_generated_audio is not None:
-            # 音声の現在再生位置での音量を計算（実装省略）
-            volume = self.current_audio_volume * 0.95  # 徐々に減衰
+            volume = self.current_audio_volume * 0.95
             self.current_audio_volume = max(0.0, volume)
             self.character_display.update_lip_sync(self.current_audio_volume)
             
             if self.current_audio_volume < 0.01:
                 self.stop_lipsync_monitoring()
     
-    # ================================
-    # 音声処理統合設定
-    # ================================
     def setup_audio_processing_integration(self):
         self.tabbed_audio_control.cleaner_control.analyze_requested.connect(self.handle_cleaner_analysis_request)
     
@@ -325,9 +312,6 @@ class TTSStudioMainWindow(QMainWindow):
         finally:
             if progress: progress.deleteLater()
 
-    # ================================
-    # モデル管理
-    # ================================
     def open_model_loader(self):
         dialog = ModelLoaderDialog(self)
         dialog.model_loaded.connect(self.load_model)
@@ -369,7 +353,6 @@ class TTSStudioMainWindow(QMainWindow):
                 
                 model_name = Path(paths["model_path"]).parent.name
                 
-                # ウィンドウタイトル更新（Live2Dモデルも考慮）
                 if hasattr(self.character_display, 'current_live2d_folder') and self.character_display.current_live2d_folder:
                     live2d_name = Path(self.character_display.current_live2d_folder).name
                     self.setWindowTitle(f"TTSスタジオ - {model_name} - {live2d_name} (Live2D)")
@@ -397,9 +380,6 @@ class TTSStudioMainWindow(QMainWindow):
             self.setWindowTitle(f"TTSスタジオ - {model_name}")
             self.update_emotion_ui_after_model_load()
 
-    # ================================
-    # 音声合成・保存（Live2Dリップシンク対応）
-    # ================================
     def apply_audio_cleaning(self, audio, sample_rate):
         if not self.tabbed_audio_control.is_cleaner_enabled(): return audio
         try:
@@ -430,7 +410,6 @@ class TTSStudioMainWindow(QMainWindow):
             audio = self.apply_audio_effects(audio, sr)
             self.last_generated_audio, self.last_sample_rate = audio, sr
             
-            # Live2Dリップシンク開始
             max_volume = np.abs(audio).max()
             self.current_audio_volume = max_volume
             self.start_lipsync_monitoring()
@@ -474,7 +453,6 @@ class TTSStudioMainWindow(QMainWindow):
         final_audio, sr = self._synthesize_and_process_all()
         self.sequential_play_btn.setEnabled(True)
         if final_audio is not None:
-            # Live2Dリップシンク開始
             max_volume = np.abs(final_audio).max()
             self.current_audio_volume = max_volume
             self.start_lipsync_monitoring()
@@ -512,9 +490,6 @@ class TTSStudioMainWindow(QMainWindow):
             sf.write(file_path, final_audio, sr)
             QMessageBox.information(self, "完了", f"連続音声ファイルを保存しました。")
 
-    # ================================
-    # UI連携
-    # ================================
     def on_text_row_added(self, row_id, row_number):
         self.tabbed_audio_control.add_text_row(row_id, row_number)
 
@@ -538,7 +513,6 @@ class TTSStudioMainWindow(QMainWindow):
     
     def closeEvent(self, event):
         try:
-            # Live2Dリップシンク停止
             self.stop_lipsync_monitoring()
             
             cleaner_control = self.tabbed_audio_control.cleaner_control
@@ -549,7 +523,6 @@ class TTSStudioMainWindow(QMainWindow):
             if self.tts_engine: self.tts_engine.unload_model()
             self.model_manager.save_history()
             
-            # Live2D履歴も保存
             if hasattr(self.character_display, 'live2d_manager'):
                 self.character_display.live2d_manager.save_history()
                 

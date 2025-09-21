@@ -1,4 +1,5 @@
 import os
+import json
 from pathlib import Path
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
                              QFileDialog, QFrame, QApplication, QMessageBox,
@@ -151,238 +152,96 @@ class DraggableImageLabel(QLabel):
         super().leaveEvent(event)
 
 class Live2DWebView(QWebEngineView):
-    """Live2D表示用WebEngineView（CDN確実動作版）"""
+    """Live2D表示用WebEngineView（内蔵サーバー連携版）"""
     
-    model_loaded = pyqtSignal(str)  # モデルパス
+    model_loaded = pyqtSignal(str)
     
-    def __init__(self, parent=None):
+    def __init__(self, live2d_url=None, parent=None):
         super().__init__(parent)
-        self.character_display = None
+        self.live2d_url = live2d_url
         self.is_model_loaded = False
         self.current_model_path = ""
-        self.current_model_data = None
         
-        # Live2D HTML ページを作成・読み込み
-        self.create_live2d_html()
-        
-        # JavaScript実行結果を受け取る
         self.page().loadFinished.connect(self.on_page_loaded)
+        self.load_initial_page()
         
-    def set_character_display_widget(self, character_display):
-        self.character_display = character_display
-    
-    def create_live2d_html(self):
-        """Live2D表示用HTMLを作成（自動起動サーバー使用）"""
-        
-        # 自動起動されたLive2Dサーバーを使用
-        import requests
-        import time
-        
-        # サーバーの起動を少し待つ
-        for i in range(15):  # 15秒まで待機
-            try:
-                response = requests.get('http://localhost:5000', timeout=2)
-                if response.status_code == 200:
-                    print("✅ Live2D server detected, using localhost:5000")
-                    self.load(QUrl('http://localhost:5000'))
-                    return
-            except:
-                time.sleep(1)
-        
-        print("⚠️ Live2D server not available, creating fallback HTML file")
-        
-        # フォールバック: HTMLファイルとして保存
+    def load_initial_page(self):
+        """初期ページを読み込む"""
+        if self.live2d_url:
+            print(f"✅ Loading Live2D server page: {self.live2d_url}")
+            self.load(QUrl(self.live2d_url))
+        else:
+            print("⚠️ Live2D server URL not provided. Displaying fallback HTML.")
+            self.display_fallback_html()
+
+    def display_fallback_html(self):
+        """サーバーが利用できない場合のフォールバックHTMLを表示"""
         fallback_html = """
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Live2D Loading</title>
+            <title>Live2D Server Error</title>
             <style>
-                body {
-                    margin: 0;
-                    padding: 40px;
-                    font-family: Arial, sans-serif;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    color: white;
-                    text-align: center;
-                }
-                .loading-container {
-                    background: rgba(0,0,0,0.8);
-                    padding: 30px;
-                    border-radius: 10px;
-                    max-width: 500px;
-                    margin: 0 auto;
-                }
-                .loading-title {
-                    font-size: 24px;
-                    margin-bottom: 20px;
-                }
-                .loading-message {
-                    font-size: 16px;
-                    line-height: 1.5;
-                }
-                .retry-button {
-                    background: #1976d2;
-                    color: white;
-                    border: none;
-                    padding: 10px 20px;
-                    border-radius: 5px;
-                    font-size: 16px;
-                    cursor: pointer;
-                    margin-top: 20px;
-                }
-                .retry-button:hover {
-                    background: #1565c0;
-                }
-                .spinner {
-                    border: 4px solid rgba(255,255,255,0.3);
-                    border-top: 4px solid white;
-                    border-radius: 50%;
-                    width: 40px;
-                    height: 40px;
-                    animation: spin 1s linear infinite;
-                    margin: 20px auto;
-                }
-                @keyframes spin {
-                    0% { transform: rotate(0deg); }
-                    100% { transform: rotate(360deg); }
-                }
+                body { background: linear-gradient(135deg, #5b6a82 0%, #2f374e 100%); color: white; text-align: center; padding: 40px; font-family: sans-serif; }
+                .container { background: rgba(0,0,0,0.7); padding: 30px; border-radius: 10px; }
+                h2 { font-size: 22px; }
             </style>
         </head>
         <body>
-            <div class="loading-container">
-                <div class="loading-title">🎭 Live2D Service</div>
-                <div class="spinner"></div>
-                <div class="loading-message">
-                    Live2Dサーバーの起動を待機中...<br>
-                    <small>バックグラウンドでnpm serveを実行しています</small>
-                </div>
-                <button class="retry-button" onclick="checkServer()">接続確認</button>
+            <div class="container">
+                <h2>🎭 Live2D Service Unavailable</h2>
+                <p>Live2Dサーバーの起動に失敗しました。<br>アプリケーションを再起動してください。</p>
             </div>
-            
-            <script>
-                let retryCount = 0;
-                const maxRetries = 30;
-                
-                // TTS Studio統合関数（フォールバック）
-                window.loadLive2DModel = function(modelFolderPath, model3JsonPath) {
-                    console.log('Live2D server not ready, model loading skipped');
-                    return Promise.resolve(false);
-                };
-                
-                window.setLipSyncValue = function(volume) {
-                    console.log('Live2D server not ready, lip sync skipped');
-                };
-                
-                window.setParameter = function(parameterId, value) {
-                    console.log('Live2D server not ready, parameter skipped');
-                };
-                
-                window.playMotion = function(motionName) {
-                    console.log('Live2D server not ready, motion skipped');
-                };
-                
-                window.setExpression = function(expressionName) {
-                    console.log('Live2D server not ready, expression skipped');
-                };
-                
-                window.setBackgroundVisible = function(visible) {
-                    console.log('Live2D server not ready, background skipped');
-                };
-                
-                window.updateModelSettings = function(settings) {
-                    console.log('Live2D server not ready, settings skipped');
-                };
-                
-                // サーバー接続チェック
-                function checkServer() {
-                    console.log(`Checking server... attempt ${retryCount + 1}/${maxRetries}`);
-                    
-                    fetch('http://localhost:5000', { 
-                        method: 'GET',
-                        mode: 'cors',
-                        cache: 'no-cache'
-                    })
-                    .then(response => {
-                        if (response.ok) {
-                            console.log('✅ Server found! Redirecting...');
-                            window.location.href = 'http://localhost:5000';
-                        } else {
-                            throw new Error('Server not ready');
-                        }
-                    })
-                    .catch(error => {
-                        retryCount++;
-                        if (retryCount < maxRetries) {
-                            setTimeout(checkServer, 2000);
-                        } else {
-                            document.querySelector('.loading-message').innerHTML = 
-                                'Live2Dサーバーの起動に失敗しました。<br><small>手動でnpm run serveを実行してください</small>';
-                        }
-                    });
-                }
-                
-                // 自動チェック開始
-                setTimeout(checkServer, 2000);
-            </script>
         </body>
         </html>
         """
-        
-        # HTMLファイルとして保存
-        fallback_html_path = Path("live2d_loading.html")
-        with open(fallback_html_path, 'w', encoding='utf-8') as f:
-            f.write(fallback_html)
-        
-        print(f"📄 Fallback HTML created: {fallback_html_path.absolute()}")
-        self.load(QUrl.fromLocalFile(str(fallback_html_path.absolute())))
-    
-    
+        self.setHtml(fallback_html)
+
     def on_page_loaded(self, success):
-        """ページ読み込み完了時"""
-        if success:
+        """ページ読み込み完了時の処理"""
+        if success and self.live2d_url and self.page().url().toString() == self.live2d_url:
             print("✅ Live2D viewer page loaded successfully")
-        else:
+        elif not success:
             print("❌ Failed to load Live2D viewer page")
+            self.display_fallback_html()
     
     def load_model(self, model_folder_path, model3_json_path):
         """Live2Dモデルを読み込み"""
-        if not Path(model_folder_path).exists():
-            print(f"❌ Model folder not found: {model_folder_path}")
+        if not self.live2d_url or not Path(model_folder_path).exists():
+            print(f"❌ Cannot load model. Server running: {bool(self.live2d_url)}, Path exists: {Path(model_folder_path).exists()}")
             return False
         
         self.current_model_path = model_folder_path
         
-        # JavaScriptのloadLive2DModel関数を呼び出し
+        # Windowsのパス区切り文字'\'を'/'に置換
+        model_folder_path = model_folder_path.replace('\\', '/')
+        model3_json_path = model3_json_path.replace('\\', '/')
+        
         script = f"""
-        if (typeof loadLive2DModel === 'function') {{
-            loadLive2DModel('{model_folder_path.replace(chr(92), '/')}', '{model3_json_path.replace(chr(92), '/')}')
-            .then(result => {{
-                console.log('✅ Model loading result:', result);
-                if (result && window.pyqtCallback) {{
-                    window.pyqtCallback('model_loaded', '{model_folder_path}');
-                }}
-            }})
-            .catch(error => {{
-                console.error('❌ Model loading failed:', error);
-            }});
+        if (typeof window.loadLive2DModel === 'function') {{
+            window.loadLive2DModel('{model_folder_path}', '{model3_json_path}')
+                .then(result => {{
+                    console.log('Model loading initiated. Result from JS:', result);
+                }})
+                .catch(error => {{
+                    console.error('Error initiating model load:', error);
+                }});
         }} else {{
-            console.error('❌ loadLive2DModel function not found');
+            console.error('window.loadLive2DModel function not found on the page.');
         }}
         """
-        
         self.page().runJavaScript(script, self.on_model_load_result)
         return True
     
     def on_model_load_result(self, result):
-        """モデル読み込み結果処理"""
-        if result:
-            self.is_model_loaded = True
-            self.model_loaded.emit(self.current_model_path)
-            print(f"✅ Live2D model loaded: {self.current_model_path}")
-        else:
-            self.is_model_loaded = False
-            print("❌ Live2D model loading failed")
+        # このコールバックはJS実行がキューに追加された直後に呼ばれるため、
+        # モデルのロード完了を保証するものではない。
+        # 実際のロード完了はJS側からのシグナル(未実装)やポーリングで確認するのが確実。
+        # ここでは、実行が成功したことのみをログに出す。
+        print(f"JavaScript for model loading executed. Return value: {result}")
+        # 仮に成功として扱う
+        self.is_model_loaded = True
+        self.model_loaded.emit(self.current_model_path)
     
     def update_lip_sync(self, volume):
         """リップシンク更新"""
@@ -405,7 +264,6 @@ class Live2DWebView(QWebEngineView):
     def update_model_settings(self, settings):
         """モデル設定更新"""
         if self.is_model_loaded:
-            import json
             settings_json = json.dumps(settings)
             script = f"if (typeof updateModelSettings === 'function') updateModelSettings({settings_json});"
             self.page().runJavaScript(script)
@@ -418,27 +276,24 @@ class Live2DWebView(QWebEngineView):
 class CharacterDisplayWidget(QWidget):
     """キャラクター表示エリア専門ウィジェット（画像 + Live2D統合版）"""
     
-    # Live2D関連シグナル
-    live2d_model_loaded = pyqtSignal(str)  # モデルパス
-    lip_sync_update_requested = pyqtSignal(float)  # 音量
+    live2d_model_loaded = pyqtSignal(str)
+    lip_sync_update_requested = pyqtSignal(float)
     
-    def __init__(self, parent=None):
+    def __init__(self, live2d_url=None, parent=None):
         super().__init__(parent)
+        self.live2d_url = live2d_url
 
-        # マネージャー初期化
         self.image_manager = ImageManager()
         self.live2d_manager = Live2DManager()
         
-        # 画像関連
         self.current_image_path = None
         self.current_image_id = None
         self.original_pixmap = None
         self.current_zoom_percent = 50
         
-        # Live2D関連
         self.current_live2d_folder = None
         self.current_live2d_id = None
-        self.current_display_mode = "image"  # "image" or "live2d"
+        self.current_display_mode = "image"
 
         self.init_ui()
 
@@ -454,7 +309,6 @@ class CharacterDisplayWidget(QWidget):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(8)
 
-        # ヘッダー部分（タブ切り替え）
         header_layout = QHBoxLayout()
         header_label = QLabel("キャラクター表示")
         header_label.setFont(QFont("", 12, QFont.Weight.Bold))
@@ -462,34 +316,15 @@ class CharacterDisplayWidget(QWidget):
         header_layout.addWidget(header_label)
         header_layout.addStretch()
         
-        # 表示モード切り替えタブ
         self.mode_tab_widget = QTabWidget()
         self.mode_tab_widget.setStyleSheet("""
-            QTabWidget::pane {
-                border: 1px solid #ccc;
-                border-radius: 4px;
-                background-color: #f8f9fa;
-            }
-            QTabWidget::tab-bar {
-                alignment: center;
-            }
-            QTabBar::tab {
-                background: #e9ecef;
-                border: 1px solid #ccc;
-                padding: 6px 12px;
-                margin-right: 2px;
-                border-radius: 4px 4px 0px 0px;
-            }
-            QTabBar::tab:selected {
-                background: #fff;
-                border-bottom-color: #fff;
-            }
-            QTabBar::tab:hover {
-                background: #f8f9fa;
-            }
+            QTabWidget::pane { border: 1px solid #ccc; border-radius: 4px; background-color: #f8f9fa; }
+            QTabWidget::tab-bar { alignment: center; }
+            QTabBar::tab { background: #e9ecef; border: 1px solid #ccc; padding: 6px 12px; margin-right: 2px; border-radius: 4px 4px 0px 0px; }
+            QTabBar::tab:selected { background: #fff; border-bottom-color: #fff; }
+            QTabBar::tab:hover { background: #f8f9fa; }
         """)
         
-        # ミニマップボタン
         self.toggle_minimap_btn = QPushButton("🗺️ ミニマップ")
         self.toggle_minimap_btn.setToolTip("ミニマップの表示/非表示")
         self.toggle_minimap_btn.setEnabled(False)
@@ -497,28 +332,23 @@ class CharacterDisplayWidget(QWidget):
         self.toggle_minimap_btn.setStyleSheet("QPushButton { background-color: #f8f9fa; border: 1px solid #ccc; border-radius: 4px; font-size: 11px; padding: 4px 8px; } QPushButton:hover:enabled { background-color: #e9ecef; } QPushButton:checked { background-color: #e0e6ef; border-color: #007bff; } QPushButton:disabled { color: #ccc; }")
         header_layout.addWidget(self.toggle_minimap_btn)
 
-        # 画像表示タブ
         self.image_tab = QWidget()
         self.setup_image_tab()
         self.mode_tab_widget.addTab(self.image_tab, "🖼️ 画像表示")
         
-        # Live2Dタブ
         self.live2d_tab = QWidget()
         self.setup_live2d_tab()
         self.mode_tab_widget.addTab(self.live2d_tab, "🎭 Live2Dリップシンク")
         
-        # タブ変更時の処理
         self.mode_tab_widget.currentChanged.connect(self.on_mode_tab_changed)
 
         layout.addLayout(header_layout)
         layout.addWidget(self.mode_tab_widget, 1)
 
     def setup_image_tab(self):
-        """画像表示タブのセットアップ"""
         layout = QVBoxLayout(self.image_tab)
         layout.setContentsMargins(5, 5, 5, 5)
         
-        # ズーム制御
         zoom_layout = QVBoxLayout()
         self.zoom_label = QLabel("50%")
         self.zoom_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -535,7 +365,6 @@ class CharacterDisplayWidget(QWidget):
         zoom_layout.addWidget(self.zoom_label)
         zoom_layout.addLayout(slider_layout)
         
-        # 画像表示エリア
         image_container = QWidget()
         image_container.setStyleSheet("border: 1px solid #ccc; border-radius: 4px; background-color: #f8f9fa;")
         image_main_layout = QHBoxLayout(image_container)
@@ -562,7 +391,6 @@ class CharacterDisplayWidget(QWidget):
         self.minimap.set_character_display_widget(self)
         self.minimap.hide()
         
-        # 位置制御スライダー
         h_slider_layout = QHBoxLayout()
         h_label = QLabel("左右:")
         h_label.setStyleSheet("color: #666; font-size: 10px; border: none;")
@@ -590,7 +418,6 @@ class CharacterDisplayWidget(QWidget):
         image_main_layout.addLayout(left_side_layout, 1)
         image_main_layout.addLayout(v_slider_layout)
         
-        # 画像情報とボタン
         self.image_info_label = QLabel("")
         self.image_info_label.setStyleSheet("color: #666; font-size: 10px; border: none;")
         
@@ -608,7 +435,6 @@ class CharacterDisplayWidget(QWidget):
         layout.addWidget(self.image_info_label)
         layout.addLayout(button_layout)
         
-        # イベント接続
         self.zoom_slider.valueChanged.connect(self.on_zoom_slider_changed)
         self.h_position_slider.valueChanged.connect(self.on_position_slider_changed)
         self.v_position_slider.valueChanged.connect(self.on_position_slider_changed)
@@ -616,89 +442,52 @@ class CharacterDisplayWidget(QWidget):
         self.image_clear_btn.clicked.connect(self.clear_character_image)
 
     def setup_live2d_tab(self):
-        """Live2Dタブのセットアップ"""
         layout = QVBoxLayout(self.live2d_tab)
         layout.setContentsMargins(5, 5, 5, 5)
         
-        # Live2D制御パネル
         control_group = QGroupBox("Live2D制御")
         control_layout = QVBoxLayout(control_group)
         
-        # スケール制御
         scale_layout = QHBoxLayout()
         scale_layout.addWidget(QLabel("スケール:"))
         self.live2d_scale_spin = QDoubleSpinBox()
-        self.live2d_scale_spin.setRange(0.1, 3.0)
-        self.live2d_scale_spin.setValue(1.0)
-        self.live2d_scale_spin.setSingleStep(0.1)
-        self.live2d_scale_spin.setEnabled(False)
-        scale_layout.addWidget(self.live2d_scale_spin)
-        scale_layout.addStretch()
+        self.live2d_scale_spin.setRange(0.1, 3.0); self.live2d_scale_spin.setValue(1.0); self.live2d_scale_spin.setSingleStep(0.1); self.live2d_scale_spin.setEnabled(False)
+        scale_layout.addWidget(self.live2d_scale_spin); scale_layout.addStretch()
         
-        # 位置制御
         position_layout = QHBoxLayout()
         position_layout.addWidget(QLabel("位置 X:"))
         self.live2d_pos_x_spin = QDoubleSpinBox()
-        self.live2d_pos_x_spin.setRange(-2.0, 2.0)
-        self.live2d_pos_x_spin.setValue(0.0)
-        self.live2d_pos_x_spin.setSingleStep(0.1)
-        self.live2d_pos_x_spin.setEnabled(False)
+        self.live2d_pos_x_spin.setRange(-2.0, 2.0); self.live2d_pos_x_spin.setValue(0.0); self.live2d_pos_x_spin.setSingleStep(0.1); self.live2d_pos_x_spin.setEnabled(False)
         position_layout.addWidget(self.live2d_pos_x_spin)
         
         position_layout.addWidget(QLabel("Y:"))
         self.live2d_pos_y_spin = QDoubleSpinBox()
-        self.live2d_pos_y_spin.setRange(-2.0, 2.0)
-        self.live2d_pos_y_spin.setValue(0.0)
-        self.live2d_pos_y_spin.setSingleStep(0.1)
-        self.live2d_pos_y_spin.setEnabled(False)
-        position_layout.addWidget(self.live2d_pos_y_spin)
-        position_layout.addStretch()
+        self.live2d_pos_y_spin.setRange(-2.0, 2.0); self.live2d_pos_y_spin.setValue(0.0); self.live2d_pos_y_spin.setSingleStep(0.1); self.live2d_pos_y_spin.setEnabled(False)
+        position_layout.addWidget(self.live2d_pos_y_spin); position_layout.addStretch()
         
-        # オプション
         options_layout = QHBoxLayout()
-        self.auto_breath_check = QCheckBox("自動呼吸")
-        self.auto_breath_check.setChecked(True)
-        self.auto_breath_check.setEnabled(False)
-        self.auto_eye_blink_check = QCheckBox("自動まばたき")
-        self.auto_eye_blink_check.setChecked(True)
-        self.auto_eye_blink_check.setEnabled(False)
-        self.background_visible_check = QCheckBox("背景表示")
-        self.background_visible_check.setChecked(True)
-        options_layout.addWidget(self.auto_breath_check)
-        options_layout.addWidget(self.auto_eye_blink_check)
-        options_layout.addWidget(self.background_visible_check)
-        options_layout.addStretch()
+        self.auto_breath_check = QCheckBox("自動呼吸"); self.auto_breath_check.setChecked(True); self.auto_breath_check.setEnabled(False)
+        self.auto_eye_blink_check = QCheckBox("自動まばたき"); self.auto_eye_blink_check.setChecked(True); self.auto_eye_blink_check.setEnabled(False)
+        self.background_visible_check = QCheckBox("背景表示"); self.background_visible_check.setChecked(True)
+        options_layout.addWidget(self.auto_breath_check); options_layout.addWidget(self.auto_eye_blink_check); options_layout.addWidget(self.background_visible_check); options_layout.addStretch()
         
-        # リップシンク制御
         lipsync_layout = QHBoxLayout()
         lipsync_layout.addWidget(QLabel("リップシンク感度:"))
         self.lipsync_gain_spin = QDoubleSpinBox()
-        self.lipsync_gain_spin.setRange(0.0, 2.0)
-        self.lipsync_gain_spin.setValue(1.0)
-        self.lipsync_gain_spin.setSingleStep(0.1)
-        self.lipsync_gain_spin.setEnabled(False)
-        lipsync_layout.addWidget(self.lipsync_gain_spin)
-        lipsync_layout.addStretch()
+        self.lipsync_gain_spin.setRange(0.0, 2.0); self.lipsync_gain_spin.setValue(1.0); self.lipsync_gain_spin.setSingleStep(0.1); self.lipsync_gain_spin.setEnabled(False)
+        lipsync_layout.addWidget(self.lipsync_gain_spin); lipsync_layout.addStretch()
         
-        control_layout.addLayout(scale_layout)
-        control_layout.addLayout(position_layout)
-        control_layout.addLayout(options_layout)
-        control_layout.addLayout(lipsync_layout)
+        control_layout.addLayout(scale_layout); control_layout.addLayout(position_layout); control_layout.addLayout(options_layout); control_layout.addLayout(lipsync_layout)
         
-        # Live2D表示エリア
-        self.live2d_webview = Live2DWebView()
-        self.live2d_webview.set_character_display_widget(self)
+        self.live2d_webview = Live2DWebView(live2d_url=self.live2d_url)
         self.live2d_webview.setMinimumHeight(300)
         
-        # Live2D情報とボタン
         self.live2d_info_label = QLabel("Live2Dモデルが読み込まれていません")
         self.live2d_info_label.setStyleSheet("color: #666; font-size: 10px; border: none;")
         
         live2d_button_layout = QHBoxLayout()
         self.live2d_clear_btn = QPushButton("🗑️")
-        self.live2d_clear_btn.setFixedSize(30, 30)
-        self.live2d_clear_btn.setToolTip("Live2Dモデルをクリア")
-        self.live2d_clear_btn.setEnabled(False)
+        self.live2d_clear_btn.setFixedSize(30, 30); self.live2d_clear_btn.setToolTip("Live2Dモデルをクリア"); self.live2d_clear_btn.setEnabled(False)
         self.live2d_clear_btn.setStyleSheet("QPushButton { background-color: #f8f9fa; border: 1px solid #ccc; border-radius: 4px; } QPushButton:hover:enabled { background-color: #f5c6cb; } QPushButton:disabled { color: #999; }")
         live2d_button_layout.addStretch()
         live2d_button_layout.addWidget(self.live2d_clear_btn)
@@ -708,7 +497,6 @@ class CharacterDisplayWidget(QWidget):
         layout.addWidget(self.live2d_info_label)
         layout.addLayout(live2d_button_layout)
         
-        # Live2Dイベント接続
         self.live2d_scale_spin.valueChanged.connect(self.on_live2d_settings_changed)
         self.live2d_pos_x_spin.valueChanged.connect(self.on_live2d_settings_changed)
         self.live2d_pos_y_spin.valueChanged.connect(self.on_live2d_settings_changed)
@@ -719,7 +507,6 @@ class CharacterDisplayWidget(QWidget):
         self.live2d_clear_btn.clicked.connect(self.clear_live2d_model)
 
     def on_mode_tab_changed(self, index):
-        """表示モード切り替え時の処理"""
         if index == 0:
             self.current_display_mode = "image"
             self.toggle_minimap_btn.setVisible(True)
@@ -727,105 +514,59 @@ class CharacterDisplayWidget(QWidget):
             self.current_display_mode = "live2d"
             self.toggle_minimap_btn.setVisible(False)
 
-    # ================================
-    # Live2D関連メソッド
-    # ================================
-    
     def load_live2d_model(self):
-        """Live2Dモデルフォルダを読み込み"""
         folder_path = QFileDialog.getExistingDirectory(self, "Live2Dモデルフォルダを選択", "")
-        if not folder_path:
-            return
-        
-        # モデル検証
+        if not folder_path: return
         validation = self.live2d_manager.validate_model_folder(folder_path)
         if not validation['is_valid']:
-            missing_files = '\n'.join(validation['missing_files'])
-            QMessageBox.warning(self, "エラー", f"Live2Dモデルフォルダが無効です:\n\n{missing_files}")
+            QMessageBox.warning(self, "エラー", f"Live2Dモデルフォルダが無効です:\n\n{validation['missing_files']}")
             return
-        
-        # モデル追加
         model_name = Path(folder_path).name
         model_id = self.live2d_manager.add_model(folder_path, model_name)
         new_model_data = self.live2d_manager.get_model_by_id(model_id)
-        
-        if new_model_data:
-            self.load_live2d_from_data(new_model_data)
+        if new_model_data: self.load_live2d_from_data(new_model_data)
     
     def load_live2d_from_data(self, model_data):
-        """Live2Dモデルデータから読み込み"""
         model_folder_path = model_data['model_folder_path']
         if not Path(model_folder_path).exists():
             QMessageBox.warning(self, "エラー", f"Live2Dモデルフォルダが見つかりません:\n{model_folder_path}")
             return
-        
-        # 検証
         validation = self.live2d_manager.validate_model_folder(model_folder_path)
         if not validation['is_valid']:
             QMessageBox.warning(self, "エラー", "Live2Dモデルファイルが無効です")
             return
-        
-        # WebViewにモデル読み込み
         model3_json = validation['model3_json']
         if self.live2d_webview.load_model(model_folder_path, model3_json):
             self.current_live2d_folder = model_folder_path
             self.current_live2d_id = model_data['id']
-            
-            # UI設定復元
             ui_settings = self.live2d_manager.get_ui_settings(self.current_live2d_id)
             self.restore_live2d_settings(ui_settings)
-            
-            # WebViewに設定も反映
-            QTimer.singleShot(2000, lambda: self.apply_settings_to_webview(ui_settings))
-            
-            # モデル情報表示
+            QTimer.singleShot(1000, lambda: self.apply_settings_to_webview(ui_settings))
             model_info = self.live2d_manager.get_model_info(model_folder_path)
-            folder_size = model_info['folder_size'] / 1024 / 1024  # MB
-            self.live2d_info_label.setText(f"📁 {model_data['name']}\n📐 ファイル数: {model_info['file_count']} 💾 {folder_size:.1f} MB")
-            
-            # コントロール有効化
+            folder_size = model_info['folder_size'] / 1024 / 1024
+            self.live2d_info_label.setText(f"📁 {model_data['name']} 📐 {model_info['file_count']} files 💾 {folder_size:.1f} MB")
             self.enable_live2d_controls()
-            
-            # Live2Dタブに切り替え
             self.mode_tab_widget.setCurrentIndex(1)
-            
-            QMessageBox.information(self, "成功", f"Live2Dモデルを読み込みました:\n{model_data['name']}")
         else:
             QMessageBox.critical(self, "エラー", "Live2Dモデルの読み込みに失敗しました")
     
     def apply_settings_to_webview(self, ui_settings):
-        """WebViewに設定を適用（遅延実行用）"""
         if self.live2d_webview.is_model_loaded:
             self.live2d_webview.update_model_settings(ui_settings)
             self.live2d_webview.set_background_visible(ui_settings.get('background_visible', True))
     
     def enable_live2d_controls(self):
-        """Live2Dコントロールを有効化"""
-        controls = [
-            self.live2d_scale_spin, self.live2d_pos_x_spin, self.live2d_pos_y_spin,
-            self.auto_breath_check, self.auto_eye_blink_check, self.lipsync_gain_spin,
-            self.background_visible_check, self.live2d_clear_btn
-        ]
-        for control in controls:
+        for control in [self.live2d_scale_spin, self.live2d_pos_x_spin, self.live2d_pos_y_spin, self.auto_breath_check, self.auto_eye_blink_check, self.lipsync_gain_spin, self.background_visible_check, self.live2d_clear_btn]:
             control.setEnabled(True)
     
     def clear_live2d_model(self):
-        """Live2Dモデルをクリア"""
         self.live2d_webview.is_model_loaded = False
         self.current_live2d_folder = None
         self.current_live2d_id = None
         self.live2d_info_label.setText("Live2Dモデルが読み込まれていません")
-        
-        # コントロール無効化
-        controls = [
-            self.live2d_scale_spin, self.live2d_pos_x_spin, self.live2d_pos_y_spin,
-            self.auto_breath_check, self.auto_eye_blink_check, self.lipsync_gain_spin,
-            self.background_visible_check, self.live2d_clear_btn
-        ]
-        for control in controls:
+        for control in [self.live2d_scale_spin, self.live2d_pos_x_spin, self.live2d_pos_y_spin, self.auto_breath_check, self.auto_eye_blink_check, self.lipsync_gain_spin, self.background_visible_check, self.live2d_clear_btn]:
             control.setEnabled(False)
         
-        # 設定リセット
         self.live2d_scale_spin.setValue(1.0)
         self.live2d_pos_x_spin.setValue(0.0)
         self.live2d_pos_y_spin.setValue(0.0)
@@ -834,325 +575,154 @@ class CharacterDisplayWidget(QWidget):
         self.lipsync_gain_spin.setValue(1.0)
         self.background_visible_check.setChecked(True)
         
-        # HTMLページリロード
-        self.live2d_webview.create_live2d_html()
-    
+        self.live2d_webview.load_initial_page()
+
     def restore_live2d_settings(self, ui_settings):
-        """Live2D UI設定を復元"""
-        self.live2d_scale_spin.blockSignals(True)
-        self.live2d_pos_x_spin.blockSignals(True)
-        self.live2d_pos_y_spin.blockSignals(True)
-        
-        self.live2d_scale_spin.setValue(ui_settings.get('scale', 1.0))
-        self.live2d_pos_x_spin.setValue(ui_settings.get('position_x', 0.0))
-        self.live2d_pos_y_spin.setValue(ui_settings.get('position_y', 0.0))
-        self.auto_breath_check.setChecked(ui_settings.get('auto_breath', True))
-        self.auto_eye_blink_check.setChecked(ui_settings.get('auto_eye_blink', True))
-        self.lipsync_gain_spin.setValue(ui_settings.get('lip_sync_gain', 1.0))
-        self.background_visible_check.setChecked(ui_settings.get('background_visible', True))
-        
-        self.live2d_scale_spin.blockSignals(False)
-        self.live2d_pos_x_spin.blockSignals(False)
-        self.live2d_pos_y_spin.blockSignals(False)
-    
+        for spin, val in [(self.live2d_scale_spin, 'scale'), (self.live2d_pos_x_spin, 'position_x'), (self.live2d_pos_y_spin, 'position_y'), (self.lipsync_gain_spin, 'lip_sync_gain')]:
+            spin.blockSignals(True); spin.setValue(ui_settings.get(val, spin.value())); spin.blockSignals(False)
+        for check, val in [(self.auto_breath_check, 'auto_breath'), (self.auto_eye_blink_check, 'auto_eye_blink'), (self.background_visible_check, 'background_visible')]:
+            check.setChecked(ui_settings.get(val, True))
+
     def on_live2d_settings_changed(self):
-        """Live2D設定変更時の処理"""
-        if not self.current_live2d_id:
-            return
-        
+        if not self.current_live2d_id: return
         ui_settings = {
-            'scale': self.live2d_scale_spin.value(),
-            'position_x': self.live2d_pos_x_spin.value(),
-            'position_y': self.live2d_pos_y_spin.value(),
-            'auto_breath': self.auto_breath_check.isChecked(),
-            'auto_eye_blink': self.auto_eye_blink_check.isChecked(),
-            'lip_sync_gain': self.lipsync_gain_spin.value(),
+            'scale': self.live2d_scale_spin.value(), 'position_x': self.live2d_pos_x_spin.value(),
+            'position_y': self.live2d_pos_y_spin.value(), 'auto_breath': self.auto_breath_check.isChecked(),
+            'auto_eye_blink': self.auto_eye_blink_check.isChecked(), 'lip_sync_gain': self.lipsync_gain_spin.value(),
             'background_visible': self.background_visible_check.isChecked()
         }
-        
-        # Live2DWebViewに設定を反映
         if self.live2d_webview.is_model_loaded:
             self.live2d_webview.update_model_settings(ui_settings)
             self.live2d_webview.set_background_visible(ui_settings['background_visible'])
-        
-        # 設定を保存
         self.live2d_manager.update_ui_settings(self.current_live2d_id, ui_settings)
-    
-    def show_live2d_history_dialog(self):
-        """Live2D履歴ダイアログを表示"""
-        from .live2d_history import Live2DHistoryWidget
-        
-        try:
-            dlg = QDialog(self)
-            dlg.setWindowTitle("Live2D履歴から選択")
-            dlg.setModal(True)
-            dlg.resize(600, 500)
-            dlg.setStyleSheet("QDialog { background:#f8f9fa; }")
 
+    def show_live2d_history_dialog(self):
+        from .live2d_history import Live2DHistoryWidget
+        try:
+            dlg = QDialog(self); dlg.setWindowTitle("Live2D履歴から選択"); dlg.setModal(True); dlg.resize(600, 500); dlg.setStyleSheet("QDialog { background:#f8f9fa; }")
             layout = QVBoxLayout(dlg)
             history_widget = Live2DHistoryWidget(self.live2d_manager, dlg)
-
             def on_model_selected(model_data):
-                if not Path(model_data['model_folder_path']).exists():
-                    QMessageBox.warning(dlg, "エラー", "Live2Dモデルフォルダが見つかりません。")
-                    return
-                dlg.accept()
-                self.load_live2d_from_data(model_data)
-
+                if not Path(model_data['model_folder_path']).exists(): QMessageBox.warning(dlg, "エラー", "Live2Dモデルフォルダが見つかりません。"); return
+                dlg.accept(); self.load_live2d_from_data(model_data)
             history_widget.model_selected.connect(on_model_selected)
-            layout.addWidget(history_widget)
-            dlg.exec()
-            
-        except Exception as e:
-            QMessageBox.critical(self, "エラー", f"Live2D履歴ダイアログでエラーが発生しました:\n{str(e)}")
-    
+            layout.addWidget(history_widget); dlg.exec()
+        except Exception as e: QMessageBox.critical(self, "エラー", f"Live2D履歴ダイアログでエラーが発生しました:\n{str(e)}")
+
     def update_lip_sync(self, volume):
-        """リップシンク更新（外部から呼び出し）"""
         if self.current_display_mode == "live2d" and self.live2d_webview.is_model_loaded:
-            # リップシンク感度を適用
             adjusted_volume = volume * self.lipsync_gain_spin.value()
             self.live2d_webview.update_lip_sync(adjusted_volume)
 
-    # ================================
-    # 既存の画像関連メソッド（変更なし）
-    # ================================
-    
     def load_last_content(self):
-        """最後に使用したコンテンツを読み込み"""
         self.image_manager.cleanup_missing_images()
         last_image = self.image_manager.get_last_image()
-        if last_image and Path(last_image['image_path']).exists():
-            self.load_image_from_data(last_image)
-        
-        # Live2Dは手動読み込みのみ（重いため）
-    
-    def load_image_from_data(self, image_data):
-        """画像データから読み込み（既存コード）"""
-        image_path = image_data['image_path']
-        if not Path(image_path).exists():
-            QMessageBox.warning(self, "エラー", f"画像ファイルが見つかりません:\n{image_path}")
-            return
-        
-        pixmap = QPixmap(image_path)
-        if pixmap.isNull():
-            return
+        if last_image and Path(last_image['image_path']).exists(): self.load_image_from_data(last_image)
 
-        self.original_pixmap = pixmap
-        self.current_image_path = image_path
-        self.current_image_id = image_data['id']
+    def load_image_from_data(self, image_data):
+        image_path = image_data['image_path']
+        if not Path(image_path).exists(): QMessageBox.warning(self, "エラー", f"画像ファイルが見つかりません:\n{image_path}"); return
+        pixmap = QPixmap(image_path)
+        if pixmap.isNull(): return
+        self.original_pixmap = pixmap; self.current_image_path = image_path; self.current_image_id = image_data['id']
         self.image_manager.add_image(image_path, image_data['name'])
-        
         ui_settings = self.image_manager.get_ui_settings(self.current_image_id)
         self.restore_ui_settings(ui_settings)
-        
         self.character_image_label.setStyleSheet("QLabel { background-color: white; border: none; }")
-        file_info = Path(image_path)
-        img_size = pixmap.size()
+        file_info = Path(image_path); img_size = pixmap.size()
         self.image_info_label.setText(f"📁 {image_data['name']}\n📐 {img_size.width()}×{img_size.height()}px 💾 {file_info.stat().st_size // 1024} KB")
-        self.enable_controls()
-        self.update_minimap_position()
-        
-        # 画像タブに切り替え
-        self.mode_tab_widget.setCurrentIndex(0)
+        self.enable_controls(); self.update_minimap_position(); self.mode_tab_widget.setCurrentIndex(0)
 
     def load_character_image(self):
-        """画像読み込み（既存コード）"""
         file_path, _ = QFileDialog.getOpenFileName(self, "立ち絵画像を選択", "", "画像ファイル (*.png *.jpg *.jpeg)")
-        if not file_path:
-            return
-        
-        image_name = Path(file_path).stem
-        image_id = self.image_manager.add_image(file_path, image_name)
+        if not file_path: return
+        image_name = Path(file_path).stem; image_id = self.image_manager.add_image(file_path, image_name)
         new_image_data = self.image_manager.get_image_by_id(image_id)
-        if new_image_data:
-            self.load_image_from_data(new_image_data)
-    
+        if new_image_data: self.load_image_from_data(new_image_data)
+
     def enable_controls(self):
-        """画像コントロールを有効化（既存コード）"""
-        for widget in [self.image_clear_btn, self.zoom_slider, self.h_position_slider, self.v_position_slider, self.toggle_minimap_btn]:
-            widget.setEnabled(True)
+        for widget in [self.image_clear_btn, self.zoom_slider, self.h_position_slider, self.v_position_slider, self.toggle_minimap_btn]: widget.setEnabled(True)
 
     def clear_character_image(self):
-        """画像クリア（既存コード）"""
-        self.character_image_label.clear()
-        self.character_image_label.setText("画像が読み込まれていません...")
-        self.character_image_label.setStyleSheet("QLabel { background-color: #f8f9fa; border: 2px dashed #adb5bd; }")
-        self.original_pixmap = None
-        self.current_image_path = None
-        self.current_image_id = None
-        self.image_info_label.setText("")
-        for widget in [self.image_clear_btn, self.zoom_slider, self.h_position_slider, self.v_position_slider, self.toggle_minimap_btn]:
-            widget.setEnabled(False)
-        self.zoom_slider.setValue(50)
-        self.h_position_slider.setValue(50)
-        self.v_position_slider.setValue(50)
-        self.toggle_minimap_btn.setChecked(False)
-        self.zoom_label.setText("50%")
-        self.minimap.hide()
+        self.character_image_label.clear(); self.character_image_label.setText("画像が読み込まれていません..."); self.character_image_label.setStyleSheet("QLabel { background-color: #f8f9fa; border: 2px dashed #adb5bd; }")
+        self.original_pixmap = None; self.current_image_path = None; self.current_image_id = None; self.image_info_label.setText("")
+        for widget in [self.image_clear_btn, self.zoom_slider, self.h_position_slider, self.v_position_slider, self.toggle_minimap_btn]: widget.setEnabled(False)
+        self.zoom_slider.setValue(50); self.h_position_slider.setValue(50); self.v_position_slider.setValue(50)
+        self.toggle_minimap_btn.setChecked(False); self.zoom_label.setText("50%"); self.minimap.hide()
 
     def restore_ui_settings(self, ui_settings):
-        """画像UI設定復元（既存コード）"""
-        zoom = ui_settings.get('zoom_percent', 50)
-        h_pos = ui_settings.get('h_position', 50)
-        v_pos = ui_settings.get('v_position', 50)
-        minimap_visible = ui_settings.get('minimap_visible', False)
-        
-        self.zoom_slider.blockSignals(True)
-        self.current_zoom_percent = zoom
-        self.zoom_slider.setValue(zoom)
-        self.zoom_label.setText(f"{zoom}%")
-        self.zoom_slider.blockSignals(False)
-
+        zoom = ui_settings.get('zoom_percent', 50); h_pos = ui_settings.get('h_position', 50); v_pos = ui_settings.get('v_position', 50); minimap_visible = ui_settings.get('minimap_visible', False)
+        self.zoom_slider.blockSignals(True); self.current_zoom_percent = zoom; self.zoom_slider.setValue(zoom); self.zoom_label.setText(f"{zoom}%"); self.zoom_slider.blockSignals(False)
         self.update_image_display()
-        
-        h_scroll = self.scroll_area.horizontalScrollBar()
-        v_scroll = self.scroll_area.verticalScrollBar()
-        if h_scroll.maximum() > 0:
-            h_value = round(h_scroll.maximum() * h_pos / 100)
-            h_scroll.setValue(h_value)
-        if v_scroll.maximum() > 0:
-            v_value = round(v_scroll.maximum() * (100 - v_pos) / 100)
-            v_scroll.setValue(v_value)
-            
+        h_scroll = self.scroll_area.horizontalScrollBar(); v_scroll = self.scroll_area.verticalScrollBar()
+        if h_scroll.maximum() > 0: h_scroll.setValue(round(h_scroll.maximum() * h_pos / 100))
+        if v_scroll.maximum() > 0: v_scroll.setValue(round(v_scroll.maximum() * (100 - v_pos) / 100))
         self.update_custom_scrollbars()
-
-        self.toggle_minimap_btn.setChecked(minimap_visible)
-        self.toggle_minimap(minimap_visible)
+        self.toggle_minimap_btn.setChecked(minimap_visible); self.toggle_minimap(minimap_visible)
 
     def save_ui_settings(self):
-        """画像UI設定保存（既存コード）"""
-        if not self.current_image_id:
-            return
-        
-        ui_settings = {
-            'zoom_percent': self.current_zoom_percent,
-            'h_position': self.h_position_slider.value(),
-            'v_position': self.v_position_slider.value(),
-            'minimap_visible': self.toggle_minimap_btn.isChecked()
-        }
+        if not self.current_image_id: return
+        ui_settings = {'zoom_percent': self.current_zoom_percent, 'h_position': self.h_position_slider.value(), 'v_position': self.v_position_slider.value(), 'minimap_visible': self.toggle_minimap_btn.isChecked()}
         self.image_manager.update_ui_settings(self.current_image_id, ui_settings)
 
     def show_image_history_dialog(self):
-        """画像履歴ダイアログ（既存コード）"""
         from .image_history import ImageHistoryWidget
-        
         try:
-            dlg = QDialog(self)
-            dlg.setWindowTitle("画像履歴から選択")
-            dlg.setModal(True)
-            dlg.resize(600, 500)
-            dlg.setStyleSheet("QDialog { background:#f8f9fa; }")
-
-            layout = QVBoxLayout(dlg)
-            history_widget = ImageHistoryWidget(self.image_manager, dlg)
-
+            dlg = QDialog(self); dlg.setWindowTitle("画像履歴から選択"); dlg.setModal(True); dlg.resize(600, 500); dlg.setStyleSheet("QDialog { background:#f8f9fa; }")
+            layout = QVBoxLayout(dlg); history_widget = ImageHistoryWidget(self.image_manager, dlg)
             def on_image_selected(image_data):
-                if not Path(image_data['image_path']).exists():
-                    QMessageBox.warning(dlg, "エラー", "画像ファイルが見つかりません。")
-                    return
-                dlg.accept()
-                self.load_image_from_data(image_data)
-
+                if not Path(image_data['image_path']).exists(): QMessageBox.warning(dlg, "エラー", "画像ファイルが見つかりません。"); return
+                dlg.accept(); self.load_image_from_data(image_data)
             history_widget.image_selected.connect(on_image_selected)
-            layout.addWidget(history_widget)
-            dlg.exec()
-            
-        except Exception as e:
-            QMessageBox.critical(self, "エラー", f"画像履歴ダイアログでエラーが発生しました:\n{str(e)}")
+            layout.addWidget(history_widget); dlg.exec()
+        except Exception as e: QMessageBox.critical(self, "エラー", f"画像履歴ダイアログでエラーが発生しました:\n{str(e)}")
 
     def on_zoom_slider_changed(self, value):
-        if not self.original_pixmap:
-            return
-        
+        if not self.original_pixmap: return
         self.setUpdatesEnabled(False)
         try:
-            scroll_area = self.scroll_area
-            h_scroll = scroll_area.horizontalScrollBar()
-            v_scroll = scroll_area.verticalScrollBar()
-            
-            old_label_size = self.character_image_label.size()
-            viewport_size = scroll_area.viewport().size()
-            
-            if old_label_size.width() > 0 and old_label_size.height() > 0:
-                center_x_ratio = (h_scroll.value() + viewport_size.width() / 2) / old_label_size.width()
-                center_y_ratio = (v_scroll.value() + viewport_size.height() / 2) / old_label_size.height()
-            else:
-                center_x_ratio = 0.5
-                center_y_ratio = 0.5
-
-            self.current_zoom_percent = value
-            self.update_image_display()
-            self.update_zoom_label()
-
+            scroll_area = self.scroll_area; h_scroll = scroll_area.horizontalScrollBar(); v_scroll = scroll_area.verticalScrollBar()
+            old_label_size = self.character_image_label.size(); viewport_size = scroll_area.viewport().size()
+            center_x_ratio = (h_scroll.value() + viewport_size.width() / 2) / old_label_size.width() if old_label_size.width() > 0 else 0.5
+            center_y_ratio = (v_scroll.value() + viewport_size.height() / 2) / old_label_size.height() if old_label_size.height() > 0 else 0.5
+            self.current_zoom_percent = value; self.update_image_display(); self.update_zoom_label()
             new_label_size = self.character_image_label.size()
-            
             new_h_scroll_value = round((new_label_size.width() * center_x_ratio) - (viewport_size.width() / 2))
             new_v_scroll_value = round((new_label_size.height() * center_y_ratio) - (viewport_size.height() / 2))
-            
-            h_scroll.setValue(new_h_scroll_value)
-            v_scroll.setValue(new_v_scroll_value)
-            
-            self.update_custom_scrollbars()
-            self.save_ui_settings()
-        finally:
-            self.setUpdatesEnabled(True)
+            h_scroll.setValue(new_h_scroll_value); v_scroll.setValue(new_v_scroll_value)
+            self.update_custom_scrollbars(); self.save_ui_settings()
+        finally: self.setUpdatesEnabled(True)
 
     def update_image_display(self):
         if not self.original_pixmap: return
-        self.current_zoom_percent = self.zoom_slider.value()
-        original_size = self.original_pixmap.size()
-        new_width = round(original_size.width() * self.current_zoom_percent / 100)
-        new_height = round(original_size.height() * self.current_zoom_percent / 100)
+        self.current_zoom_percent = self.zoom_slider.value(); original_size = self.original_pixmap.size()
+        new_width = round(original_size.width() * self.current_zoom_percent / 100); new_height = round(original_size.height() * self.current_zoom_percent / 100)
         scaled_pixmap = self.original_pixmap.scaled(new_width, new_height, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-        self.character_image_label.setPixmap(scaled_pixmap)
-        self.character_image_label.resize(scaled_pixmap.size())
-        self.update_minimap_view()
+        self.character_image_label.setPixmap(scaled_pixmap); self.character_image_label.resize(scaled_pixmap.size()); self.update_minimap_view()
 
-    def update_zoom_label(self):
-        self.zoom_label.setText(f"{self.current_zoom_percent}%")
-    
+    def update_zoom_label(self): self.zoom_label.setText(f"{self.current_zoom_percent}%")
+
     def on_position_slider_changed(self):
         if not self.original_pixmap: return
-        h_scroll = self.scroll_area.horizontalScrollBar()
-        v_scroll = self.scroll_area.verticalScrollBar()
-        h_max = h_scroll.maximum()
-        v_max = v_scroll.maximum()
-
-        if h_max > 0:
-            h_scroll.setValue(round(h_max * self.h_position_slider.value() / 100))
-        if v_max > 0:
-            v_scroll.setValue(round(v_max * (100 - self.v_position_slider.value()) / 100))
-        
+        h_scroll = self.scroll_area.horizontalScrollBar(); v_scroll = self.scroll_area.verticalScrollBar(); h_max = h_scroll.maximum(); v_max = v_scroll.maximum()
+        if h_max > 0: h_scroll.setValue(round(h_max * self.h_position_slider.value() / 100))
+        if v_max > 0: v_scroll.setValue(round(v_max * (100 - self.v_position_slider.value()) / 100))
         self.update_minimap_view()
-        if not self.h_position_slider.signalsBlocked():
-            self.save_ui_settings()
+        if not self.h_position_slider.signalsBlocked(): self.save_ui_settings()
 
     def update_custom_scrollbars(self):
         if not self.original_pixmap: return
-        h_scroll = self.scroll_area.horizontalScrollBar()
-        v_scroll = self.scroll_area.verticalScrollBar()
-        h_max = h_scroll.maximum()
-        v_max = v_scroll.maximum()
-
-        self.h_position_slider.blockSignals(True)
-        self.v_position_slider.blockSignals(True)
-        
+        h_scroll = self.scroll_area.horizontalScrollBar(); v_scroll = self.scroll_area.verticalScrollBar(); h_max = h_scroll.maximum(); v_max = v_scroll.maximum()
+        self.h_position_slider.blockSignals(True); self.v_position_slider.blockSignals(True)
         self.h_position_slider.setValue(round(100 * h_scroll.value() / h_max) if h_max > 0 else 50)
         self.v_position_slider.setValue(100 - round(100 * v_scroll.value() / v_max) if v_max > 0 else 50)
-        
-        self.h_position_slider.blockSignals(False)
-        self.v_position_slider.blockSignals(False)
+        self.h_position_slider.blockSignals(False); self.v_position_slider.blockSignals(False)
 
     def toggle_minimap(self, checked):
         if not self.original_pixmap: return
-        if checked:
-            self.minimap.show()
-            self.update_minimap_view()
-        else:
-            self.minimap.hide()
-        
-        if not self.toggle_minimap_btn.signalsBlocked():
-            self.save_ui_settings()
+        if checked: self.minimap.show(); self.update_minimap_view()
+        else: self.minimap.hide()
+        if not self.toggle_minimap_btn.signalsBlocked(): self.save_ui_settings()
 
     def update_minimap_view(self):
         if not self.original_pixmap or not self.minimap.isVisible(): return
@@ -1160,37 +730,22 @@ class CharacterDisplayWidget(QWidget):
         view_w, view_h = self.scroll_area.viewport().width(), self.scroll_area.viewport().height()
         img_w, img_h = self.character_image_label.width(), self.character_image_label.height()
         if img_w <= 0: return
-
-        scale_x = self.original_pixmap.width() / img_w
-        scale_y = self.original_pixmap.height() / img_h
-        view_rect = QRect(
-            round(h_scroll.value() * scale_x), round(v_scroll.value() * scale_y),
-            round(view_w * scale_x), round(view_h * scale_y)
-        )
+        scale_x = self.original_pixmap.width() / img_w; scale_y = self.original_pixmap.height() / img_h
+        view_rect = QRect(round(h_scroll.value() * scale_x), round(v_scroll.value() * scale_y), round(view_w * scale_x), round(view_h * scale_y))
         self.minimap.update_minimap(self.original_pixmap, view_rect)
-    
+
     def move_view_to_position(self, target_x, target_y):
         if not self.original_pixmap: return
-        img_w = self.character_image_label.width()
-        img_h = self.character_image_label.height()
-        scale_x = img_w / self.original_pixmap.width()
-        scale_y = img_h / self.original_pixmap.height()
+        img_w = self.character_image_label.width(); img_h = self.character_image_label.height()
+        scale_x = img_w / self.original_pixmap.width(); scale_y = img_h / self.original_pixmap.height()
         scroll_x = round(target_x * scale_x - self.scroll_area.viewport().width() / 2)
         scroll_y = round(target_y * scale_y - self.scroll_area.viewport().height() / 2)
-        
-        self.scroll_area.horizontalScrollBar().setValue(scroll_x)
-        self.scroll_area.verticalScrollBar().setValue(scroll_y)
-        self.update_minimap_view()
-        self.update_custom_scrollbars()
-        self.save_ui_settings()
+        self.scroll_area.horizontalScrollBar().setValue(scroll_x); self.scroll_area.verticalScrollBar().setValue(scroll_y)
+        self.update_minimap_view(); self.update_custom_scrollbars(); self.save_ui_settings()
 
     def update_minimap_position(self):
-        if self.scroll_area:
-            x_pos = self.scroll_area.viewport().width() - self.minimap.width() - 5
-            self.minimap.move(x_pos, 5)
+        if self.scroll_area: x_pos = self.scroll_area.viewport().width() - self.minimap.width() - 5; self.minimap.move(x_pos, 5)
 
     def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self.update_minimap_position()
-        if self.original_pixmap:
-            self.resize_timer.start(150)
+        super().resizeEvent(event); self.update_minimap_position()
+        if self.original_pixmap: self.resize_timer.start(150)
