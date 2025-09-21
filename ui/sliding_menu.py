@@ -4,20 +4,20 @@ from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, pyqtSignal, QRect
 from PyQt6.QtGui import QFont, QColor
 
 class SlidingMenuWidget(QFrame):
-    """上から下にスライドするメニューウィジェット（画像メニュー対応版）"""
+    """上から下にスライドするメニューウィジェット（Live2D対応版）"""
     
     # シグナル定義
     # 音声モデル関連
     load_model_clicked = pyqtSignal()
     load_from_history_clicked = pyqtSignal()
     
-    # 画像関連（新規追加）
+    # 画像関連
     load_image_clicked = pyqtSignal()
     load_image_from_history_clicked = pyqtSignal()
     
-    # 将来のLive2D対応用（コメントアウト）
-    # load_live2d_clicked = pyqtSignal()
-    # load_live2d_from_history_clicked = pyqtSignal()
+    # Live2D関連（新規追加）
+    load_live2d_clicked = pyqtSignal()
+    load_live2d_from_history_clicked = pyqtSignal()
     
     menu_closed = pyqtSignal()
     
@@ -25,7 +25,7 @@ class SlidingMenuWidget(QFrame):
         super().__init__(parent)
         self.parent_widget = parent
         self.is_visible = False
-        self.target_height = 200  # 展開時の高さ（項目が増えたので拡張）
+        self.target_height = 280  # Live2D項目追加で高さを拡張
         
         self.init_ui()
         self.setup_animation()
@@ -35,7 +35,7 @@ class SlidingMenuWidget(QFrame):
         self.hide()
         
     def init_ui(self):
-        """UIを初期化（画像メニュー項目追加版）"""
+        """UIを初期化（Live2D項目追加版）"""
         self.setFrameStyle(QFrame.Shape.StyledPanel)
         
         self.setStyleSheet("""
@@ -90,7 +90,7 @@ class SlidingMenuWidget(QFrame):
         separator1 = self.create_separator()
         layout.addWidget(separator1)
         
-        # === 画像・キャラクター関連（新規追加） ===
+        # === 画像・キャラクター関連 ===
         image_section_label = self.create_section_label("🎨 キャラクター")
         layout.addWidget(image_section_label)
         
@@ -101,25 +101,28 @@ class SlidingMenuWidget(QFrame):
         self.load_image_history_btn = QPushButton("📸 立ち絵を履歴から読み込み")
         self.load_image_history_btn.setToolTip("過去に読み込んだ立ち絵から選択")
         self.load_image_history_btn.clicked.connect(self.on_load_image_from_history_clicked)
-        # ★★★ 修正：履歴機能が実装されたので有効化 ★★★
         self.load_image_history_btn.setEnabled(True)
         
         layout.addWidget(self.load_image_btn)
         layout.addWidget(self.load_image_history_btn)
         
-        # 将来のLive2D対応用（コメントアウト）
-        # separator2 = self.create_separator()
-        # layout.addWidget(separator2)
-        # 
-        # live2d_section_label = self.create_section_label("🎭 Live2D")
-        # layout.addWidget(live2d_section_label)
-        # 
-        # self.load_live2d_btn = QPushButton("🎪 Live2Dモデルを読み込み")
-        # self.load_live2d_btn.setToolTip("Live2Dモデルを読み込む")
-        # self.load_live2d_btn.clicked.connect(self.on_load_live2d_clicked)
-        # self.load_live2d_btn.setEnabled(False)  # 未実装
-        # 
-        # layout.addWidget(self.load_live2d_btn)
+        # === Live2D関連（新規追加） ===
+        separator2 = self.create_separator()
+        layout.addWidget(separator2)
+        
+        live2d_section_label = self.create_section_label("🎭 Live2D")
+        layout.addWidget(live2d_section_label)
+        
+        self.load_live2d_btn = QPushButton("🎪 Live2Dモデルを読み込み")
+        self.load_live2d_btn.setToolTip("Live2Dモデルフォルダを読み込む")
+        self.load_live2d_btn.clicked.connect(self.on_load_live2d_clicked)
+        
+        self.load_live2d_history_btn = QPushButton("🎭 Live2Dを履歴から読み込み")
+        self.load_live2d_history_btn.setToolTip("過去に読み込んだLive2Dモデルから選択")
+        self.load_live2d_history_btn.clicked.connect(self.on_load_live2d_from_history_clicked)
+        
+        layout.addWidget(self.load_live2d_btn)
+        layout.addWidget(self.load_live2d_history_btn)
         
         layout.addStretch()
     
@@ -221,7 +224,7 @@ class SlidingMenuWidget(QFrame):
         self.hide_menu()
         self.load_from_history_clicked.emit()
     
-    # === 画像関連のイベントハンドラー（新規追加） ===
+    # === 画像関連のイベントハンドラー ===
     def on_load_image_clicked(self):
         """立ち絵画像読み込みボタンクリック"""
         self.hide_menu()
@@ -232,11 +235,16 @@ class SlidingMenuWidget(QFrame):
         self.hide_menu()
         self.load_image_from_history_clicked.emit()
     
-    # === 将来のLive2D対応用（コメントアウト） ===
-    # def on_load_live2d_clicked(self):
-    #     """Live2D読み込みボタンクリック"""
-    #     self.hide_menu()
-    #     self.load_live2d_clicked.emit()
+    # === Live2D関連のイベントハンドラー（新規追加） ===
+    def on_load_live2d_clicked(self):
+        """Live2D読み込みボタンクリック"""
+        self.hide_menu()
+        self.load_live2d_clicked.emit()
+    
+    def on_load_live2d_from_history_clicked(self):
+        """Live2D履歴から読み込みボタンクリック"""
+        self.hide_menu()
+        self.load_live2d_from_history_clicked.emit()
     
     def mousePressEvent(self, event):
         """マウスクリックイベント（メニュー内クリックは伝播させない）"""

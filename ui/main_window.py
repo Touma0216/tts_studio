@@ -1,10 +1,10 @@
-# ui/main_window.py (修正版: character_displayを外部ファイル化)
+# ui/main_window.py (Live2D統合版)
 import os
 import numpy as np
 from pathlib import Path
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QPushButton, QLabel, QFileDialog, QFrame, QApplication, QMessageBox, QSplitter)
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont, QAction
 
 # 自作モジュール
@@ -15,7 +15,7 @@ from .multi_text import MultiTextWidget
 from .keyboard_shortcuts import KeyboardShortcutManager
 from .sliding_menu import SlidingMenuWidget
 from .help_dialog import HelpDialog
-from .character_display import CharacterDisplayWidget # ★新しくインポート
+from .character_display import CharacterDisplayWidget # ★Live2D統合版
 from core.tts_engine import TTSEngine
 from core.model_manager import ModelManager
 from core.audio_processor import AudioProcessor
@@ -35,6 +35,11 @@ class TTSStudioMainWindow(QMainWindow):
         self.last_generated_audio = None
         self.last_sample_rate = None
         
+        # Live2Dリップシンク用タイマー
+        self.lipsync_timer = QTimer()
+        self.lipsync_timer.timeout.connect(self.update_lipsync)
+        self.current_audio_volume = 0.0
+        
         self.init_ui()
         self.help_dialog = HelpDialog(self)
         
@@ -48,6 +53,13 @@ class TTSStudioMainWindow(QMainWindow):
         # ★画像関連の接続先をcharacter_displayに変更
         self.sliding_menu.load_image_clicked.connect(self.character_display.load_character_image)
         self.sliding_menu.load_image_from_history_clicked.connect(self.character_display.show_image_history_dialog)
+        # ★Live2D関連の接続追加
+        self.sliding_menu.load_live2d_clicked.connect(self.character_display.load_live2d_model)
+        self.sliding_menu.load_live2d_from_history_clicked.connect(self.character_display.show_live2d_history_dialog)
+        
+        # Live2D関連シグナル接続
+        self.character_display.live2d_model_loaded.connect(self.on_live2d_model_loaded)
+        self.character_display.lip_sync_update_requested.connect(self.on_lip_sync_update_requested)
         
         # キーボードショートカット設定
         self.keyboard_shortcuts = KeyboardShortcutManager(self)
@@ -55,7 +67,7 @@ class TTSStudioMainWindow(QMainWindow):
         self.load_last_model()
 
     def init_ui(self):
-        self.setWindowTitle("TTSスタジオ")
+        self.setWindowTitle("TTSスタジオ - ほのか")
         self.setGeometry(100, 100, 1200, 800)
         self.create_menu_bar()
 
@@ -121,7 +133,7 @@ class TTSStudioMainWindow(QMainWindow):
         left_layout.addWidget(self.tabbed_audio_control, 1)
         left_layout.addLayout(controls)
 
-        # --- 右ペイン（キャラクター表示エリア） ---
+        # --- 右ペイン（キャラクター表示エリア - Live2D統合版） ---
         self.character_display = CharacterDisplayWidget(self)
 
         # --- スプリッター組み立て ---
@@ -218,6 +230,54 @@ class TTSStudioMainWindow(QMainWindow):
         # character_displayが自身のresizeEventで内部ウィジェットを処理する
     
     # ================================
+    # Live2D関連メソッド（新規追加）
+    # ================================
+    
+    def on_live2d_model_loaded(self, model_path):
+        """Live2Dモデル読み込み完了時"""
+        model_name = Path(model_path).name
+        print(f"Live2Dモデルが読み込まれました: {model_name}")
+        
+        # ウィンドウタイトルを更新
+        current_title = self.windowTitle()
+        if " - " in current_title:
+            base_title = current_title.split(" - ")[0]
+        else:
+            base_title = current_title
+        
+        self.setWindowTitle(f"{base_title} - {model_name} (Live2D)")
+    
+    def on_lip_sync_update_requested(self, volume):
+        """リップシンク更新要求時"""
+        self.current_audio_volume = volume
+        self.character_display.update_lip_sync(volume)
+    
+    def start_lipsync_monitoring(self):
+        """リップシンクモニタリング開始"""
+        if not self.lipsync_timer.isActive():
+            self.lipsync_timer.start(50)  # 20fps でリップシンク更新
+    
+    def stop_lipsync_monitoring(self):
+        """リップシンクモニタリング停止"""
+        if self.lipsync_timer.isActive():
+            self.lipsync_timer.stop()
+        self.current_audio_volume = 0.0
+        self.character_display.update_lip_sync(0.0)
+    
+    def update_lipsync(self):
+        """リップシンク更新（タイマーから呼ばれる）"""
+        # 実際の音声再生中の音量を取得する処理
+        # 現在は簡易実装
+        if self.last_generated_audio is not None:
+            # 音声の現在再生位置での音量を計算（実装省略）
+            volume = self.current_audio_volume * 0.95  # 徐々に減衰
+            self.current_audio_volume = max(0.0, volume)
+            self.character_display.update_lip_sync(self.current_audio_volume)
+            
+            if self.current_audio_volume < 0.01:
+                self.stop_lipsync_monitoring()
+    
+    # ================================
     # 音声処理統合設定
     # ================================
     def setup_audio_processing_integration(self):
@@ -308,7 +368,14 @@ class TTSStudioMainWindow(QMainWindow):
                     btn.setEnabled(True)
                 
                 model_name = Path(paths["model_path"]).parent.name
-                self.setWindowTitle(f"TTSスタジオ - {model_name}")
+                
+                # ウィンドウタイトル更新（Live2Dモデルも考慮）
+                if hasattr(self.character_display, 'current_live2d_folder') and self.character_display.current_live2d_folder:
+                    live2d_name = Path(self.character_display.current_live2d_folder).name
+                    self.setWindowTitle(f"TTSスタジオ - {model_name} - {live2d_name} (Live2D)")
+                else:
+                    self.setWindowTitle(f"TTSスタジオ - {model_name}")
+                
                 available_styles = self.tts_engine.get_available_styles()
                 QMessageBox.information(self, "成功", f"モデルを読み込みました。\n\n🎭 利用可能感情: {len(available_styles)}個")
                 self.update_emotion_ui_after_model_load()
@@ -331,7 +398,7 @@ class TTSStudioMainWindow(QMainWindow):
             self.update_emotion_ui_after_model_load()
 
     # ================================
-    # 音声合成・保存
+    # 音声合成・保存（Live2Dリップシンク対応）
     # ================================
     def apply_audio_cleaning(self, audio, sample_rate):
         if not self.tabbed_audio_control.is_cleaner_enabled(): return audio
@@ -362,6 +429,12 @@ class TTSStudioMainWindow(QMainWindow):
             audio = self.apply_audio_cleaning(audio, sr)
             audio = self.apply_audio_effects(audio, sr)
             self.last_generated_audio, self.last_sample_rate = audio, sr
+            
+            # Live2Dリップシンク開始
+            max_volume = np.abs(audio).max()
+            self.current_audio_volume = max_volume
+            self.start_lipsync_monitoring()
+            
             import sounddevice as sd
             sd.play(audio, sr, blocking=False)
         except Exception as e:
@@ -401,6 +474,11 @@ class TTSStudioMainWindow(QMainWindow):
         final_audio, sr = self._synthesize_and_process_all()
         self.sequential_play_btn.setEnabled(True)
         if final_audio is not None:
+            # Live2Dリップシンク開始
+            max_volume = np.abs(final_audio).max()
+            self.current_audio_volume = max_volume
+            self.start_lipsync_monitoring()
+            
             import sounddevice as sd
             sd.play(final_audio, sr, blocking=False)
 
@@ -460,6 +538,9 @@ class TTSStudioMainWindow(QMainWindow):
     
     def closeEvent(self, event):
         try:
+            # Live2Dリップシンク停止
+            self.stop_lipsync_monitoring()
+            
             cleaner_control = self.tabbed_audio_control.cleaner_control
             if hasattr(cleaner_control, 'analysis_thread') and cleaner_control.analysis_thread and cleaner_control.analysis_thread.isRunning():
                 cleaner_control.analysis_thread.quit()
@@ -467,6 +548,11 @@ class TTSStudioMainWindow(QMainWindow):
             
             if self.tts_engine: self.tts_engine.unload_model()
             self.model_manager.save_history()
+            
+            # Live2D履歴も保存
+            if hasattr(self.character_display, 'live2d_manager'):
+                self.character_display.live2d_manager.save_history()
+                
         except Exception as e:
             print(f"終了処理中にエラー: {e}")
         event.accept()
