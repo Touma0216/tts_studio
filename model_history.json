@@ -1,6 +1,14 @@
 {
   "models": [
     {
+      "id": "f2a48817411c",
+      "name": "honoka_merge_test",
+      "note": "",
+      "model_path": "F:\\AI_voise\\honoka_merge_test\\honoka_model_e20_s1000.safetensors",
+      "config_path": "F:\\AI_voise\\honoka_merge_test\\config.json",
+      "style_path": "F:\\AI_voise\\honoka_merge_test\\style_vectors.npy"
+    },
+    {
       "id": "70d8a3697fc8",
       "name": "amitaro_merge",
       "note": "",

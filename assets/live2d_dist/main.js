@@ -41,18 +41,18 @@ window.loadLive2DModel = async function(modelJsonPath) {
         
         app.stage.addChild(currentModel);
         
-        // ★★★ 修正：全身表示のための初期配置 ★★★
+        // 初期配置：頭から足まで適切に表示
         const modelBounds = currentModel.getBounds();
         
-        // 全身が見えるように、より小さいスケールを設定
-        const scaleX = (window.innerWidth * 0.6) / modelBounds.width;   // 0.8 → 0.6
-        const scaleY = (window.innerHeight * 0.9) / modelBounds.height;  // 0.8 → 0.9（縦を優先）
-        const scale = Math.min(scaleX, scaleY) * 0.8;  // さらに20%縮小
+        // 画面の90%を使用して全身を表示
+        const scaleX = (window.innerWidth * 0.9) / modelBounds.width;
+        const scaleY = (window.innerHeight * 0.9) / modelBounds.height;
+        const scale = Math.min(scaleX, scaleY);
         
         currentModel.scale.set(scale);
-        currentModel.anchor.set(0.5, 1.0);  // アンカーを下に設定（足元基準）
+        currentModel.anchor.set(0.5, 1.0);  // 足元基準
         currentModel.x = window.innerWidth / 2;
-        currentModel.y = window.innerHeight * 0.95;  // 足元を画面下部に配置
+        currentModel.y = window.innerHeight * 0.9;  // 足元を画面下部90%位置に
         
         console.log("モデル配置完了 - サイズ:", currentModel.width, "x", currentModel.height, "スケール:", scale);
         return true;
@@ -116,21 +116,22 @@ window.updateModelSettings = function(settings) {
         try {
             // ベーススケール（全身表示用）を取得
             const modelBounds = currentModel.getBounds();
-            const baseScaleX = (window.innerWidth * 0.6) / (modelBounds.width / currentModel.scale.x);
+            const baseScaleX = (window.innerWidth * 0.9) / (modelBounds.width / currentModel.scale.x);
             const baseScaleY = (window.innerHeight * 0.9) / (modelBounds.height / currentModel.scale.y);
-            const baseScale = Math.min(baseScaleX, baseScaleY) * 0.8;
+            const baseScale = Math.min(baseScaleX, baseScaleY);
             
             if (settings.scale !== undefined) {
-                // ユーザー指定のスケールを適用
+                // 80%-300%対応：適切なズーム範囲
                 currentModel.scale.set(baseScale * settings.scale);
             }
             if (settings.position_x !== undefined) {
-                currentModel.x = window.innerWidth / 2 + (settings.position_x * window.innerWidth / 4);
+                currentModel.x = window.innerWidth / 2 + (settings.position_x * window.innerWidth / 3);
             }
             if (settings.position_y !== undefined) {
-                // 足元基準での位置調整
-                const baseY = window.innerHeight * 0.95;
-                currentModel.y = baseY + (settings.position_y * window.innerHeight / 4);
+                // 画像表示と同じ座標系：下スライダー→キャラ下移動→顔が見える
+                const baseY = window.innerHeight * 0.9;  // 足元基準位置
+                const moveRange = window.innerHeight * 0.5;  // 移動範囲を調整
+                currentModel.y = baseY + (settings.position_y * moveRange);
             }
         } catch (e) {
             console.error("モデル設定更新エラー:", e);
@@ -161,13 +162,13 @@ window.addEventListener('resize', () => {
         if (currentModel) {
             // リサイズ時にモデルを再配置（全身表示維持）
             const modelBounds = currentModel.getBounds();
-            const scaleX = (window.innerWidth * 0.6) / (modelBounds.width / currentModel.scale.x);
+            const scaleX = (window.innerWidth * 0.9) / (modelBounds.width / currentModel.scale.x);
             const scaleY = (window.innerHeight * 0.9) / (modelBounds.height / currentModel.scale.y);
-            const scale = Math.min(scaleX, scaleY) * 0.8;
+            const scale = Math.min(scaleX, scaleY);
             
             currentModel.scale.set(scale);
             currentModel.x = window.innerWidth / 2;
-            currentModel.y = window.innerHeight * 0.95;
+            currentModel.y = window.innerHeight * 0.9;
         }
     }
 });
