@@ -17,6 +17,82 @@ from core.live2d_manager import Live2DManager
 from .live2d_history import Live2DHistoryWidget
 from .image_history import ImageHistoryWidget
 
+class DisplayModeManager:
+    """画面表示モード管理クラス（タブモード記憶機能）"""
+    
+    def __init__(self, settings_file="user_settings.json"):
+        self.settings_file = Path(settings_file)
+        self.settings = self.load_settings()
+    
+    def load_settings(self) -> dict:
+        """設定ファイルを読み込み"""
+        try:
+            if self.settings_file.exists():
+                with open(self.settings_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            else:
+                return {}
+        except Exception as e:
+            print(f"⚠️ 設定読み込みエラー: {e}")
+            return {}
+    
+    def save_settings(self):
+        """設定ファイルに保存"""
+        try:
+            with open(self.settings_file, 'w', encoding='utf-8') as f:
+                json.dump(self.settings, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"❌ 設定保存エラー: {e}")
+    
+    def get_last_tab_index(self) -> int:
+        """最後に選択していたタブインデックスを取得（0=画像, 1=Live2D）"""
+        return self.settings.get('character_display', {}).get('last_tab_index', 0)
+    
+    def set_last_tab_index(self, tab_index: int):
+        """最後に選択していたタブインデックスを保存"""
+        if 'character_display' not in self.settings:
+            self.settings['character_display'] = {}
+        
+        self.settings['character_display']['last_tab_index'] = tab_index
+        self.save_settings()
+        print(f"🔧 タブモードを保存: {'Live2D' if tab_index == 1 else '画像'}")
+    
+    def get_last_image_id(self) -> Optional[str]:
+        """最後に表示していた画像IDを取得"""
+        return self.settings.get('character_display', {}).get('last_image_id')
+    
+    def set_last_image_id(self, image_id: str):
+        """最後に表示していた画像IDを保存"""
+        if 'character_display' not in self.settings:
+            self.settings['character_display'] = {}
+        
+        self.settings['character_display']['last_image_id'] = image_id
+        self.save_settings()
+    
+    def get_last_live2d_id(self) -> Optional[str]:
+        """最後に表示していたLive2DモデルIDを取得"""
+        return self.settings.get('character_display', {}).get('last_live2d_id')
+    
+    def set_last_live2d_id(self, model_id: str):
+        """最後に表示していたLive2DモデルIDを保存"""
+        if 'character_display' not in self.settings:
+            self.settings['character_display'] = {}
+        
+        self.settings['character_display']['last_live2d_id'] = model_id
+        self.save_settings()
+    
+    def should_auto_restore_live2d(self) -> bool:
+        """Live2Dの自動復元を行うかどうか"""
+        return self.settings.get('character_display', {}).get('auto_restore_live2d', True)
+    
+    def set_auto_restore_live2d(self, enabled: bool):
+        """Live2D自動復元の設定"""
+        if 'character_display' not in self.settings:
+            self.settings['character_display'] = {}
+        
+        self.settings['character_display']['auto_restore_live2d'] = enabled
+        self.save_settings()
+
 class MiniMapWidget(QLabel):
     """右上に表示されるミニマップウィジェット"""
     def __init__(self, parent=None):
@@ -268,15 +344,20 @@ class Live2DWebView(QWebEngineView):
         self.page().runJavaScript(script)
 
 class CharacterDisplayWidget(QWidget):
-    """キャラクター表示エリア専門ウィジェット（画像 + Live2D統合版）"""
+    """キャラクター表示エリア専門ウィジェット（タブモード記憶機能付き）"""
     live2d_model_loaded = pyqtSignal(str)
     lip_sync_update_requested = pyqtSignal(float)
+    
     def __init__(self, live2d_url=None, live2d_server_manager=None, parent=None):
         super().__init__(parent)
         self.live2d_url = live2d_url
         self.live2d_server_manager = live2d_server_manager
         self.image_manager = ImageManager()
         self.live2d_manager = Live2DManager()
+        
+        # ★★★ 新規追加：画面表示モード管理器 ★★★
+        self.display_mode_manager = DisplayModeManager()
+        
         self.current_image_path = None
         self.current_image_id = None
         self.original_pixmap = None
@@ -284,11 +365,17 @@ class CharacterDisplayWidget(QWidget):
         self.current_live2d_folder = None
         self.current_live2d_id = None
         self.current_display_mode = "image"
+        
+        # 初期化中フラグ（自動復元処理を制御）
+        self.is_initializing = True
+        
         self.init_ui()
         self.resize_timer = QTimer(self)
         self.resize_timer.setSingleShot(True)
         self.resize_timer.timeout.connect(self.update_image_display)
-        QTimer.singleShot(100, self.load_last_content)
+        
+        # ★★★ 修正：最後のタブモードを復元してからコンテンツを読み込み ★★★
+        QTimer.singleShot(100, self.restore_last_tab_and_content)
 
     def init_ui(self):
         self.setStyleSheet("QWidget { background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 4px; }")
@@ -321,7 +408,10 @@ class CharacterDisplayWidget(QWidget):
         self.live2d_tab = QWidget()
         self.setup_live2d_tab()
         self.mode_tab_widget.addTab(self.live2d_tab, "🎭 Live2Dリップシンク")
+        
+        # ★★★ 修正：タブ変更シグナルを接続（設定保存機能付き） ★★★
         self.mode_tab_widget.currentChanged.connect(self.on_mode_tab_changed)
+        
         layout.addLayout(header_layout)
         layout.addWidget(self.mode_tab_widget, 1)
 
@@ -461,6 +551,7 @@ class CharacterDisplayWidget(QWidget):
         self.background_visible_check.toggled.connect(self.on_live2d_settings_changed)
         self.live2d_clear_btn.clicked.connect(self.clear_live2d_model)
 
+    # ★★★ 修正：タブ変更時にモードを保存 ★★★
     def on_mode_tab_changed(self, index):
         if index == 0:
             self.current_display_mode = "image"
@@ -468,6 +559,120 @@ class CharacterDisplayWidget(QWidget):
         else:
             self.current_display_mode = "live2d"
             self.toggle_minimap_btn.setVisible(False)
+        
+        # 初期化完了後のみ設定を保存
+        if not self.is_initializing:
+            self.display_mode_manager.set_last_tab_index(index)
+            print(f"🔧 タブ変更を保存: {'Live2D' if index == 1 else '画像'}")
+
+    # ★★★ 新規追加：前回のタブとコンテンツを復元 ★★★
+    def restore_last_tab_and_content(self):
+        """前回のタブモードとコンテンツを復元"""
+        try:
+            # 前回のタブインデックスを取得
+            last_tab_index = self.display_mode_manager.get_last_tab_index()
+            print(f"🔄 前回のタブモードを復元: {'Live2D' if last_tab_index == 1 else '画像'}")
+            
+            # シグナルを一時的に切断してタブ切り替え
+            self.mode_tab_widget.currentChanged.disconnect()
+            self.mode_tab_widget.setCurrentIndex(last_tab_index)
+            self.mode_tab_widget.currentChanged.connect(self.on_mode_tab_changed)
+            
+            # 表示モードを更新
+            if last_tab_index == 0:
+                self.current_display_mode = "image"
+                self.toggle_minimap_btn.setVisible(True)
+            else:
+                self.current_display_mode = "live2d"
+                self.toggle_minimap_btn.setVisible(False)
+            
+            # 初期化完了フラグを設定
+            self.is_initializing = False
+            
+            # コンテンツを復元
+            if last_tab_index == 1:  # Live2Dタブの場合
+                # 最後のLive2Dモデルがあれば復元
+                last_live2d_id = self.display_mode_manager.get_last_live2d_id()
+                if last_live2d_id:
+                    print(f"🎭 前回のLive2Dモデルを復元: {last_live2d_id}")
+                    self.restore_last_live2d_model(last_live2d_id)
+                
+                # 画像も復元（バックグラウンドで）
+                self.load_last_image_quietly()
+            else:  # 画像タブの場合
+                # 画像を復元
+                self.load_last_content()
+                
+        except Exception as e:
+            print(f"⚠️ タブ・コンテンツ復元エラー: {e}")
+            # エラー時はデフォルトで画像タブ
+            self.mode_tab_widget.setCurrentIndex(0)
+            self.current_display_mode = "image"
+            self.is_initializing = False
+            self.load_last_content()
+
+    # ★★★ 新規追加：前回のLive2Dモデルを復元 ★★★
+    def restore_last_live2d_model(self, live2d_id: str):
+        """前回のLive2Dモデルを復元"""
+        try:
+            model_data = self.live2d_manager.get_model_by_id(live2d_id)
+            if model_data and Path(model_data['model_folder_path']).exists():
+                print(f"🎭 Live2Dモデル自動復元開始: {model_data['name']}")
+                # 自動復元専用メソッドを呼び出し
+                self.load_live2d_model_from_data(model_data)
+            else:
+                print(f"⚠️ 前回のLive2Dモデルが見つかりません: {live2d_id}")
+        except Exception as e:
+            print(f"Live2Dモデル復元エラー: {e}")
+
+    # ★★★ 新規追加：画像をサイレント復元 ★★★
+    def load_last_image_quietly(self):
+        """画像をサイレントに復元（タブ切り替えなし）"""
+        try:
+            self.image_manager.cleanup_missing_images()
+            last_image = self.image_manager.get_last_image()
+            if last_image and Path(last_image['image_path']).exists():
+                # タブ切り替えを行わずに画像データだけ復元
+                self.load_image_from_data_quietly(last_image)
+        except Exception as e:
+            print(f"画像サイレント復元エラー: {e}")
+
+    # ★★★ 新規追加：画像データをサイレント復元 ★★★
+    def load_image_from_data_quietly(self, image_data):
+        """画像データをサイレントに復元（タブ切り替えなし）"""
+        image_path = image_data['image_path']
+        if not Path(image_path).exists():
+            return
+        
+        pixmap = QPixmap(image_path)
+        if pixmap.isNull():
+            return
+        
+        # 画像データを設定（UIの更新は最小限）
+        self.original_pixmap = pixmap
+        self.current_image_path = image_path
+        self.current_image_id = image_data['id']
+        
+        # 履歴更新
+        self.image_manager.add_image(image_path, image_data['name'])
+        
+        # UI設定復元
+        ui_settings = self.image_manager.get_ui_settings(self.current_image_id)
+        self.restore_ui_settings(ui_settings)
+        
+        # 画像表示
+        self.character_image_label.setStyleSheet("QLabel { background-color: white; border: none; }")
+        
+        # 情報更新
+        file_info = Path(image_path)
+        img_size = pixmap.size()
+        self.image_info_label.setText(f"📁 {image_data['name']}\\n📐 {img_size.width()}×{img_size.height()}px 💾 {file_info.stat().st_size // 1024} KB")
+        
+        # コントロール有効化
+        self.enable_controls()
+        self.update_minimap_position()
+        
+        print(f"🖼️ 画像をサイレント復元: {image_data['name']}")
 
     def load_live2d_model(self):
         folder_path = QFileDialog.getExistingDirectory(self, "Live2Dモデルフォルダを選択", "")
@@ -492,6 +697,10 @@ class CharacterDisplayWidget(QWidget):
             if load_success:
                 self.current_live2d_folder = folder_path
                 self.current_live2d_id = new_model_data['id']
+                
+                # ★★★ 追加：最後のLive2DモデルIDを保存 ★★★
+                self.display_mode_manager.set_last_live2d_id(self.current_live2d_id)
+                
                 self.live2d_info_label.setText(f"📁 {model_name} を読み込み中...")
                 self.enable_live2d_controls()
                 ui_settings = self.live2d_manager.get_ui_settings(self.current_live2d_id)
@@ -521,6 +730,10 @@ class CharacterDisplayWidget(QWidget):
             if load_success:
                 self.current_live2d_folder = folder_path
                 self.current_live2d_id = model_data['id']
+                
+                # ★★★ 追加：最後のLive2DモデルIDを保存 ★★★
+                self.display_mode_manager.set_last_live2d_id(self.current_live2d_id)
+                
                 self.live2d_info_label.setText(f"📁 {model_name} を読み込み中...")
                 self.enable_live2d_controls()
                 ui_settings = self.live2d_manager.get_ui_settings(self.current_live2d_id)
@@ -532,7 +745,7 @@ class CharacterDisplayWidget(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"Live2Dモデルの読み込み中にエラーが発生しました:\\n{str(e)}")
 
-    # ★★★ 新規追加：自動復元専用メソッド（強化版） ★★★
+    # ★★★ 既存の自動復元専用メソッド（強化版） ★★★
     def load_live2d_model_from_data(self, model_data: Dict[str, Any]) -> bool:
         """履歴データからLive2Dモデルを直接読み込み（自動復元用・強化版）"""
         try:
@@ -669,6 +882,9 @@ class CharacterDisplayWidget(QWidget):
                             self.current_live2d_id = model_data['id']
                             self.live2d_info_label.setText(f"📁 {pending['model_name']} (自動復元)")
                             
+                            # ★★★ 追加：最後のLive2DモデルIDを保存 ★★★
+                            self.display_mode_manager.set_last_live2d_id(self.current_live2d_id)
+                            
                             # WebViewの状態更新
                             self.live2d_webview.is_model_loaded = True
                             self.live2d_webview.current_model_path = pending['folder_path']
@@ -685,9 +901,6 @@ class CharacterDisplayWidget(QWidget):
                             
                             # WebViewに設定を適用
                             self.apply_settings_to_webview(ui_settings)
-                            
-                            # Live2Dタブに切り替え
-                            self.mode_tab_widget.setCurrentIndex(1)
                             
                             # シグナル発信（これでウィンドウタイトルも更新される）
                             self.live2d_model_loaded.emit(pending['folder_path'])
@@ -781,16 +994,23 @@ class CharacterDisplayWidget(QWidget):
         if self.current_display_mode == "live2d" and self.live2d_webview.is_model_loaded:
             adjusted_volume = volume * self.lipsync_gain_spin.value()
             self.live2d_webview.update_lip_sync(adjusted_volume)
+    
     def load_last_content(self):
         self.image_manager.cleanup_missing_images()
         last_image = self.image_manager.get_last_image()
-        if last_image and Path(last_image['image_path']).exists(): self.load_image_from_data(last_image)
+        if last_image and Path(last_image['image_path']).exists():
+            self.load_image_from_data(last_image)
+    
     def load_image_from_data(self, image_data):
         image_path = image_data['image_path']
         if not Path(image_path).exists(): QMessageBox.warning(self, "エラー", f"画像ファイルが見つかりません:\\n{image_path}"); return
         pixmap = QPixmap(image_path)
         if pixmap.isNull(): return
         self.original_pixmap = pixmap; self.current_image_path = image_path; self.current_image_id = image_data['id']
+        
+        # ★★★ 追加：最後の画像IDを保存 ★★★
+        self.display_mode_manager.set_last_image_id(self.current_image_id)
+        
         self.image_manager.add_image(image_path, image_data['name'])
         ui_settings = self.image_manager.get_ui_settings(self.current_image_id)
         self.restore_ui_settings(ui_settings)
@@ -798,12 +1018,18 @@ class CharacterDisplayWidget(QWidget):
         file_info = Path(image_path); img_size = pixmap.size()
         self.image_info_label.setText(f"📁 {image_data['name']}\\n📐 {img_size.width()}×{img_size.height()}px 💾 {file_info.stat().st_size // 1024} KB")
         self.enable_controls(); self.update_minimap_position(); self.mode_tab_widget.setCurrentIndex(0)
+    
     def load_character_image(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "立ち絵画像を選択", "", "画像ファイル (*.png *.jpg *.jpeg)")
         if not file_path: return
         image_name = Path(file_path).stem; image_id = self.image_manager.add_image(file_path, image_name)
+        
+        # ★★★ 追加：最後の画像IDを保存 ★★★
+        self.display_mode_manager.set_last_image_id(image_id)
+        
         new_image_data = self.image_manager.get_image_by_id(image_id)
         if new_image_data: self.load_image_from_data(new_image_data)
+    
     def enable_controls(self):
         for widget in [self.image_clear_btn, self.zoom_slider, self.h_position_slider, self.v_position_slider, self.toggle_minimap_btn]: widget.setEnabled(True)
     def clear_character_image(self):

@@ -1,20 +1,36 @@
 {
   "models": [
     {
+      "id": "70d8a3697fc8",
+      "name": "amitaro_merge",
+      "note": "",
+      "model_path": "F:\\AI_voise\\amitaro_merge\\reine-honoka-base.safetensors",
+      "config_path": "F:\\AI_voise\\amitaro_merge\\config.json",
+      "style_path": "F:\\AI_voise\\amitaro_merge\\style_vectors.npy"
+    },
+    {
+      "id": "cbe0f0022a77",
+      "name": "amitaro",
+      "note": "",
+      "model_path": "F:\\AI_voise\\amitaro\\amitaro.safetensors",
+      "config_path": "F:\\AI_voise\\amitaro\\config.json",
+      "style_path": "F:\\AI_voise\\amitaro\\style_vectors.npy"
+    },
+    {
+      "id": "bd168acb23c6",
+      "name": "koharune_ami",
+      "note": "",
+      "model_path": "F:\\AI_voise\\koharune_ami\\koharune-ami.safetensors",
+      "config_path": "F:\\AI_voise\\koharune_ami\\config.json",
+      "style_path": "F:\\AI_voise\\koharune_ami\\style_vectors.npy"
+    },
+    {
       "id": "ffdee7a1cc51",
       "name": "honoka_1000",
       "note": "",
       "model_path": "F:\\AI_voise\\honoka_1000\\honoka_model_e50_s5000.safetensors",
       "config_path": "F:\\AI_voise\\honoka_1000\\config.json",
       "style_path": "F:\\AI_voise\\honoka_1000\\style_vectors.npy"
-    },
-    {
-      "id": "e65b7b5154c9",
-      "name": "honoka_100",
-      "note": "",
-      "model_path": "F:\\AI_voise\\honoka_100\\honoka_model_100_e100_s2500.safetensors",
-      "config_path": "F:\\AI_voise\\honoka_100\\config.json",
-      "style_path": "F:\\AI_voise\\honoka_100\\style_vectors.npy"
     }
   ]
 }
