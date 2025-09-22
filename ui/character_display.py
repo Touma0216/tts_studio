@@ -94,7 +94,7 @@ class DisplayModeManager:
         self.save_settings()
 
 class MiniMapWidget(QLabel):
-    """右上に表示されるミニマップウィジェット"""
+    """右上に表示されるミニマップウィジェット（修正版：直感的操作）"""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedSize(120, 90)
@@ -147,7 +147,7 @@ class MiniMapWidget(QLabel):
         self.character_display.move_view_to_position(target_x, target_y)
 
 class Live2DMiniMapWidget(QLabel):
-    """Live2D用ミニマップウィジェット（完全修正版）"""
+    """Live2D用ミニマップウィジェット（修正版：直感的操作）"""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedSize(120, 90)
@@ -164,7 +164,7 @@ class Live2DMiniMapWidget(QLabel):
         self.character_display = character_display
 
     def update_live2d_minimap(self, zoom_percent, h_position, v_position):
-        """Live2Dの位置とズームを視覚的に表示（画像表示と同じ座標系）"""
+        """Live2Dの位置とズームを視覚的に表示（修正版：直感的な表示）"""
         if not self.character_display or not self.character_display.live2d_webview.is_model_loaded:
             self.clear()
             self.setText("Live2D")
@@ -188,10 +188,10 @@ class Live2DMiniMapWidget(QLabel):
         # Live2Dモデルの位置を表示（円で表現）
         model_size = max(8, min(50, int(zoom_percent / 8)))  # ズーム範囲調整対応
         
-        # 位置計算（画像表示と同じ座標系）
-        # h_position: 左0 → 中央50 → 右100
+        # 位置計算（実際のキャラクター表示位置に合わせて修正）
+        # h_position: 左0（キャラ右表示）→ 中央50 → 右100（キャラ左表示）
         # v_position: 上0 → 中央50 → 下100 (画像表示と同じ)
-        model_x = 10 + int((h_position / 100) * 100)
+        model_x = 10 + int(((100 - h_position) / 100) * 100)  # 修正：右スライダーで左表示
         model_y = 10 + int(((100 - v_position) / 100) * 70)  # 画像表示と同じ：下が大きい値
         
         # モデル表示（円）
@@ -208,16 +208,16 @@ class Live2DMiniMapWidget(QLabel):
         self.setPixmap(pixmap)
 
     def mousePressEvent(self, event):
-        """ミニマップクリックで位置移動（画像表示と同じ操作感）"""
+        """ミニマップクリックで位置移動（修正版：直感的な操作）"""
         if not self.character_display or not self.character_display.live2d_webview.is_model_loaded:
             return
         
         click_pos = event.position().toPoint()
         
-        # クリック位置をスライダー値に変換（画像表示と同じ方向）
+        # クリック位置をスライダー値に変換（実際の表示に合わせて修正）
         if 10 <= click_pos.x() <= 110 and 10 <= click_pos.y() <= 80:
-            # 左右は素直にマッピング
-            new_h = int(((click_pos.x() - 10) / 100) * 100)
+            # 左右：左クリック→キャラ右表示→h_position=0、右クリック→キャラ左表示→h_position=100
+            new_h = int(((110 - click_pos.x()) / 100) * 100)  # 修正：クリック位置を反転
             # 上下も画像表示と同じ：上クリック→v_position小→キャラ上部表示
             new_v = int(((click_pos.y() - 10) / 70) * 100)  # 画像表示と同じ方向
             
@@ -226,7 +226,7 @@ class Live2DMiniMapWidget(QLabel):
             self.character_display.live2d_v_position_slider.setValue(new_v)
 
 class DraggableImageLabel(QLabel):
-    """ドラッグで移動可能な画像表示ラベル"""
+    """ドラッグで移動可能な画像表示ラベル（修正版：直感的操作）"""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.scroll_area = None
@@ -264,12 +264,16 @@ class DraggableImageLabel(QLabel):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
+        """ドラッグで画像移動（修正版：直感的な「持っていく」操作）"""
         if self.is_dragging and self.last_pan_pos and self.scroll_area:
             delta = event.position().toPoint() - self.last_pan_pos
             h_scroll = self.scroll_area.horizontalScrollBar()
             v_scroll = self.scroll_area.verticalScrollBar()
-            h_scroll.setValue(h_scroll.value() - delta.x())
-            v_scroll.setValue(v_scroll.value() - delta.y())
+            
+            # 修正：右ドラッグで画像が右に移動する「持っていく」感覚
+            h_scroll.setValue(h_scroll.value() - delta.x())  # 元に戻す
+            v_scroll.setValue(v_scroll.value() - delta.y())  # 上下はそのまま
+            
             self.last_pan_pos = event.position().toPoint()
             if self.character_display:
                 self.character_display.update_minimap_view()
@@ -296,7 +300,7 @@ class DraggableImageLabel(QLabel):
         super().leaveEvent(event)
 
 class Live2DWebView(QWebEngineView):
-    """Live2D表示用WebEngineView（直感的操作・高倍率対応）"""
+    """Live2D表示用WebEngineView（修正版：直感的操作・高倍率対応）"""
     model_loaded = pyqtSignal(str)
     
     def __init__(self, live2d_url=None, parent=None):
@@ -351,21 +355,21 @@ class Live2DWebView(QWebEngineView):
             super().mousePressEvent(event)
     
     def mouseMoveEvent(self, event):
-        """ドラッグで位置移動（画像表示と同じ操作感）"""
+        """ドラッグで位置移動（修正版：直感的な操作）"""
         if self.is_dragging and self.last_pan_pos and self.character_display:
             delta = event.position().toPoint() - self.last_pan_pos
             
             # 感度調整（画像表示と同じ感覚）
             sensitivity = 0.3
-            h_change = -delta.x() * sensitivity  # 左右：マウス右→視点右→キャラ左
+            h_change = delta.x() * sensitivity   # 左右：マウス右→キャラ右（スライダーは左方向）
             v_change = -delta.y() * sensitivity  # 上下：マウス下→視点下→キャラ上（画像表示と同じ）
             
             # 現在の位置を取得
             current_h = self.character_display.live2d_h_position_slider.value()
             current_v = self.character_display.live2d_v_position_slider.value()
             
-            # 新しい位置を計算
-            new_h = max(0, min(100, current_h + h_change))
+            # 新しい位置を計算（ドラッグ方向とスライダー方向の対応を修正）
+            new_h = max(0, min(100, current_h - h_change))  # マウス右→キャラ右→スライダー左
             new_v = max(0, min(100, current_v + v_change))
             
             # スライダーを更新
@@ -512,7 +516,7 @@ class Live2DWebView(QWebEngineView):
         self.page().runJavaScript(script)
 
 class CharacterDisplayWidget(QWidget):
-    """キャラクター表示エリア（完全修正版：直感的操作・高倍率対応）"""
+    """キャラクター表示エリア（修正版：直感的操作・高倍率対応）"""
     live2d_model_loaded = pyqtSignal(str)
     lip_sync_update_requested = pyqtSignal(float)
     
@@ -833,7 +837,7 @@ class CharacterDisplayWidget(QWidget):
         self.save_live2d_ui_settings()
 
     def on_live2d_position_changed(self):
-        """Live2D位置変更時の処理（画像表示と同じ操作感）"""
+        """Live2D位置変更時の処理（修正版：直感的な操作）"""
         if not self.current_live2d_id:
             return
         
@@ -843,11 +847,12 @@ class CharacterDisplayWidget(QWidget):
         self.current_live2d_h_position = h_pos
         self.current_live2d_v_position = v_pos
         
-        # JavaScriptに送信する値（画像表示と同じ座標系）
-        # h_pos: 0(左)→50(中央)→100(右) → pos_x: -1.0→0.0→1.0 
+        # JavaScriptに送信する値（修正版：直感的な操作）
+        # h_pos: 0(左スライダー)→50(中央)→100(右スライダー) 
+        # → pos_x: 1.0(キャラ右)→0.0(中央)→-1.0(キャラ左) ← 修正：右スライダーでキャラが左に
         # v_pos: 0(上)→50(中央)→100(下) → pos_y: -1.0→0.0→1.0 (画像表示と同じ)
-        pos_x = (h_pos - 50) / 50.0  # 右スライダー→キャラ右
-        pos_y = (v_pos - 50) / 50.0  # 下スライダー→キャラ下（画像表示と同じ）
+        pos_x = -(h_pos - 50) / 50.0  # 右スライダー→キャラ左（画像表示と同じ挙動）
+        pos_y = (v_pos - 50) / 50.0   # 下スライダー→キャラ下（画像表示と同じ）
         
         settings = {
             'position_x': pos_x,
@@ -1226,7 +1231,7 @@ class CharacterDisplayWidget(QWidget):
                 delattr(self, '_pending_model_data')
 
     def apply_settings_to_webview(self, ui_settings):
-        """UI設定をWebViewに適用（画像表示と同じ座標系）"""
+        """UI設定をWebViewに適用（修正版：直感的な座標系）"""
         if self.live2d_webview.is_model_loaded:
             js_settings = {}
             
@@ -1234,10 +1239,10 @@ class CharacterDisplayWidget(QWidget):
             zoom_percent = ui_settings.get('zoom_percent', 100)
             js_settings['scale'] = zoom_percent / 100.0
             
-            # 位置設定（画像表示と同じ座標系）
+            # 位置設定（修正版：直感的な操作）
             h_pos = ui_settings.get('h_position', 50)
             v_pos = ui_settings.get('v_position', 50)
-            js_settings['position_x'] = (h_pos - 50) / 50.0   # 右スライダー→キャラ右
+            js_settings['position_x'] = -(h_pos - 50) / 50.0  # 右スライダー→キャラ左（修正）
             js_settings['position_y'] = (v_pos - 50) / 50.0   # 下スライダー→キャラ下（画像表示と同じ）
             
             self.live2d_webview.update_model_settings(js_settings)
@@ -1496,20 +1501,25 @@ class CharacterDisplayWidget(QWidget):
         self.zoom_label.setText(f"{self.current_zoom_percent}%")
     
     def on_position_slider_changed(self):
+        """画像位置スライダー変更時の処理（修正版：右スライダー→画像が右に）"""
         if not self.original_pixmap: return
         h_scroll = self.scroll_area.horizontalScrollBar()
         v_scroll = self.scroll_area.verticalScrollBar()
         h_max = h_scroll.maximum()
         v_max = v_scroll.maximum()
+        
+        # 修正：右スライダーで画像が右に移動する直感的な操作
         if h_max > 0: 
-            h_scroll.setValue(round(h_max * self.h_position_slider.value() / 100))
+            h_scroll.setValue(round(h_max * self.h_position_slider.value() / 100))  # 反転を削除
         if v_max > 0: 
             v_scroll.setValue(round(v_scroll.maximum() * (100 - self.v_position_slider.value()) / 100))
+        
         self.update_minimap_view()
         if not self.h_position_slider.signalsBlocked(): 
             self.save_ui_settings()
     
     def update_custom_scrollbars(self):
+        """スクロールバーの位置をスライダーに反映（修正版：右スクロール→右スライダー）"""
         if not self.original_pixmap: return
         h_scroll = self.scroll_area.horizontalScrollBar()
         v_scroll = self.scroll_area.verticalScrollBar()
@@ -1517,8 +1527,11 @@ class CharacterDisplayWidget(QWidget):
         v_max = v_scroll.maximum()
         self.h_position_slider.blockSignals(True)
         self.v_position_slider.blockSignals(True)
-        self.h_position_slider.setValue(round(100 * h_scroll.value() / h_max) if h_max > 0 else 50)
+        
+        # 修正：右スクロール→右スライダー（直感的な対応）
+        self.h_position_slider.setValue(round(100 * h_scroll.value() / h_max) if h_max > 0 else 50)  # 反転を削除
         self.v_position_slider.setValue(100 - round(100 * v_scroll.value() / v_max) if v_max > 0 else 50)
+        
         self.h_position_slider.blockSignals(False)
         self.v_position_slider.blockSignals(False)
     
