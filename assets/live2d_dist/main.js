@@ -111,33 +111,58 @@ window.setExpression = function(expressionName) {
     }
 };
 
+// ==========================================================
+//                 ↓↓↓ Python連携 最終版 ↓↓↓
+// ==========================================================
 window.updateModelSettings = function(settings) {
     if (currentModel) {
         try {
-            // ベーススケール（全身表示用）を取得
-            const modelBounds = currentModel.getBounds();
-            const baseScaleX = (window.innerWidth * 0.9) / (modelBounds.width / currentModel.scale.x);
-            const baseScaleY = (window.innerHeight * 0.9) / (modelBounds.height / currentModel.scale.y);
-            const baseScale = Math.min(baseScaleX, baseScaleY);
-            
             if (settings.scale !== undefined) {
-                // 80%-300%対応：適切なズーム範囲
+                // スケールは常に適用
+                const modelBounds = currentModel.getBounds();
+                const baseScaleX = (window.innerWidth * 0.9) / (modelBounds.width / currentModel.scale.x);
+                const baseScaleY = (window.innerHeight * 0.9) / (modelBounds.height / currentModel.scale.y);
+                const baseScale = Math.min(baseScaleX, baseScaleY);
                 currentModel.scale.set(baseScale * settings.scale);
             }
+
+            // --- 位置調整の最終ロジック ---
+            const modelHeight = currentModel.getBounds().height;
+            const viewHeight = window.innerHeight;
+            
+            // 画面からはみ出している高さを計算
+            const overflowHeight = Math.max(0, modelHeight - viewHeight);
+
+            // 基準位置（スライダーが中央の時）は、キャラクターの足元が画面下部から少し浮いた位置
+            const baseY = viewHeight * 0.9;
+            
+            // 移動範囲を「はみ出した高さの半分」に設定
+            // これにより、スライダーの-1から+1が、はみ出した領域を上下に移動させるのに使われる
+            const moveRange = overflowHeight / 2;
+            
+            let finalX = window.innerWidth / 2;
             if (settings.position_x !== undefined) {
-                currentModel.x = window.innerWidth / 2 + (settings.position_x * window.innerWidth / 3);
+                const moveRangeX = window.innerWidth / 3; // 横の移動範囲
+                finalX = (window.innerWidth / 2) + (settings.position_x * moveRangeX);
             }
+            
+            let finalY = baseY;
             if (settings.position_y !== undefined) {
-                // 画像表示と同じ座標系：下スライダー→キャラ下移動→顔が見える
-                const baseY = window.innerHeight * 0.9;  // 足元基準位置
-                const moveRange = window.innerHeight * 0.5;  // 移動範囲を調整
-                currentModel.y = baseY + (settings.position_y * moveRange);
+                const offsetY = settings.position_y * moveRange;
+                finalY = baseY + offsetY;
             }
+
+            currentModel.x = finalX;
+            currentModel.y = finalY;
+
         } catch (e) {
             console.error("モデル設定更新エラー:", e);
         }
     }
 };
+// ==========================================================
+//                 ↑↑↑ Python連携 最終版 ↑↑↑
+// ==========================================================
 
 window.setBackgroundVisible = function(visible) {
     if (app && app.renderer) {
