@@ -192,7 +192,7 @@ class Live2DMiniMapWidget(QLabel):
         # h_position: 左0 → 中央50 → 右100
         # v_position: 上0 → 中央50 → 下100 (画像表示と同じ)
         model_x = 10 + int((h_position / 100) * 100)
-        model_y = 10 + int((v_position / 100) * 70)  # 画像表示と同じ：下が大きい値
+        model_y = 10 + int(((100 - v_position) / 100) * 70)  # 画像表示と同じ：下が大きい値
         
         # モデル表示（円）
         painter.setBrush(QColor(100, 150, 255, 180))

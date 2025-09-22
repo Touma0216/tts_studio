@@ -41,26 +41,21 @@ window.loadLive2DModel = async function(modelJsonPath) {
         
         app.stage.addChild(currentModel);
         
-        // 初期配置：頭から足まで適切に表示
         const modelBounds = currentModel.getBounds();
-        
-        // 画面の90%を使用して全身を表示
         const scaleX = (window.innerWidth * 0.9) / modelBounds.width;
         const scaleY = (window.innerHeight * 0.9) / modelBounds.height;
         const scale = Math.min(scaleX, scaleY);
         
         currentModel.scale.set(scale);
-        currentModel.anchor.set(0.5, 1.0);  // 足元基準
+        currentModel.anchor.set(0.5, 1.0);
         currentModel.x = window.innerWidth / 2;
-        currentModel.y = window.innerHeight * 0.9;  // 足元を画面下部90%位置に
+        currentModel.y = window.innerHeight * 0.9;
         
         console.log("モデル配置完了 - サイズ:", currentModel.width, "x", currentModel.height, "スケール:", scale);
         return true;
         
     } catch (e) {
         console.error("❌ モデル読み込みエラー:", e);
-        console.error("エラー詳細:", e.message);
-        console.error("スタック:", e.stack);
         return false;
     }
 };
@@ -68,22 +63,15 @@ window.loadLive2DModel = async function(modelJsonPath) {
 window.setLipSyncValue = function(volume) {
     if (currentModel && currentModel.internalModel) {
         try {
-            // より自然な音量処理
             const normalizedVolume = Math.max(0, Math.min(1.0, volume * 0.8));
-            
-            // スムーズ補間のための減衰
             const smoothedVolume = normalizedVolume * 0.7 + (window.lastLipVolume || 0) * 0.3;
             window.lastLipVolume = smoothedVolume;
-            
-            // 複数のリップシンクパラメータを試行
             const lipParams = ['ParamMouthOpenY', 'PARAM_MOUTH_OPEN_Y', 'MouthOpenY'];
             for (const param of lipParams) {
                 try {
                     currentModel.internalModel.coreModel.setParameterValueById(param, smoothedVolume);
                     break;
-                } catch (e) {
-                    // 次のパラメータを試行
-                }
+                } catch (e) {}
             }
         } catch (e) {
             console.error("リップシンクエラー:", e);
@@ -112,13 +100,12 @@ window.setExpression = function(expressionName) {
 };
 
 // ==========================================================
-//                 ↓↓↓ Python連携 最終版 ↓↓↓
+//                 ↓↓↓ padding修正反映版 ↓↓↓
 // ==========================================================
 window.updateModelSettings = function(settings) {
     if (currentModel) {
         try {
             if (settings.scale !== undefined) {
-                // スケールは常に適用
                 const modelBounds = currentModel.getBounds();
                 const baseScaleX = (window.innerWidth * 0.9) / (modelBounds.width / currentModel.scale.x);
                 const baseScaleY = (window.innerHeight * 0.9) / (modelBounds.height / currentModel.scale.y);
@@ -126,23 +113,20 @@ window.updateModelSettings = function(settings) {
                 currentModel.scale.set(baseScale * settings.scale);
             }
 
-            // --- 位置調整の最終ロジック ---
             const modelHeight = currentModel.getBounds().height;
             const viewHeight = window.innerHeight;
-            
-            // 画面からはみ出している高さを計算
             const overflowHeight = Math.max(0, modelHeight - viewHeight);
-
-            // 基準位置（スライダーが中央の時）は、キャラクターの足元が画面下部から少し浮いた位置
             const baseY = viewHeight * 0.9;
+
+            // 上下の移動範囲に少し「余裕（パディング）」を追加
+            const padding = viewHeight * 0.1; 
             
-            // 移動範囲を「はみ出した高さの半分」に設定
-            // これにより、スライダーの-1から+1が、はみ出した領域を上下に移動させるのに使われる
-            const moveRange = overflowHeight / 2;
-            
+            // 新しい移動範囲を「はみ出した高さ + 余裕」で計算
+            const moveRange = (overflowHeight + padding) / 2;
+
             let finalX = window.innerWidth / 2;
             if (settings.position_x !== undefined) {
-                const moveRangeX = window.innerWidth / 3; // 横の移動範囲
+                const moveRangeX = window.innerWidth / 3;
                 finalX = (window.innerWidth / 2) + (settings.position_x * moveRangeX);
             }
             
@@ -161,31 +145,24 @@ window.updateModelSettings = function(settings) {
     }
 };
 // ==========================================================
-//                 ↑↑↑ Python連携 最終版 ↑↑↑
+//                 ↑↑↑ padding修正反映版 ↑↑↑
 // ==========================================================
 
 window.setBackgroundVisible = function(visible) {
     if (app && app.renderer) {
         try {
-            if (visible) {
-                app.renderer.background.color = 0x000000;
-                app.renderer.background.alpha = 1;
-            } else {
-                app.renderer.background.alpha = 0;
-            }
+            app.renderer.background.alpha = visible ? 1 : 0;
         } catch (e) {
             console.error("背景設定エラー:", e);
         }
     }
 };
 
-// リサイズ処理
 window.addEventListener('resize', () => {
     if (app && app.renderer) {
         app.renderer.resize(window.innerWidth, window.innerHeight);
         
         if (currentModel) {
-            // リサイズ時にモデルを再配置（全身表示維持）
             const modelBounds = currentModel.getBounds();
             const scaleX = (window.innerWidth * 0.9) / (modelBounds.width / currentModel.scale.x);
             const scaleY = (window.innerHeight * 0.9) / (modelBounds.height / currentModel.scale.y);
@@ -198,7 +175,6 @@ window.addEventListener('resize', () => {
     }
 });
 
-// エラーハンドリング
 window.addEventListener('error', (event) => {
     console.error("JavaScript Error:", event.error);
 });
@@ -207,5 +183,4 @@ window.addEventListener('unhandledrejection', (event) => {
     console.error("Unhandled Promise Rejection:", event.reason);
 });
 
-// 初期化実行
 initialize();
