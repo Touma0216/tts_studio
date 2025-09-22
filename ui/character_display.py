@@ -354,8 +354,8 @@ class Live2DWebView(QWebEngineView):
             
             # 感度調整（適切なサイズに）
             sensitivity = 0.5
-            h_change = delta.x() * sensitivity
-            v_change = delta.y() * sensitivity
+            h_change = -delta.x() * sensitivity  # 視点移動として正しい方向（左右反転）
+            v_change = delta.y() * sensitivity   # 上下はそのまま
             
             # 現在の位置を取得
             current_h = self.character_display.live2d_h_position_slider.value()
@@ -540,10 +540,10 @@ class CharacterDisplayWidget(QWidget):
         self.current_live2d_id = None
         self.current_display_mode = "image"
         
-        # Live2D用の設定（全身表示用デフォルト）
-        self.current_live2d_zoom_percent = 70
+        # Live2D用の設定（デフォルトに戻す）
+        self.current_live2d_zoom_percent = 100
         self.current_live2d_h_position = 50
-        self.current_live2d_v_position = 35
+        self.current_live2d_v_position = 50
         
         # 初期化中フラグ（自動復元処理を制御）
         self.is_initializing = True
@@ -684,14 +684,14 @@ class CharacterDisplayWidget(QWidget):
         
         # ズームコントロール（画像表示と同じスタイル）
         zoom_layout = QVBoxLayout()
-        self.live2d_zoom_label = QLabel("70%")  # 初期値に合わせて変更
+        self.live2d_zoom_label = QLabel("100%")  # 初期値を100%に戻す
         self.live2d_zoom_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.live2d_zoom_label.setStyleSheet("color: #666; font-size: 11px; font-weight: bold; border: none;")
         
         slider_layout = QHBoxLayout()
         self.live2d_zoom_slider = QSlider(Qt.Orientation.Horizontal)
         self.live2d_zoom_slider.setRange(50, 200)  # Live2Dは50%〜200%
-        self.live2d_zoom_slider.setValue(70)  # 全身表示のため初期値を下げる
+        self.live2d_zoom_slider.setValue(100)  # 初期値を100%に戻す
         self.live2d_zoom_slider.setEnabled(False)
         slider_style = "QSlider::groove:horizontal { border: 1px solid #bbb; background: white; height: 4px; border-radius: 2px; } QSlider::sub-page:horizontal { background: #66e; } QSlider::handle:horizontal { background: #eee; border: 1px solid #777; width: 14px; margin: -6px 0; border-radius: 7px; }"
         self.live2d_zoom_slider.setStyleSheet(slider_style)
@@ -738,7 +738,7 @@ class CharacterDisplayWidget(QWidget):
         v_label.setStyleSheet("color: #666; font-size: 10px; border: none;")
         self.live2d_v_position_slider = QSlider(Qt.Orientation.Vertical)
         self.live2d_v_position_slider.setRange(0, 100)
-        self.live2d_v_position_slider.setValue(35)  # モデルを上に移動（全身表示用）
+        self.live2d_v_position_slider.setValue(50)  # デフォルトに戻す
         self.live2d_v_position_slider.setEnabled(False)
         v_slider_style = "QSlider::groove:vertical { border: 1px solid #bbb; background: white; width: 4px; border-radius: 2px; } QSlider::sub-page:vertical { background: #66e; } QSlider::handle:vertical { background: #eee; border: 1px solid #777; height: 14px; margin: 0 -6px; border-radius: 7px; }"
         self.live2d_v_position_slider.setStyleSheet(v_slider_style)
@@ -804,9 +804,9 @@ class CharacterDisplayWidget(QWidget):
         self.current_live2d_h_position = h_pos
         self.current_live2d_v_position = v_pos
         
-        # JavaScriptに送信する値（-1.0〜1.0にマッピング）
-        pos_x = (h_pos - 50) / 50.0
-        pos_y = (v_pos - 50) / 50.0
+        # JavaScriptに送信する値（視点移動として正しい方向）
+        pos_x = -(h_pos - 50) / 50.0  # 右スライダー→視点右→キャラ左（マイナス）
+        pos_y = (v_pos - 50) / 50.0   # 下スライダー→視点下→キャラ上
         
         settings = {
             'position_x': pos_x,
@@ -1250,12 +1250,12 @@ class CharacterDisplayWidget(QWidget):
             js_settings = {}
             
             # ズーム設定
-            zoom_percent = ui_settings.get('zoom_percent', 70)  # 全身表示用デフォルト
+            zoom_percent = ui_settings.get('zoom_percent', 100)  # デフォルト100%
             js_settings['scale'] = zoom_percent / 100.0
             
             # 位置設定
             h_pos = ui_settings.get('h_position', 50)
-            v_pos = ui_settings.get('v_position', 35)  # 全身表示用デフォルト
+            v_pos = ui_settings.get('v_position', 50)  # デフォルト50
             js_settings['position_x'] = (h_pos - 50) / 50.0
             js_settings['position_y'] = (v_pos - 50) / 50.0
             
@@ -1292,10 +1292,10 @@ class CharacterDisplayWidget(QWidget):
             control.setEnabled(False)
         
         # デフォルト値にリセット
-        self.live2d_zoom_slider.setValue(70)  # 全身表示用
+        self.live2d_zoom_slider.setValue(100)
         self.live2d_h_position_slider.setValue(50)
-        self.live2d_v_position_slider.setValue(35)  # 全身表示用
-        self.live2d_zoom_label.setText("70%")
+        self.live2d_v_position_slider.setValue(50)
+        self.live2d_zoom_label.setText("100%")
         
         # ページをリロード
         self.live2d_webview.load_initial_page()
@@ -1303,7 +1303,7 @@ class CharacterDisplayWidget(QWidget):
     def restore_live2d_settings(self, ui_settings):
         """Live2D設定を復元"""
         # ズーム設定
-        zoom_percent = ui_settings.get('zoom_percent', 70)  # 全身表示用デフォルト
+        zoom_percent = ui_settings.get('zoom_percent', 100)  # デフォルト100%
         self.live2d_zoom_slider.blockSignals(True)
         self.live2d_zoom_slider.setValue(zoom_percent)
         self.live2d_zoom_label.setText(f"{zoom_percent}%")
@@ -1311,7 +1311,7 @@ class CharacterDisplayWidget(QWidget):
         
         # 位置設定
         h_pos = ui_settings.get('h_position', 50)
-        v_pos = ui_settings.get('v_position', 35)  # 全身表示用デフォルト
+        v_pos = ui_settings.get('v_position', 50)  # デフォルト50
         self.live2d_h_position_slider.blockSignals(True)
         self.live2d_v_position_slider.blockSignals(True)
         self.live2d_h_position_slider.setValue(h_pos)
