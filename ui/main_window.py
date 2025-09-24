@@ -95,19 +95,20 @@ class TTSStudioMainWindow(QMainWindow):
         self.tabbed_audio_control.effects_settings_changed.connect(self.on_effects_settings_changed)
         self.tabbed_audio_control.lip_sync_settings_changed.connect(self.on_lip_sync_settings_changed)
         self.tabbed_audio_control.add_text_row("initial", 1)
-        
-        # 縦スプリッターに追加
+
         self.vertical_splitter.addWidget(self.multi_text)
         self.vertical_splitter.addWidget(self.tabbed_audio_control)
-        self.vertical_splitter.setSizes([400, 300])  # テキスト:タブ の比率
-        
-        # 最小サイズを設定（完全に閉じることを防ぐ）
-        self.multi_text.setMinimumHeight(150)  # テキストエリアの最小高さ
-        self.tabbed_audio_control.setMinimumHeight(200)  # タブエリアの最小高さ
-        
-        # スプリッターの制約設定
-        self.vertical_splitter.setCollapsible(0, False)  # 上側を折りたたみ不可
-        self.vertical_splitter.setCollapsible(1, False)  # 下側を折りたたみ不可
+
+        self.multi_text.setMaximumHeight(360)
+
+        self.vertical_splitter.setSizes([360, 340])
+
+        self.multi_text.setMinimumHeight(40)
+        self.tabbed_audio_control.setMinimumHeight(250)
+
+        # 4. 折りたたみ設定（上側のみ折りたたみ可能）
+        self.vertical_splitter.setCollapsible(0, True)
+        self.vertical_splitter.setCollapsible(1, False)
         controls = QHBoxLayout()
         controls.addStretch()
         self.sequential_play_btn = QPushButton("連続して再生(Ctrl + R)")
