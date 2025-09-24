@@ -60,25 +60,6 @@ window.loadLive2DModel = async function(modelJsonPath) {
     }
 };
 
-window.setLipSyncValue = function(volume) {
-    if (currentModel && currentModel.internalModel) {
-        try {
-            const normalizedVolume = Math.max(0, Math.min(1.0, volume * 0.8));
-            const smoothedVolume = normalizedVolume * 0.7 + (window.lastLipVolume || 0) * 0.3;
-            window.lastLipVolume = smoothedVolume;
-            const lipParams = ['ParamMouthOpenY', 'PARAM_MOUTH_OPEN_Y', 'MouthOpenY'];
-            for (const param of lipParams) {
-                try {
-                    currentModel.internalModel.coreModel.setParameterValueById(param, smoothedVolume);
-                    break;
-                } catch (e) {}
-            }
-        } catch (e) {
-            console.error("リップシンクエラー:", e);
-        }
-    }
-};
-
 window.playMotion = function(motionName) {
     if (currentModel) {
         try {
@@ -99,9 +80,6 @@ window.setExpression = function(expressionName) {
     }
 };
 
-// ==========================================================
-//                 ↓↓↓ padding修正反映版 ↓↓↓
-// ==========================================================
 window.updateModelSettings = function(settings) {
     if (currentModel) {
         try {
@@ -144,9 +122,6 @@ window.updateModelSettings = function(settings) {
         }
     }
 };
-// ==========================================================
-//                 ↑↑↑ padding修正反映版 ↑↑↑
-// ==========================================================
 
 window.setBackgroundVisible = function(visible) {
     if (app && app.renderer) {

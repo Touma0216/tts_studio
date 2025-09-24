@@ -5,7 +5,7 @@
       "model_folder_path": "C:\\Users\\masa2\\Downloads\\LiveroiD_A-Y01",
       "name": "LiveroiD_A-Y01",
       "created_at": "2025-09-21T13:02:11.049184",
-      "last_used": "2025-09-24T15:53:03.511242",
+      "last_used": "2025-09-24T23:01:25.313019",
       "ui_settings": {
         "scale": 0.2,
         "position_x": -1.8,
@@ -16,10 +16,10 @@
         "background_visible": true,
         "zoom_percent": 300,
         "h_position": 48,
-        "v_position": 0,
+        "v_position": 97,
         "minimap_visible": true
       }
     }
   ],
-  "last_updated": "2025-09-24T15:53:05.473542"
+  "last_updated": "2025-09-24T23:01:48.745692"
 }

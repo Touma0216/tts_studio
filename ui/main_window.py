@@ -34,15 +34,6 @@ class TTSStudioMainWindow(QMainWindow):
         self.last_generated_audio = None
         self.last_sample_rate = None
         
-        # リップシンク関連
-        self.current_lip_sync_settings = {}
-        self.lip_sync_enabled = True
-        self.last_lip_sync_volume = 0.0
-        
-        self.lipsync_timer = QTimer()
-        self.lipsync_timer.timeout.connect(self.update_lipsync)
-        self.current_audio_volume = 0.0
-        
         self.init_ui()
         self.help_dialog = HelpDialog(self)
         self.setup_audio_processing_integration()
@@ -54,7 +45,6 @@ class TTSStudioMainWindow(QMainWindow):
         self.sliding_menu.load_live2d_clicked.connect(self.character_display.load_live2d_model)
         self.sliding_menu.load_live2d_from_history_clicked.connect(self.character_display.show_live2d_history_dialog)
         self.character_display.live2d_model_loaded.connect(self.on_live2d_model_loaded)
-        self.character_display.lip_sync_update_requested.connect(self.on_lip_sync_update_requested)
         self.keyboard_shortcuts = KeyboardShortcutManager(self)
         self.load_last_model()
 
@@ -93,7 +83,6 @@ class TTSStudioMainWindow(QMainWindow):
         self.tabbed_audio_control.parameters_changed.connect(self.on_parameters_changed)
         self.tabbed_audio_control.cleaner_settings_changed.connect(self.on_cleaner_settings_changed)
         self.tabbed_audio_control.effects_settings_changed.connect(self.on_effects_settings_changed)
-        self.tabbed_audio_control.lip_sync_settings_changed.connect(self.on_lip_sync_settings_changed)
         self.tabbed_audio_control.add_text_row("initial", 1)
 
         self.vertical_splitter.addWidget(self.multi_text)
@@ -217,127 +206,7 @@ class TTSStudioMainWindow(QMainWindow):
         else:
             base_title = current_title
         self.setWindowTitle(f"{base_title} - {model_name} (Live2D)")
-        
-    def on_lip_sync_update_requested(self, volume):
-        self.current_audio_volume = volume
-        self.character_display.update_lip_sync(volume)
 
-    # ===== 🆕 リップシンク関連メソッド =====
-    def on_lip_sync_settings_changed(self, settings):
-        """リップシンク設定変更時の処理"""
-        self.current_lip_sync_settings = settings
-        
-        # 設定をcharacter_displayに転送
-        if hasattr(self.character_display, 'update_lip_sync_settings'):
-            self.character_display.update_lip_sync_settings(settings)
-        
-        print(f"🔧 リップシンク設定更新: {settings}")
-    
-    def apply_lip_sync_processing(self, audio_data, sample_rate, text=""):
-        """音声データにリップシンク処理を適用"""
-        if not self.tabbed_audio_control.is_lip_sync_enabled():
-            return None
-            
-        try:
-            # 基本設定を取得
-            basic_settings = self.current_lip_sync_settings.get('basic', {})
-            phoneme_settings = self.current_lip_sync_settings.get('phoneme', {})
-            advanced_settings = self.current_lip_sync_settings.get('advanced', {})
-            
-            # 音素解析（今後実装予定のlip_sync_engineを使用）
-            # phoneme_data = self.analyze_phonemes(audio_data, sample_rate, text)
-            
-            # とりあえずボリューム抽出のみ（現在の実装）
-            volume_data = self.extract_volume_data(audio_data, sample_rate)
-            
-            # 感度調整を適用
-            sensitivity = basic_settings.get('sensitivity', 80) / 100.0
-            adjusted_volume = volume_data * sensitivity
-            
-            # 口の開き調整を適用
-            mouth_scale = basic_settings.get('mouth_open_scale', 100) / 100.0
-            final_volume = adjusted_volume * mouth_scale
-            
-            return final_volume
-            
-        except Exception as e:
-            print(f"❌ リップシンク処理エラー: {e}")
-            return None
-    
-    def extract_volume_data(self, audio_data, sample_rate):
-        """音声データからボリューム情報を抽出"""
-        try:
-            import numpy as np
-            
-            # RMS音量を計算
-            window_size = int(sample_rate * 0.05)  # 50ms窓
-            volume_data = []
-            
-            for i in range(0, len(audio_data), window_size // 2):
-                window = audio_data[i:i + window_size]
-                if len(window) > 0:
-                    rms = np.sqrt(np.mean(window ** 2))
-                    volume_data.append(rms)
-            
-            return np.array(volume_data)
-            
-        except Exception as e:
-            print(f"音量抽出エラー: {e}")
-            return np.array([0.0])
-    
-    def update_real_time_lip_sync(self, volume):
-        """リアルタイムリップシンク更新（既存メソッドの強化版）"""
-        if not self.tabbed_audio_control.is_lip_sync_enabled():
-            self.character_display.update_lip_sync(0.0)
-            return
-        
-        # リップシンク設定を適用
-        basic_settings = self.current_lip_sync_settings.get('basic', {})
-        
-        # 感度調整
-        sensitivity = basic_settings.get('sensitivity', 80) / 100.0
-        adjusted_volume = volume * sensitivity
-        
-        # 口の開き調整
-        mouth_scale = basic_settings.get('mouth_open_scale', 100) / 100.0
-        final_volume = adjusted_volume * mouth_scale
-        
-        # スムージング（高度設定）
-        advanced_settings = self.current_lip_sync_settings.get('advanced', {})
-        smoothing = advanced_settings.get('smoothing_factor', 70) / 100.0
-        
-        if hasattr(self, 'last_lip_sync_volume'):
-            final_volume = final_volume * (1 - smoothing) + self.last_lip_sync_volume * smoothing
-        
-        self.last_lip_sync_volume = final_volume
-        
-        # キャラクター表示に送信
-        self.character_display.update_lip_sync(final_volume)
-        
-    def start_lipsync_monitoring(self):
-        if not self.lipsync_timer.isActive():
-            self.lipsync_timer.start(50)
-            
-    def stop_lipsync_monitoring(self):
-        if self.lipsync_timer.isActive():
-            self.lipsync_timer.stop()
-        self.current_audio_volume = 0.0
-        self.character_display.update_lip_sync(0.0)
-        
-    def update_lipsync(self):
-        """リップシンク更新（既存メソッドの強化版）"""
-        if self.last_generated_audio is not None:
-            # 音量減衰
-            volume = self.current_audio_volume * 0.95
-            self.current_audio_volume = max(0.0, volume)
-            
-            # リップシンク設定を適用して更新
-            self.update_real_time_lip_sync(self.current_audio_volume)
-            
-            # 停止判定
-            if self.current_audio_volume < 0.01:
-                self.stop_lipsync_monitoring()
-                
     def setup_audio_processing_integration(self):
         self.tabbed_audio_control.cleaner_control.analyze_requested.connect(self.handle_cleaner_analysis_request)
         
@@ -489,7 +358,7 @@ class TTSStudioMainWindow(QMainWindow):
             return audio
             
     def play_single_text(self, row_id, text, parameters):
-        """単一テキスト再生（リップシンク対応版）"""
+        """単一テキスト再生"""
         if not self.tts_engine.is_loaded:
             QMessageBox.warning(self, "エラー", "モデルが読み込まれていません。")
             return
@@ -500,20 +369,12 @@ class TTSStudioMainWindow(QMainWindow):
             # 音声合成
             sr, audio = self.tts_engine.synthesize(text, **tab_parameters)
             
-            # 既存の音声処理
+            # 音声処理
             audio = self.apply_audio_cleaning(audio, sr)
             audio = self.apply_audio_effects(audio, sr)
             
-            # 🆕 リップシンク処理
-            lip_sync_data = self.apply_lip_sync_processing(audio, sr, text)
-            
             # 音声データを保存
             self.last_generated_audio, self.last_sample_rate = audio, sr
-            
-            # リアルタイムリップシンク開始
-            max_volume = np.abs(audio).max()
-            self.current_audio_volume = max_volume
-            self.start_lipsync_monitoring()
             
             # 音声再生
             import sounddevice as sd
@@ -554,9 +415,6 @@ class TTSStudioMainWindow(QMainWindow):
         final_audio, sr = self._synthesize_and_process_all()
         self.sequential_play_btn.setEnabled(True)
         if final_audio is not None:
-            max_volume = np.abs(final_audio).max()
-            self.current_audio_volume = max_volume
-            self.start_lipsync_monitoring()
             import sounddevice as sd
             sd.play(final_audio, sr, blocking=False)
             
@@ -611,7 +469,6 @@ class TTSStudioMainWindow(QMainWindow):
             
     def closeEvent(self, event):
         try:
-            self.stop_lipsync_monitoring()
             cleaner_control = self.tabbed_audio_control.cleaner_control
             if hasattr(cleaner_control, 'analysis_thread') and cleaner_control.analysis_thread and cleaner_control.analysis_thread.isRunning():
                 cleaner_control.analysis_thread.quit()

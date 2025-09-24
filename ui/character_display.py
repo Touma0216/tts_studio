@@ -490,15 +490,6 @@ class Live2DWebView(QWebEngineView):
                 self.is_model_loaded = False
                 QMessageBox.critical(self, "Live2D Error", f"Live2Dモデルの読み込みに失敗しました。\n詳細はデバッグコンソール(Ctrl+Shift+I)をご確認ください。\nReason: {result}")
 
-    def update_lip_sync(self, volume):
-        """リップシンク更新（JavaScript側への送信）"""
-        if self.is_model_loaded:
-            # 音量範囲を調整（0.0-1.0）
-            normalized_volume = max(0.0, min(1.0, volume))
-            
-            script = f"if (typeof setLipSyncValue === 'function') setLipSyncValue({normalized_volume});"
-            self.page().runJavaScript(script)
-    
     def play_motion(self, motion_name):
         if self.is_model_loaded:
             script = f"if (typeof playMotion === 'function') playMotion('{motion_name}');"
@@ -522,7 +513,6 @@ class Live2DWebView(QWebEngineView):
 class CharacterDisplayWidget(QWidget):
     """キャラクター表示エリア（修正版：直感的操作・高倍率対応）"""
     live2d_model_loaded = pyqtSignal(str)
-    lip_sync_update_requested = pyqtSignal(float)
     
     def __init__(self, live2d_url=None, live2d_server_manager=None, parent=None):
         super().__init__(parent)
@@ -546,10 +536,6 @@ class CharacterDisplayWidget(QWidget):
         self.current_live2d_h_position = 50     # 中央
         self.current_live2d_v_position = 50     # 中央
         
-        # 🆕 リップシンク設定
-        self.current_lip_sync_settings = {}
-        self.last_lip_sync_volume = 0.0
-        
         self.is_initializing = True
         
         self.init_ui()
@@ -558,30 +544,6 @@ class CharacterDisplayWidget(QWidget):
         self.resize_timer.timeout.connect(self.update_image_display)
         
         QTimer.singleShot(100, self.restore_last_tab_and_content)
-
-    # 🆕 リップシンク関連メソッド
-    def update_lip_sync_settings(self, settings):
-        """リップシンク設定を更新"""
-        self.current_lip_sync_settings = settings
-        print(f"🎭 キャラクター表示：リップシンク設定更新完了")
-    
-    def update_lip_sync(self, volume):
-        """リップシンク更新（強化版）"""
-        if self.current_display_mode == "live2d" and self.live2d_webview.is_model_loaded:
-            # リップシンク設定が適用済みの場合はそのまま使用
-            # main_window.pyで既に設定適用済みなので、volumeをそのまま送信
-            self.live2d_webview.update_lip_sync(volume)
-            
-            # 詳細ログ（デバッグ用）
-            if hasattr(self, 'lip_sync_debug') and volume > 0.01:
-                basic_settings = self.current_lip_sync_settings.get('basic', {})
-                enabled = basic_settings.get('enabled', True)
-                sensitivity = basic_settings.get('sensitivity', 80)
-                print(f"🔊 リップシンク: 音量={volume:.3f}, 有効={enabled}, 感度={sensitivity}%")
-    
-    def enable_lip_sync_debug(self, enabled=True):
-        """リップシンクデバッグモードの有効/無効"""
-        self.lip_sync_debug = enabled
 
     def init_ui(self):
         self.setStyleSheet("QWidget { background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 4px; }")
