@@ -1,44 +1,20 @@
 {
   "models": [
     {
-      "id": "f2a48817411c",
-      "name": "honoka_merge_test",
-      "note": "",
-      "model_path": "F:\\AI_voise\\honoka_merge_test\\honoka_model_e20_s1000.safetensors",
-      "config_path": "F:\\AI_voise\\honoka_merge_test\\config.json",
-      "style_path": "F:\\AI_voise\\honoka_merge_test\\style_vectors.npy"
-    },
-    {
-      "id": "70d8a3697fc8",
-      "name": "amitaro_merge",
-      "note": "",
-      "model_path": "F:\\AI_voise\\amitaro_merge\\reine-honoka-base.safetensors",
-      "config_path": "F:\\AI_voise\\amitaro_merge\\config.json",
-      "style_path": "F:\\AI_voise\\amitaro_merge\\style_vectors.npy"
-    },
-    {
-      "id": "cbe0f0022a77",
-      "name": "amitaro",
-      "note": "",
-      "model_path": "F:\\AI_voise\\amitaro\\amitaro.safetensors",
-      "config_path": "F:\\AI_voise\\amitaro\\config.json",
-      "style_path": "F:\\AI_voise\\amitaro\\style_vectors.npy"
-    },
-    {
-      "id": "bd168acb23c6",
-      "name": "koharune_ami",
-      "note": "",
-      "model_path": "F:\\AI_voise\\koharune_ami\\koharune-ami.safetensors",
-      "config_path": "F:\\AI_voise\\koharune_ami\\config.json",
-      "style_path": "F:\\AI_voise\\koharune_ami\\style_vectors.npy"
-    },
-    {
       "id": "ffdee7a1cc51",
       "name": "honoka_1000",
       "note": "",
       "model_path": "F:\\AI_voise\\honoka_1000\\honoka_model_e50_s5000.safetensors",
       "config_path": "F:\\AI_voise\\honoka_1000\\config.json",
       "style_path": "F:\\AI_voise\\honoka_1000\\style_vectors.npy"
+    },
+    {
+      "id": "cd56c0b29185",
+      "name": "honoka_test",
+      "note": "",
+      "model_path": "F:\\AI_voise\\honoka_test\\honoka_model_e37_s2500.safetensors",
+      "config_path": "F:\\AI_voise\\honoka_test\\config.json",
+      "style_path": "F:\\AI_voise\\honoka_test\\style_vectors.npy"
     }
   ]
 }

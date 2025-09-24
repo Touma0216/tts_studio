@@ -1,13 +1,19 @@
 tts_studio-main/
 ├── main.py                           # アプリケーションエントリーポイント
-├── model_history.json                # AIモデル履歴データ（自動生成）
-├── user_settings.json                # ユーザー設定ファイル（自動生成）
-├── image_history.json                # 画像履歴データ（自動生成）
-├── live2d_history.json               # Live2Dモデル履歴データ（自動生成）
+├── model_history.json                # AIモデル履歴データ
+├── user_settings.json                # ユーザー設定ファイル
+├── image_history.json                # 画像履歴データ
+├── live2d_history.json               # Live2Dモデル履歴データ
 ├── assets/                           # 静的アセット
-│   └── live2d_dist/                  # Live2D環境（クリーンアップ済み）
+│   └── live2d_dist/                  # Live2D環境
 │       ├── index.html                # Live2Dビューアー用HTML
 │       ├── main.js                   # Live2D制御JavaScript
+│       ├── lip_sync/                 # 🆕 リップシンク専用ディレクトリ
+│       │   ├── phoneme_classifier.js # 音素分類・予測エンジン
+│       │   ├── audio_analyzer.js     # リアルタイム音声解析
+│       │   ├── lip_sync_controller.js# Live2D統合制御
+│       │   └── models/               # 音素マッピングデータ
+│       │       └── phoneme_model.json# 音素→Live2Dパラメータマッピング
 │       └── libs/
 │           └── node_modules/
 │               ├── pixi.js/
@@ -15,7 +21,7 @@ tts_studio-main/
 │               │       └── pixi.mjs  # PixiJS v7コアライブラリ
 │               └── pixi-live2d-display-lipsyncpatch/
 │                   └── dist/
-│                       └── index.es.js  # Live2D統合ライブラリ（リップシンク対応版）
+│                       └── index.es.js # Live2D統合ライブラリ
 ├── core/                             # コア機能モジュール
 │   ├── __init__.py                   # パッケージ初期化
 │   ├── audio_analyzer.py             # 音声品質解析エンジン
@@ -24,11 +30,14 @@ tts_studio-main/
 │   ├── audio_effects_processor.py    # 音声エフェクト処理エンジン
 │   ├── tts_engine.py                 # Style-Bert-VITS2音声合成エンジン
 │   ├── image_manager.py              # 画像履歴・UI設定管理システム
-│   └── live2d_manager.py             # Live2Dモデル管理システム
+│   ├── live2d_manager.py             # Live2Dモデル管理システム
+│   ├── lip_sync_engine.py            # 🆕 メインリップシンクエンジン
+│   ├── phoneme_analyzer.py           # 🆕 音素解析・最適化エンジン
+│   └── audio_realtime_processor.py   # 🆕 リアルタイム音声処理
 └── ui/                               # ユーザーインターフェース
     ├── __init__.py                   # パッケージ初期化
     ├── audio_cleaner_control.py      # 音声クリーナー制御UI
-    ├── audio_effects_control.py      # 音声エフェクト制御UI（ロボット音声・環境音等）
+    ├── audio_effects_control.py      # 音声エフェクト制御UI
     ├── character_display.py          # キャラクター表示・Live2D統合UI
     ├── help_dialog.py                # ヘルプ・操作説明ダイアログ
     ├── image_history.py              # 画像履歴選択・管理ダイアログ
@@ -41,4 +50,5 @@ tts_studio-main/
     ├── operation_instructions.html   # 操作説明HTMLファイル
     ├── sliding_menu.py               # スライド式ファイルメニューUI
     ├── tabbed_audio_control.py       # タブ式音声制御統合UI
-    └── tabbed_emotion_control.py     # タブ式感情・パラメータ制御UI
+    ├── tabbed_emotion_control.py     # タブ式感情・パラメータ制御UI
+    └── tabbed_lip_sync_control.py    # 🆕 タブ式リップシンク制御UI
