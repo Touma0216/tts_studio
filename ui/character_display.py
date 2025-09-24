@@ -833,7 +833,7 @@ class CharacterDisplayWidget(QWidget):
         self.live2d_clear_btn.clicked.connect(self.clear_live2d_model)
 
     def on_live2d_zoom_changed(self, value):
-        """Live2Dズーム変更時の処理（位置スライダーの有効/無効制御を追加）"""
+        """Live2Dズーム変更時の処理（位置調整制限を削除）"""
         if not self.current_live2d_id:
             return
         
@@ -845,18 +845,8 @@ class CharacterDisplayWidget(QWidget):
         settings = {'scale': scale_value}
         self.live2d_webview.update_model_settings(settings)
         
-        # ズーム率が110%以下（ほぼ全体が表示されている状態）の場合、
-        # 位置調整スライダーを無効化し、中央にリセットする
-        if scale_value <= 1.1:
-            self.live2d_h_position_slider.setEnabled(False)
-            self.live2d_v_position_slider.setEnabled(False)
-            # 中央に戻す
-            if self.live2d_h_position_slider.value() != 50:
-                self.live2d_h_position_slider.setValue(50)
-            if self.live2d_v_position_slider.value() != 50:
-                self.live2d_v_position_slider.setValue(50)
-        else:
-            # ズームしている場合はスライダーを有効化
+        # 位置調整スライダーは常に有効化（制限を削除）
+        if self.current_live2d_id:  # モデルが読み込まれている場合のみ有効
             self.live2d_h_position_slider.setEnabled(True)
             self.live2d_v_position_slider.setEnabled(True)
 
