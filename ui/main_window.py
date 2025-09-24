@@ -33,9 +33,16 @@ class TTSStudioMainWindow(QMainWindow):
         self.audio_effects_processor = AudioEffectsProcessor()
         self.last_generated_audio = None
         self.last_sample_rate = None
+        
+        # リップシンク関連
+        self.current_lip_sync_settings = {}
+        self.lip_sync_enabled = True
+        self.last_lip_sync_volume = 0.0
+        
         self.lipsync_timer = QTimer()
         self.lipsync_timer.timeout.connect(self.update_lipsync)
         self.current_audio_volume = 0.0
+        
         self.init_ui()
         self.help_dialog = HelpDialog(self)
         self.setup_audio_processing_integration()
@@ -68,20 +75,39 @@ class TTSStudioMainWindow(QMainWindow):
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
         left_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # テキスト入力とタブエリアの間に縦方向スプリッターを追加
+        self.vertical_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.vertical_splitter.setStyleSheet("""
+            QSplitter::handle { background-color: #dee2e6; height: 3px; }
+            QSplitter::handle:hover { background-color: #adb5bd; }
+        """)
+        
         self.multi_text = MultiTextWidget()
         self.multi_text.play_single_requested.connect(self.play_single_text)
         self.multi_text.row_added.connect(self.on_text_row_added)
         self.multi_text.row_removed.connect(self.on_text_row_removed)
         self.multi_text.row_numbers_updated.connect(self.on_row_numbers_updated)
-        divider = QFrame()
-        divider.setFrameShape(QFrame.Shape.HLine)
-        divider.setFrameShadow(QFrame.Shadow.Sunken)
-        divider.setStyleSheet("color: #dee2e6;")
+        
         self.tabbed_audio_control = TabbedAudioControl()
         self.tabbed_audio_control.parameters_changed.connect(self.on_parameters_changed)
         self.tabbed_audio_control.cleaner_settings_changed.connect(self.on_cleaner_settings_changed)
         self.tabbed_audio_control.effects_settings_changed.connect(self.on_effects_settings_changed)
+        self.tabbed_audio_control.lip_sync_settings_changed.connect(self.on_lip_sync_settings_changed)
         self.tabbed_audio_control.add_text_row("initial", 1)
+        
+        # 縦スプリッターに追加
+        self.vertical_splitter.addWidget(self.multi_text)
+        self.vertical_splitter.addWidget(self.tabbed_audio_control)
+        self.vertical_splitter.setSizes([400, 300])  # テキスト:タブ の比率
+        
+        # 最小サイズを設定（完全に閉じることを防ぐ）
+        self.multi_text.setMinimumHeight(150)  # テキストエリアの最小高さ
+        self.tabbed_audio_control.setMinimumHeight(200)  # タブエリアの最小高さ
+        
+        # スプリッターの制約設定
+        self.vertical_splitter.setCollapsible(0, False)  # 上側を折りたたみ不可
+        self.vertical_splitter.setCollapsible(1, False)  # 下側を折りたたみ不可
         controls = QHBoxLayout()
         controls.addStretch()
         self.sequential_play_btn = QPushButton("連続して再生(Ctrl + R)")
@@ -97,10 +123,11 @@ class TTSStudioMainWindow(QMainWindow):
         self.sequential_play_btn.clicked.connect(self.play_sequential)
         self.save_individual_btn.clicked.connect(self.save_individual)
         self.save_continuous_btn.clicked.connect(self.save_continuous)
-        left_layout.addWidget(self.multi_text, 2)
-        left_layout.addWidget(divider)
-        left_layout.addWidget(self.tabbed_audio_control, 1)
+        
+        # 左側レイアウト組み立て
+        left_layout.addWidget(self.vertical_splitter, 1)
         left_layout.addLayout(controls)
+        
         self.character_display = CharacterDisplayWidget(
             live2d_url=self.live2d_url,
             live2d_server_manager=self.live2d_server_manager,
@@ -108,9 +135,9 @@ class TTSStudioMainWindow(QMainWindow):
         )
         self.main_splitter.addWidget(left_widget)
         self.main_splitter.addWidget(self.character_display)
-        self.main_splitter.setSizes([700, 300])
-        left_widget.setMinimumWidth(500)
-        self.character_display.setMinimumWidth(200)
+        self.main_splitter.setSizes([700, 300])  # 元の設定に戻す
+        left_widget.setMinimumWidth(500)  # 元の設定に戻す
+        self.character_display.setMinimumWidth(200)  # 元の設定に戻す
         self.main_splitter.splitterMoved.connect(self.on_splitter_moved)
         main.addWidget(self.main_splitter)
 
@@ -135,6 +162,7 @@ class TTSStudioMainWindow(QMainWindow):
             QPushButton:pressed:enabled { background-color: #e65100; }
             QPushButton:disabled { background-color: #f0f0f0; color: #aaaaaa; }
         """
+        
     def create_menu_bar(self):
         menubar = self.menuBar()
         menubar.setStyleSheet("""
@@ -145,16 +173,20 @@ class TTSStudioMainWindow(QMainWindow):
         """)
         menubar.addAction("ファイル(F)").triggered.connect(self.toggle_file_menu)
         menubar.addAction("説明(H)").triggered.connect(self.show_help_dialog)
+        
     def show_help_dialog(self):
         self.help_dialog.show()
         self.help_dialog.raise_()
         self.help_dialog.activateWindow()
+        
     def toggle_file_menu(self):
         self.sliding_menu.toggle_menu()
+        
     def mousePressEvent(self, event):
         if self.sliding_menu.is_visible and not self.sliding_menu.geometry().contains(event.pos()):
             self.sliding_menu.hide_menu()
         super().mousePressEvent(event)
+        
     def on_splitter_moved(self, pos, index):
         if hasattr(self, 'main_splitter'):
             sizes = self.main_splitter.sizes()
@@ -171,8 +203,10 @@ class TTSStudioMainWindow(QMainWindow):
                     new_left_width = int(min_left_width)
                     new_right_width = total_width - new_left_width
                     self.main_splitter.setSizes([new_left_width, new_right_width])
+                    
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        
     def on_live2d_model_loaded(self, model_path):
         model_name = Path(model_path).name
         print(f"Live2Dモデルが読み込まれました: {model_name}")
@@ -182,31 +216,136 @@ class TTSStudioMainWindow(QMainWindow):
         else:
             base_title = current_title
         self.setWindowTitle(f"{base_title} - {model_name} (Live2D)")
+        
     def on_lip_sync_update_requested(self, volume):
         self.current_audio_volume = volume
         self.character_display.update_lip_sync(volume)
+
+    # ===== 🆕 リップシンク関連メソッド =====
+    def on_lip_sync_settings_changed(self, settings):
+        """リップシンク設定変更時の処理"""
+        self.current_lip_sync_settings = settings
+        
+        # 設定をcharacter_displayに転送
+        if hasattr(self.character_display, 'update_lip_sync_settings'):
+            self.character_display.update_lip_sync_settings(settings)
+        
+        print(f"🔧 リップシンク設定更新: {settings}")
+    
+    def apply_lip_sync_processing(self, audio_data, sample_rate, text=""):
+        """音声データにリップシンク処理を適用"""
+        if not self.tabbed_audio_control.is_lip_sync_enabled():
+            return None
+            
+        try:
+            # 基本設定を取得
+            basic_settings = self.current_lip_sync_settings.get('basic', {})
+            phoneme_settings = self.current_lip_sync_settings.get('phoneme', {})
+            advanced_settings = self.current_lip_sync_settings.get('advanced', {})
+            
+            # 音素解析（今後実装予定のlip_sync_engineを使用）
+            # phoneme_data = self.analyze_phonemes(audio_data, sample_rate, text)
+            
+            # とりあえずボリューム抽出のみ（現在の実装）
+            volume_data = self.extract_volume_data(audio_data, sample_rate)
+            
+            # 感度調整を適用
+            sensitivity = basic_settings.get('sensitivity', 80) / 100.0
+            adjusted_volume = volume_data * sensitivity
+            
+            # 口の開き調整を適用
+            mouth_scale = basic_settings.get('mouth_open_scale', 100) / 100.0
+            final_volume = adjusted_volume * mouth_scale
+            
+            return final_volume
+            
+        except Exception as e:
+            print(f"❌ リップシンク処理エラー: {e}")
+            return None
+    
+    def extract_volume_data(self, audio_data, sample_rate):
+        """音声データからボリューム情報を抽出"""
+        try:
+            import numpy as np
+            
+            # RMS音量を計算
+            window_size = int(sample_rate * 0.05)  # 50ms窓
+            volume_data = []
+            
+            for i in range(0, len(audio_data), window_size // 2):
+                window = audio_data[i:i + window_size]
+                if len(window) > 0:
+                    rms = np.sqrt(np.mean(window ** 2))
+                    volume_data.append(rms)
+            
+            return np.array(volume_data)
+            
+        except Exception as e:
+            print(f"音量抽出エラー: {e}")
+            return np.array([0.0])
+    
+    def update_real_time_lip_sync(self, volume):
+        """リアルタイムリップシンク更新（既存メソッドの強化版）"""
+        if not self.tabbed_audio_control.is_lip_sync_enabled():
+            self.character_display.update_lip_sync(0.0)
+            return
+        
+        # リップシンク設定を適用
+        basic_settings = self.current_lip_sync_settings.get('basic', {})
+        
+        # 感度調整
+        sensitivity = basic_settings.get('sensitivity', 80) / 100.0
+        adjusted_volume = volume * sensitivity
+        
+        # 口の開き調整
+        mouth_scale = basic_settings.get('mouth_open_scale', 100) / 100.0
+        final_volume = adjusted_volume * mouth_scale
+        
+        # スムージング（高度設定）
+        advanced_settings = self.current_lip_sync_settings.get('advanced', {})
+        smoothing = advanced_settings.get('smoothing_factor', 70) / 100.0
+        
+        if hasattr(self, 'last_lip_sync_volume'):
+            final_volume = final_volume * (1 - smoothing) + self.last_lip_sync_volume * smoothing
+        
+        self.last_lip_sync_volume = final_volume
+        
+        # キャラクター表示に送信
+        self.character_display.update_lip_sync(final_volume)
+        
     def start_lipsync_monitoring(self):
         if not self.lipsync_timer.isActive():
             self.lipsync_timer.start(50)
+            
     def stop_lipsync_monitoring(self):
         if self.lipsync_timer.isActive():
             self.lipsync_timer.stop()
         self.current_audio_volume = 0.0
         self.character_display.update_lip_sync(0.0)
+        
     def update_lipsync(self):
+        """リップシンク更新（既存メソッドの強化版）"""
         if self.last_generated_audio is not None:
+            # 音量減衰
             volume = self.current_audio_volume * 0.95
             self.current_audio_volume = max(0.0, volume)
-            self.character_display.update_lip_sync(self.current_audio_volume)
+            
+            # リップシンク設定を適用して更新
+            self.update_real_time_lip_sync(self.current_audio_volume)
+            
+            # 停止判定
             if self.current_audio_volume < 0.01:
                 self.stop_lipsync_monitoring()
+                
     def setup_audio_processing_integration(self):
         self.tabbed_audio_control.cleaner_control.analyze_requested.connect(self.handle_cleaner_analysis_request)
+        
     def handle_cleaner_analysis_request(self):
         if not self.tts_engine.is_loaded:
             QMessageBox.warning(self, "エラー", "モデルが読み込まれていません。\n先にモデルを読み込んでから解析してください。")
             return
         self.generate_test_audio_for_analysis()
+        
     def generate_test_audio_for_analysis(self):
         texts_data = self.multi_text.get_all_texts_and_parameters()
         if texts_data and texts_data[0]['text'].strip():
@@ -239,10 +378,12 @@ class TTSStudioMainWindow(QMainWindow):
             QMessageBox.critical(self, "エラー", f"解析用音声の生成に失敗しました:\n{str(e)}")
         finally:
             if progress: progress.deleteLater()
+            
     def open_model_loader(self):
         dialog = ModelLoaderDialog(self)
         dialog.model_loaded.connect(self.load_model)
         dialog.exec()
+        
     def show_model_history_dialog(self):
         from PyQt6.QtWidgets import QDialog, QVBoxLayout
         if not self.model_manager.get_all_models():
@@ -265,6 +406,7 @@ class TTSStudioMainWindow(QMainWindow):
         widget.model_selected.connect(_on_selected)
         lay.addWidget(widget)
         dlg.exec()
+        
     def load_model(self, paths):
         try:
             if self.tts_engine.load_model(**paths):
@@ -285,7 +427,6 @@ class TTSStudioMainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"モデル読み込み中にエラーが発生しました:\n{str(e)}")
 
-    # ★★★ 修正された load_last_model メソッド ★★★
     def load_last_model(self):
         """アプリ起動時の自動復元：音声モデル + Live2Dモデル"""
         # 1. 音声モデルの自動復元
@@ -302,30 +443,23 @@ class TTSStudioMainWindow(QMainWindow):
                     self.update_emotion_ui_after_model_load()
                     print(f"✅ 音声モデル自動復元完了: {model_name}")
         
-        # 2. ★新規追加：Live2Dモデルの自動復元★
+        # 2. Live2Dモデルの自動復元
         self.load_last_live2d_model()
 
     def load_last_live2d_model(self):
         """最後に使用したLive2Dモデルを自動復元"""
         try:
-            # character_displayのLive2Dマネージャーから最後のモデルを取得
             if hasattr(self.character_display, 'live2d_manager'):
                 last_live2d = self.character_display.live2d_manager.get_last_model()
                 
                 if last_live2d:
                     model_folder_path = last_live2d['model_folder_path']
                     
-                    # フォルダが存在するかチェック
                     if Path(model_folder_path).exists():
-                        # Live2Dモデルの有効性をチェック
                         validation = self.character_display.live2d_manager.validate_model_folder(model_folder_path)
                         
                         if validation['is_valid']:
-                            # 自動でLive2Dモデルを読み込み（成功判定は内部で行う）
                             self.character_display.load_live2d_model_from_data(last_live2d)
-                            
-                            # ウィンドウタイトル更新（モデル読み込み成功時に内部で行われる）
-                            # print(f"✅ Live2Dモデル自動復元完了: {last_live2d['name']}")
                         else:
                             print(f"⚠️ Live2Dモデルファイルが不完全: {model_folder_path}")
                     else:
@@ -343,6 +477,7 @@ class TTSStudioMainWindow(QMainWindow):
         except Exception as e:
             print(f"音声クリーナーエラー: {e}")
             return audio
+            
     def apply_audio_effects(self, audio, sample_rate):
         if not self.tabbed_audio_control.is_effects_enabled(): return audio
         try:
@@ -351,28 +486,47 @@ class TTSStudioMainWindow(QMainWindow):
         except Exception as e:
             print(f"音声エフェクトエラー: {e}")
             return audio
+            
     def play_single_text(self, row_id, text, parameters):
+        """単一テキスト再生（リップシンク対応版）"""
         if not self.tts_engine.is_loaded:
             QMessageBox.warning(self, "エラー", "モデルが読み込まれていません。")
             return
+        
         tab_parameters = self.tabbed_audio_control.get_parameters(row_id) or parameters
+        
         try:
+            # 音声合成
             sr, audio = self.tts_engine.synthesize(text, **tab_parameters)
+            
+            # 既存の音声処理
             audio = self.apply_audio_cleaning(audio, sr)
             audio = self.apply_audio_effects(audio, sr)
+            
+            # 🆕 リップシンク処理
+            lip_sync_data = self.apply_lip_sync_processing(audio, sr, text)
+            
+            # 音声データを保存
             self.last_generated_audio, self.last_sample_rate = audio, sr
+            
+            # リアルタイムリップシンク開始
             max_volume = np.abs(audio).max()
             self.current_audio_volume = max_volume
             self.start_lipsync_monitoring()
+            
+            # 音声再生
             import sounddevice as sd
             sd.play(audio, sr, blocking=False)
+            
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"音声合成に失敗しました: {str(e)}")
+            
     def trim_silence(self, audio, sample_rate, threshold=0.01):
         non_silent = np.where(np.abs(audio) > threshold)[0]
         if len(non_silent) > 0:
             return audio[:non_silent[-1] + int(sample_rate * 0.1)]
         return audio
+        
     def _synthesize_and_process_all(self):
         texts_data = self.multi_text.get_all_texts_and_parameters()
         if not texts_data:
@@ -392,6 +546,7 @@ class TTSStudioMainWindow(QMainWindow):
         if max_val > 0.9: final_audio *= 0.9 / max_val
         self.last_generated_audio, self.last_sample_rate = final_audio, sample_rate
         return final_audio, sample_rate
+        
     def play_sequential(self):
         if not self.tts_engine.is_loaded: return
         self.sequential_play_btn.setEnabled(False)
@@ -403,6 +558,7 @@ class TTSStudioMainWindow(QMainWindow):
             self.start_lipsync_monitoring()
             import sounddevice as sd
             sd.play(final_audio, sr, blocking=False)
+            
     def save_individual(self):
         folder_path = QFileDialog.getExistingDirectory(self, "個別保存フォルダを選択")
         if not folder_path: return
@@ -419,6 +575,7 @@ class TTSStudioMainWindow(QMainWindow):
             sf.write(os.path.join(folder_path, filename), audio, sr)
         self.save_individual_btn.setEnabled(True)
         QMessageBox.information(self, "完了", f"個別ファイルを保存しました。")
+        
     def save_continuous(self):
         file_path, _ = QFileDialog.getSaveFileName(self, "連続音声ファイルを保存", "continuous.wav", "WAV files (*.wav)")
         if not file_path: return
@@ -429,15 +586,20 @@ class TTSStudioMainWindow(QMainWindow):
             import soundfile as sf
             sf.write(file_path, final_audio, sr)
             QMessageBox.information(self, "完了", f"連続音声ファイルを保存しました。")
+            
     def on_text_row_added(self, row_id, row_number):
         self.tabbed_audio_control.add_text_row(row_id, row_number)
+        
     def on_text_row_removed(self, row_id):
         self.tabbed_audio_control.remove_text_row(row_id)
+        
     def on_row_numbers_updated(self, row_mapping):
         self.tabbed_audio_control.update_tab_numbers(row_mapping)
+        
     def on_parameters_changed(self, row_id, parameters): pass
     def on_cleaner_settings_changed(self, cleaner_settings): pass
     def on_effects_settings_changed(self, effects_settings): pass
+    
     def update_emotion_ui_after_model_load(self):
         if not self.tts_engine.is_loaded: return
         try:
@@ -445,6 +607,7 @@ class TTSStudioMainWindow(QMainWindow):
             self.tabbed_audio_control.emotion_control.update_emotion_list(styles)
         except Exception as e:
             print(f"感情UI更新エラー: {e}")
+            
     def closeEvent(self, event):
         try:
             self.stop_lipsync_monitoring()

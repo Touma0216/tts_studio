@@ -491,8 +491,12 @@ class Live2DWebView(QWebEngineView):
                 QMessageBox.critical(self, "Live2D Error", f"Live2Dモデルの読み込みに失敗しました。\n詳細はデバッグコンソール(Ctrl+Shift+I)をご確認ください。\nReason: {result}")
 
     def update_lip_sync(self, volume):
+        """リップシンク更新（JavaScript側への送信）"""
         if self.is_model_loaded:
-            script = f"if (typeof setLipSyncValue === 'function') setLipSyncValue({volume});"
+            # 音量範囲を調整（0.0-1.0）
+            normalized_volume = max(0.0, min(1.0, volume))
+            
+            script = f"if (typeof setLipSyncValue === 'function') setLipSyncValue({normalized_volume});"
             self.page().runJavaScript(script)
     
     def play_motion(self, motion_name):
@@ -542,6 +546,10 @@ class CharacterDisplayWidget(QWidget):
         self.current_live2d_h_position = 50     # 中央
         self.current_live2d_v_position = 50     # 中央
         
+        # 🆕 リップシンク設定
+        self.current_lip_sync_settings = {}
+        self.last_lip_sync_volume = 0.0
+        
         self.is_initializing = True
         
         self.init_ui()
@@ -550,6 +558,30 @@ class CharacterDisplayWidget(QWidget):
         self.resize_timer.timeout.connect(self.update_image_display)
         
         QTimer.singleShot(100, self.restore_last_tab_and_content)
+
+    # 🆕 リップシンク関連メソッド
+    def update_lip_sync_settings(self, settings):
+        """リップシンク設定を更新"""
+        self.current_lip_sync_settings = settings
+        print(f"🎭 キャラクター表示：リップシンク設定更新完了")
+    
+    def update_lip_sync(self, volume):
+        """リップシンク更新（強化版）"""
+        if self.current_display_mode == "live2d" and self.live2d_webview.is_model_loaded:
+            # リップシンク設定が適用済みの場合はそのまま使用
+            # main_window.pyで既に設定適用済みなので、volumeをそのまま送信
+            self.live2d_webview.update_lip_sync(volume)
+            
+            # 詳細ログ（デバッグ用）
+            if hasattr(self, 'lip_sync_debug') and volume > 0.01:
+                basic_settings = self.current_lip_sync_settings.get('basic', {})
+                enabled = basic_settings.get('enabled', True)
+                sensitivity = basic_settings.get('sensitivity', 80)
+                print(f"🔊 リップシンク: 音量={volume:.3f}, 有効={enabled}, 感度={sensitivity}%")
+    
+    def enable_lip_sync_debug(self, enabled=True):
+        """リップシンクデバッグモードの有効/無効"""
+        self.lip_sync_debug = enabled
 
     def init_ui(self):
         self.setStyleSheet("QWidget { background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 4px; }")
@@ -813,7 +845,6 @@ class CharacterDisplayWidget(QWidget):
         settings = {'scale': scale_value}
         self.live2d_webview.update_model_settings(settings)
         
-        # ▼▼▼【ここからが重要な追加修正】▼▼▼
         # ズーム率が110%以下（ほぼ全体が表示されている状態）の場合、
         # 位置調整スライダーを無効化し、中央にリセットする
         if scale_value <= 1.1:
@@ -828,7 +859,6 @@ class CharacterDisplayWidget(QWidget):
             # ズームしている場合はスライダーを有効化
             self.live2d_h_position_slider.setEnabled(True)
             self.live2d_v_position_slider.setEnabled(True)
-        # ▲▲▲【ここまでが重要な追加修正】▲▲▲
 
         # ミニマップ更新
         self.update_live2d_minimap()
@@ -1343,10 +1373,6 @@ class CharacterDisplayWidget(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"Live2D履歴ダイアログでエラーが発生しました:\n{str(e)}")
 
-    def update_lip_sync(self, volume):
-        if self.current_display_mode == "live2d" and self.live2d_webview.is_model_loaded:
-            self.live2d_webview.update_lip_sync(volume)
-    
     def load_last_content(self):
         self.image_manager.cleanup_missing_images()
         last_image = self.image_manager.get_last_image()
