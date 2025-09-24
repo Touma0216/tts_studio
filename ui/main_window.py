@@ -15,11 +15,13 @@ from .keyboard_shortcuts import KeyboardShortcutManager
 from .sliding_menu import SlidingMenuWidget
 from .help_dialog import HelpDialog
 from .character_display import CharacterDisplayWidget
+from .tabbed_lip_sync_control import TabbedLipSyncControl  # 🆕 追加
 from core.tts_engine import TTSEngine
 from core.model_manager import ModelManager
 from core.audio_processor import AudioProcessor
 from core.audio_analyzer import AudioAnalyzer
 from core.audio_effects_processor import AudioEffectsProcessor
+from core.lip_sync_engine import LipSyncEngine  # 🆕 追加
 
 class TTSStudioMainWindow(QMainWindow):
     def __init__(self, live2d_url=None, live2d_server_manager=None):
@@ -31,12 +33,20 @@ class TTSStudioMainWindow(QMainWindow):
         self.audio_processor = AudioProcessor()
         self.audio_analyzer = AudioAnalyzer()
         self.audio_effects_processor = AudioEffectsProcessor()
+        
+        # 🆕 リップシンクエンジン追加
+        self.lip_sync_engine = LipSyncEngine()
+        
         self.last_generated_audio = None
         self.last_sample_rate = None
         
         self.init_ui()
         self.help_dialog = HelpDialog(self)
         self.setup_audio_processing_integration()
+        
+        # 🆕 リップシンク統合設定
+        self.setup_lipsync_integration()
+        
         self.sliding_menu = SlidingMenuWidget(self)
         self.sliding_menu.load_model_clicked.connect(self.open_model_loader)
         self.sliding_menu.load_from_history_clicked.connect(self.show_model_history_dialog)
@@ -79,25 +89,39 @@ class TTSStudioMainWindow(QMainWindow):
         self.multi_text.row_removed.connect(self.on_text_row_removed)
         self.multi_text.row_numbers_updated.connect(self.on_row_numbers_updated)
         
+        # 🆕 タブエリアを水平分割してリップシンク制御を追加
+        tab_horizontal_splitter = QSplitter(Qt.Orientation.Horizontal)
+        tab_horizontal_splitter.setStyleSheet("""
+            QSplitter::handle { background-color: #dee2e6; width: 3px; }
+            QSplitter::handle:hover { background-color: #adb5bd; }
+        """)
+        
         self.tabbed_audio_control = TabbedAudioControl()
         self.tabbed_audio_control.parameters_changed.connect(self.on_parameters_changed)
         self.tabbed_audio_control.cleaner_settings_changed.connect(self.on_cleaner_settings_changed)
         self.tabbed_audio_control.effects_settings_changed.connect(self.on_effects_settings_changed)
         self.tabbed_audio_control.add_text_row("initial", 1)
 
+        # 🆕 リップシンク制御タブ追加
+        self.lip_sync_control = TabbedLipSyncControl()
+        self.lip_sync_control.settings_changed.connect(self.on_lipsync_settings_changed)
+        
+        tab_horizontal_splitter.addWidget(self.tabbed_audio_control)
+        tab_horizontal_splitter.addWidget(self.lip_sync_control)
+        tab_horizontal_splitter.setSizes([400, 300])  # 音声制御:リップシンク制御 = 4:3
+
         self.vertical_splitter.addWidget(self.multi_text)
-        self.vertical_splitter.addWidget(self.tabbed_audio_control)
+        self.vertical_splitter.addWidget(tab_horizontal_splitter)
 
         self.multi_text.setMaximumHeight(360)
-
         self.vertical_splitter.setSizes([360, 340])
-
         self.multi_text.setMinimumHeight(40)
-        self.tabbed_audio_control.setMinimumHeight(250)
+        tab_horizontal_splitter.setMinimumHeight(250)
 
-        # 4. 折りたたみ設定（上側のみ折りたたみ可能）
+        # 折りたたみ設定（上側のみ折りたたみ可能）
         self.vertical_splitter.setCollapsible(0, True)
         self.vertical_splitter.setCollapsible(1, False)
+        
         controls = QHBoxLayout()
         controls.addStretch()
         self.sequential_play_btn = QPushButton("連続して再生(Ctrl + R)")
@@ -106,13 +130,25 @@ class TTSStudioMainWindow(QMainWindow):
         self.save_individual_btn.setStyleSheet(self._green_btn_css())
         self.save_continuous_btn = QPushButton("連続保存(Ctrl + Shift + S)")
         self.save_continuous_btn.setStyleSheet(self._orange_btn_css())
-        for btn in [self.sequential_play_btn, self.save_individual_btn, self.save_continuous_btn]:
+        
+        # 🆕 リップシンクテストボタン追加
+        self.test_lipsync_btn = QPushButton("🎭 リップシンクテスト")
+        self.test_lipsync_btn.setStyleSheet("""
+            QPushButton { background-color: #6f42c1; color: white; border: none; border-radius: 4px; font-size: 13px; font-weight: bold; padding: 6px 16px; }
+            QPushButton:hover:enabled { background-color: #5a359b; }
+            QPushButton:pressed:enabled { background-color: #4e2a87; }
+            QPushButton:disabled { background-color: #f0f0f0; color: #aaaaaa; }
+        """)
+        
+        for btn in [self.sequential_play_btn, self.save_individual_btn, self.save_continuous_btn, self.test_lipsync_btn]:
             btn.setMinimumHeight(35)
             btn.setEnabled(False)
             controls.addWidget(btn)
+            
         self.sequential_play_btn.clicked.connect(self.play_sequential)
         self.save_individual_btn.clicked.connect(self.save_individual)
         self.save_continuous_btn.clicked.connect(self.save_continuous)
+        self.test_lipsync_btn.clicked.connect(self.test_lipsync_function)  # 🆕 リップシンクテスト
         
         # 左側レイアウト組み立て
         left_layout.addWidget(self.vertical_splitter, 1)
@@ -125,9 +161,9 @@ class TTSStudioMainWindow(QMainWindow):
         )
         self.main_splitter.addWidget(left_widget)
         self.main_splitter.addWidget(self.character_display)
-        self.main_splitter.setSizes([700, 300])  # 元の設定に戻す
-        left_widget.setMinimumWidth(500)  # 元の設定に戻す
-        self.character_display.setMinimumWidth(200)  # 元の設定に戻す
+        self.main_splitter.setSizes([700, 300])
+        left_widget.setMinimumWidth(500)
+        self.character_display.setMinimumWidth(200)
         self.main_splitter.splitterMoved.connect(self.on_splitter_moved)
         main.addWidget(self.main_splitter)
 
@@ -152,7 +188,152 @@ class TTSStudioMainWindow(QMainWindow):
             QPushButton:pressed:enabled { background-color: #e65100; }
             QPushButton:disabled { background-color: #f0f0f0; color: #aaaaaa; }
         """
-        
+
+    # 🆕 リップシンク統合設定
+    def setup_lipsync_integration(self):
+        """リップシンク機能の統合設定"""
+        try:
+            print("🎭 リップシンク機能統合中...")
+            
+            # リップシンクエンジンが利用可能かチェック
+            if self.lip_sync_engine.is_available():
+                print("✅ リップシンクエンジン利用可能")
+            else:
+                print("⚠️ リップシンクエンジン制限モード（pyopenjtalk不使用）")
+                
+        except Exception as e:
+            print(f"❌ リップシンク統合エラー: {e}")
+
+    # 🆕 リップシンクテスト機能
+    def test_lipsync_function(self):
+        """リップシンク機能をテスト"""
+        try:
+            print("🎭 リップシンクテスト開始")
+            
+            # Live2Dモデルが読み込まれているかチェック
+            if not hasattr(self.character_display, 'live2d_webview') or not self.character_display.live2d_webview.is_model_loaded:
+                QMessageBox.warning(self, "リップシンクテスト", 
+                    "Live2Dモデルが読み込まれていません。\n"
+                    "先にLive2Dモデルを読み込んでからテストしてください。")
+                return
+            
+            # テキストを取得（最初の行、または固定テスト文）
+            texts_data = self.multi_text.get_all_texts_and_parameters()
+            if texts_data and texts_data[0]['text'].strip():
+                test_text = texts_data[0]['text']
+            else:
+                test_text = "あいうえおかきくけこさしすせそ。リップシンクのテストをしています。"
+                
+            print(f"🎵 テストテキスト: '{test_text[:30]}...'")
+            
+            # リップシンクデータを生成
+            self.test_lipsync_btn.setEnabled(False)
+            self.test_lipsync_btn.setText("解析中...")
+            QApplication.processEvents()
+            
+            lipsync_data = self.lip_sync_engine.analyze_text_for_lipsync(test_text)
+            
+            if lipsync_data:
+                print(f"✅ リップシンクデータ生成成功: {len(lipsync_data.vowel_frames)}フレーム")
+                
+                # JavaScriptに送信するデータを準備
+                js_data = {
+                    'text': lipsync_data.text,
+                    'total_duration': lipsync_data.total_duration,
+                    'vowel_frames': [
+                        {
+                            'timestamp': frame.timestamp,
+                            'vowel': frame.vowel,
+                            'intensity': frame.intensity,
+                            'duration': frame.duration
+                        }
+                        for frame in lipsync_data.vowel_frames
+                    ]
+                }
+                
+                # Live2DのWebViewにリップシンクデータを送信
+                webview = self.character_display.live2d_webview
+                script = f"""
+                if (typeof window.startLipSync === 'function') {{
+                    const lipSyncData = {js_data};
+                    const result = window.startLipSync(lipSyncData);
+                    console.log('リップシンクテスト結果:', result);
+                    result;
+                }} else {{
+                    console.error('startLipSync関数が見つかりません');
+                    false;
+                }}
+                """
+                
+                webview.page().runJavaScript(script, self.on_lipsync_test_result)
+                
+                # タイマーで停止
+                QTimer.singleShot(int(lipsync_data.total_duration * 1000) + 1000, self.stop_lipsync_test)
+                
+            else:
+                print("❌ リップシンクデータ生成失敗")
+                QMessageBox.warning(self, "リップシンクテスト", "リップシンクデータの生成に失敗しました。")
+                self.test_lipsync_btn.setEnabled(True)
+                self.test_lipsync_btn.setText("🎭 リップシンクテスト")
+                
+        except Exception as e:
+            print(f"❌ リップシンクテストエラー: {e}")
+            QMessageBox.critical(self, "エラー", f"リップシンクテストでエラーが発生しました:\n{str(e)}")
+            self.test_lipsync_btn.setEnabled(True)
+            self.test_lipsync_btn.setText("🎭 リップシンクテスト")
+
+    def on_lipsync_test_result(self, result):
+        """リップシンクテスト結果を処理"""
+        if result:
+            print("✅ リップシンクテスト開始成功")
+            self.test_lipsync_btn.setText("テスト実行中...")
+        else:
+            print("❌ リップシンクテスト開始失敗")
+            QMessageBox.warning(self, "リップシンクテスト", "リップシンクテストの開始に失敗しました。")
+            self.test_lipsync_btn.setEnabled(True)
+            self.test_lipsync_btn.setText("🎭 リップシンクテスト")
+
+    def stop_lipsync_test(self):
+        """リップシンクテストを停止"""
+        try:
+            webview = self.character_display.live2d_webview
+            script = """
+            if (typeof window.stopLipSync === 'function') {
+                window.stopLipSync();
+            }
+            """
+            webview.page().runJavaScript(script)
+            
+            self.test_lipsync_btn.setEnabled(True)
+            self.test_lipsync_btn.setText("🎭 リップシンクテスト")
+            print("✅ リップシンクテスト完了")
+            
+        except Exception as e:
+            print(f"⚠️ リップシンクテスト停止エラー: {e}")
+
+    # 🆕 リップシンク設定変更ハンドラー
+    def on_lipsync_settings_changed(self, settings):
+        """リップシンク設定変更時の処理"""
+        try:
+            print(f"🔧 リップシンク設定変更: {settings}")
+            
+            # リップシンクエンジンに設定を適用
+            if self.lip_sync_engine:
+                self.lip_sync_engine.update_settings(settings)
+            
+            # Live2D側にも設定を送信
+            if hasattr(self.character_display, 'live2d_webview') and self.character_display.live2d_webview.is_model_loaded:
+                webview = self.character_display.live2d_webview
+                script = f"""
+                if (typeof window.updateLipSyncSettings === 'function') {{
+                    window.updateLipSyncSettings({settings});
+                }}
+                """
+                webview.page().runJavaScript(script)
+                
+        except Exception as e:
+            print(f"❌ リップシンク設定変更エラー: {e}")
+
     def create_menu_bar(self):
         menubar = self.menuBar()
         menubar.setStyleSheet("""
@@ -248,6 +429,60 @@ class TTSStudioMainWindow(QMainWindow):
             QMessageBox.critical(self, "エラー", f"解析用音声の生成に失敗しました:\n{str(e)}")
         finally:
             if progress: progress.deleteLater()
+
+    # 🆕 リップシンク統合音声合成
+    def synthesize_with_lipsync(self, text, parameters):
+        """音声合成とリップシンクデータ生成を同時実行"""
+        try:
+            # 音声合成
+            sr, audio = self.tts_engine.synthesize(text, **parameters)
+            
+            # リップシンクデータ生成
+            lipsync_data = None
+            if self.lip_sync_engine.is_available() and self.lip_sync_control.is_enabled():
+                lipsync_data = self.lip_sync_engine.analyze_text_for_lipsync(text)
+                
+                # Live2Dモデルが読み込まれている場合、リップシンクを開始
+                if (lipsync_data and 
+                    hasattr(self.character_display, 'live2d_webview') and 
+                    self.character_display.live2d_webview.is_model_loaded):
+                    
+                    self.send_lipsync_to_live2d(lipsync_data)
+            
+            return sr, audio, lipsync_data
+            
+        except Exception as e:
+            print(f"❌ リップシンク統合音声合成エラー: {e}")
+            # リップシンクが失敗しても音声合成は続行
+            return self.tts_engine.synthesize(text, **parameters) + (None,)
+
+    def send_lipsync_to_live2d(self, lipsync_data):
+        """Live2Dにリップシンクデータを送信"""
+        try:
+            js_data = {
+                'text': lipsync_data.text,
+                'total_duration': lipsync_data.total_duration,
+                'vowel_frames': [
+                    {
+                        'timestamp': frame.timestamp,
+                        'vowel': frame.vowel,
+                        'intensity': frame.intensity,
+                        'duration': frame.duration
+                    }
+                    for frame in lipsync_data.vowel_frames
+                ]
+            }
+            
+            webview = self.character_display.live2d_webview
+            script = f"""
+            if (typeof window.startLipSync === 'function') {{
+                window.startLipSync({js_data});
+            }}
+            """
+            webview.page().runJavaScript(script)
+            
+        except Exception as e:
+            print(f"❌ Live2Dリップシンク送信エラー: {e}")
             
     def open_model_loader(self):
         dialog = ModelLoaderDialog(self)
@@ -281,7 +516,8 @@ class TTSStudioMainWindow(QMainWindow):
         try:
             if self.tts_engine.load_model(**paths):
                 self.model_manager.add_model(**paths)
-                for btn in [self.sequential_play_btn, self.save_individual_btn, self.save_continuous_btn]:
+                # 🆕 リップシンクテストボタンも有効化
+                for btn in [self.sequential_play_btn, self.save_individual_btn, self.save_continuous_btn, self.test_lipsync_btn]:
                     btn.setEnabled(True)
                 model_name = Path(paths["model_path"]).parent.name
                 if hasattr(self.character_display, 'current_live2d_folder') and self.character_display.current_live2d_folder:
@@ -306,7 +542,8 @@ class TTSStudioMainWindow(QMainWindow):
             if self.model_manager.validate_model_files(last):
                 paths = {k: last[k] for k in ["model_path", "config_path", "style_path"]}
                 if self.tts_engine.load_model(**paths):
-                    for btn in [self.sequential_play_btn, self.save_individual_btn, self.save_continuous_btn]:
+                    # 🆕 リップシンクテストボタンも有効化
+                    for btn in [self.sequential_play_btn, self.save_individual_btn, self.save_continuous_btn, self.test_lipsync_btn]:
                         btn.setEnabled(True)
                     model_name = Path(paths["model_path"]).parent.name
                     self.setWindowTitle(f"TTSスタジオ - {model_name}")
@@ -358,7 +595,7 @@ class TTSStudioMainWindow(QMainWindow):
             return audio
             
     def play_single_text(self, row_id, text, parameters):
-        """単一テキスト再生"""
+        """単一テキスト再生（リップシンク統合版）"""
         if not self.tts_engine.is_loaded:
             QMessageBox.warning(self, "エラー", "モデルが読み込まれていません。")
             return
@@ -366,8 +603,8 @@ class TTSStudioMainWindow(QMainWindow):
         tab_parameters = self.tabbed_audio_control.get_parameters(row_id) or parameters
         
         try:
-            # 音声合成
-            sr, audio = self.tts_engine.synthesize(text, **tab_parameters)
+            # 🆕 リップシンク統合音声合成
+            sr, audio, lipsync_data = self.synthesize_with_lipsync(text, tab_parameters)
             
             # 音声処理
             audio = self.apply_audio_cleaning(audio, sr)
@@ -379,6 +616,10 @@ class TTSStudioMainWindow(QMainWindow):
             # 音声再生
             import sounddevice as sd
             sd.play(audio, sr, blocking=False)
+            
+            # リップシンクデータがあればログ出力
+            if lipsync_data:
+                print(f"🎭 リップシンク実行: {len(lipsync_data.vowel_frames)}フレーム")
             
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"音声合成に失敗しました: {str(e)}")

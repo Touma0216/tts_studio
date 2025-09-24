@@ -89,6 +89,14 @@ class LipSyncController {
             if (missing.length > 0) {
                 console.warn("⚠️ 一部のリップシンクパラメータが見つかりません:", missing);
                 console.log("📋 利用可能パラメータ:", availableParams.map(p => p.id));
+                
+                // 🔥 代替パラメータを検索
+                const alternativeParams = this.findAlternativeParameters(availableParams);
+                if (alternativeParams.length > 0) {
+                    console.log("🔍 代替パラメータを発見:", alternativeParams);
+                } else {
+                    console.warn("⚠️ 代替パラメータも見つかりません");
+                }
             } else {
                 console.log("✅ 必要なリップシンクパラメータが全て利用可能です");
             }
@@ -96,6 +104,50 @@ class LipSyncController {
         } catch (error) {
             console.error("⚠️ パラメータ検証エラー:", error);
         }
+    }
+    
+    /**
+     * 代替パラメータを検索
+     * @param {Array} availableParams - 利用可能パラメータ
+     * @returns {Array} 代替パラメータリスト
+     */
+    findAlternativeParameters(availableParams) {
+        const alternatives = [];
+        
+        // 口関連パラメータを検索
+        const mouthKeywords = ['mouth', 'lip', '口', 'kuchi', 'Mouth', 'Lip'];
+        
+        availableParams.forEach(param => {
+            const paramId = param.id.toLowerCase();
+            if (mouthKeywords.some(keyword => paramId.includes(keyword.toLowerCase()))) {
+                alternatives.push({
+                    id: param.id,
+                    type: this.guessParameterType(param.id),
+                    ...param
+                });
+            }
+        });
+        
+        return alternatives;
+    }
+    
+    /**
+     * パラメータタイプを推測
+     * @param {string} paramId - パラメータID
+     * @returns {string} パラメータタイプ
+     */
+    guessParameterType(paramId) {
+        const id = paramId.toLowerCase();
+        
+        if (id.includes('open') || id.includes('y')) {
+            return 'mouth_open_y';
+        } else if (id.includes('form') || id.includes('shape')) {
+            return 'mouth_form';
+        } else if (id.includes('x')) {
+            return 'mouth_open_x';
+        }
+        
+        return 'unknown';
     }
     
     /**
@@ -471,16 +523,25 @@ class LipSyncController {
         }
         
         try {
-            const model = this.live2dModel.internalModel;
+            // 🔥 修正: 正しいパラメータアクセス方法
+            const coreModel = this.live2dModel.internalModel?.coreModel;
             
-            if (model && model.coreModel) {
+            if (coreModel) {
                 Object.keys(parameters).forEach(paramId => {
                     const value = parameters[paramId];
                     
                     try {
                         // パラメータ値にスケールを適用
                         const scaledValue = value * (this.settings.mouthOpenScale / 100.0);
-                        model.coreModel.setParameterValueById(paramId, scaledValue);
+                        
+                        // 🔥 修正: インデックスベースのアクセス
+                        const paramIndex = coreModel.getParameterIndex(paramId);
+                        if (paramIndex >= 0) {
+                            coreModel.setParameterValueByIndex(paramIndex, scaledValue);
+                        } else {
+                            // 代替パラメータを試す
+                            this.tryAlternativeParameter(paramId, scaledValue, coreModel);
+                        }
                     } catch (e) {
                         // パラメータが存在しない場合は警告（初回のみ）
                         if (!this.warnedParameters) {
@@ -497,6 +558,72 @@ class LipSyncController {
         } catch (error) {
             console.error("⚠️ パラメータ適用エラー:", error);
         }
+    }
+    
+    /**
+     * 代替パラメータを試す
+     * @param {string} originalParamId - 元のパラメータID
+     * @param {number} value - 値
+     * @param {Object} coreModel - コアモデル
+     */
+    tryAlternativeParameter(originalParamId, value, coreModel) {
+        const alternatives = this.getAlternativeParameterNames(originalParamId);
+        
+        for (const altParamId of alternatives) {
+            const altIndex = coreModel.getParameterIndex(altParamId);
+            if (altIndex >= 0) {
+                coreModel.setParameterValueByIndex(altIndex, value);
+                console.log(`✅ 代替パラメータ使用: ${originalParamId} → ${altParamId}`);
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * 代替パラメータ名を取得
+     * @param {string} paramId - パラメータID
+     * @returns {Array} 代替パラメータ名リスト
+     */
+    getAlternativeParameterNames(paramId) {
+        const alternatives = [];
+        
+        switch (paramId) {
+            case 'ParamMouthOpenY':
+                alternatives.push(
+                    'PARAM_MOUTH_OPEN_Y',
+                    'MouthOpenY',
+                    'Mouth_Open_Y',
+                    'mouth_open_y',
+                    '口開き',
+                    'ParamMouthOpen'
+                );
+                break;
+                
+            case 'ParamMouthForm':
+                alternatives.push(
+                    'PARAM_MOUTH_FORM',
+                    'MouthForm',
+                    'Mouth_Form',
+                    'mouth_form',
+                    '口の形',
+                    'ParamMouthShape'
+                );
+                break;
+                
+            case 'ParamMouthOpenX':
+                alternatives.push(
+                    'PARAM_MOUTH_OPEN_X',
+                    'MouthOpenX',
+                    'Mouth_Open_X',
+                    'mouth_open_x',
+                    'ParamMouthWidth'
+                );
+                break;
+        }
+        
+        return alternatives;
     }
     
     /**
@@ -538,21 +665,32 @@ class LipSyncController {
         }
         
         try {
-            const model = this.live2dModel.internalModel;
+            // 🔥 修正: 正しいパラメータ取得方法
+            const coreModel = this.live2dModel.internalModel?.coreModel;
             const parameters = [];
             
-            if (model && model.coreModel) {
-                const paramCount = model.coreModel.getParameterCount();
+            if (coreModel) {
+                const paramCount = coreModel.getParameterCount();
                 
                 for (let i = 0; i < paramCount; i++) {
-                    const paramId = model.coreModel.getParameterId(i);
-                    const currentValue = model.coreModel.getParameterValue(i);
-                    
-                    parameters.push({
-                        id: paramId,
-                        index: i,
-                        currentValue
-                    });
+                    try {
+                        const paramId = coreModel.getParameterId(i);
+                        const currentValue = coreModel.getParameterValueByIndex(i);
+                        const defaultValue = coreModel.getParameterDefaultValueByIndex(i);
+                        const minValue = coreModel.getParameterMinValueByIndex(i);
+                        const maxValue = coreModel.getParameterMaxValueByIndex(i);
+                        
+                        parameters.push({
+                            id: paramId,
+                            index: i,
+                            currentValue,
+                            defaultValue,
+                            minValue,
+                            maxValue
+                        });
+                    } catch (e) {
+                        console.warn(`⚠️ パラメータ ${i} の取得失敗:`, e);
+                    }
                 }
             }
             

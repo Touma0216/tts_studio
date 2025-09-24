@@ -91,10 +91,16 @@ class FallbackLipSyncController {
         if (this.model) {
             Object.keys(params).forEach(paramId => {
                 try {
-                    const model = this.model.internalModel;
-                    if (model && model.coreModel) {
-                        model.coreModel.setParameterValueById(paramId, params[paramId]);
-                        console.log(`🔧 Fallback parameter set: ${paramId} = ${params[paramId]}`);
+                    // 🔥 修正: 正しいAPI使用法
+                    if (this.model.internalModel && this.model.internalModel.coreModel) {
+                        // パラメータIDからインデックスを取得
+                        const paramIndex = this.model.internalModel.coreModel.getParameterIndex(paramId);
+                        if (paramIndex >= 0) {
+                            this.model.internalModel.coreModel.setParameterValueByIndex(paramIndex, params[paramId]);
+                            console.log(`🔧 Fallback parameter set: ${paramId} = ${params[paramId]}`);
+                        } else {
+                            console.warn(`⚠️ Parameter not found: ${paramId}`);
+                        }
                     }
                 } catch (e) {
                     console.warn(`⚠️ Fallback parameter ${paramId} failed:`, e);
@@ -330,16 +336,21 @@ window.setLipSyncParameters = function(parameters) {
             lipSyncController.setParameters(parameters);
         } else {
             // フォールバック：直接設定
-            const model = currentModel.internalModel;
-            if (model && model.coreModel) {
-                Object.keys(parameters).forEach(paramId => {
-                    try {
-                        model.coreModel.setParameterValueById(paramId, parameters[paramId]);
-                    } catch (e) {
-                        console.warn(`⚠️ Parameter ${paramId} not found`);
+            Object.keys(parameters).forEach(paramId => {
+                try {
+                    // 🔥 修正: 正しいAPI使用法
+                    if (currentModel.internalModel && currentModel.internalModel.coreModel) {
+                        const paramIndex = currentModel.internalModel.coreModel.getParameterIndex(paramId);
+                        if (paramIndex >= 0) {
+                            currentModel.internalModel.coreModel.setParameterValueByIndex(paramIndex, parameters[paramId]);
+                        } else {
+                            console.warn(`⚠️ Parameter not found: ${paramId}`);
+                        }
                     }
-                });
-            }
+                } catch (e) {
+                    console.warn(`⚠️ Parameter ${paramId} not found`);
+                }
+            });
         }
         
         return true;
@@ -410,22 +421,21 @@ window.setLive2DParameter = function(paramId, value) {
             return false;
         }
         
-        // パラメータ設定（複数の方法を試す）
-        const model = currentModel.internalModel;
-        
-        if (model && model.coreModel) {
-            // Method 1: Core model direct access
-            model.coreModel.setParameterValueById(paramId, value);
-        } else if (currentModel.setParameterValue) {
-            // Method 2: pixi-live2d-display API
-            currentModel.setParameterValue(paramId, value);
-        } else {
-            console.warn(`⚠️ パラメータ設定方法が見つかりません: ${paramId}`);
-            return false;
+        // 🔥 修正: 正しいパラメータ設定方法
+        if (currentModel.internalModel && currentModel.internalModel.coreModel) {
+            const paramIndex = currentModel.internalModel.coreModel.getParameterIndex(paramId);
+            if (paramIndex >= 0) {
+                currentModel.internalModel.coreModel.setParameterValueByIndex(paramIndex, value);
+                console.log(`🔧 パラメータ設定: ${paramId} = ${value}`);
+                return true;
+            } else {
+                console.warn(`⚠️ パラメータが見つかりません: ${paramId}`);
+                return false;
+            }
         }
         
-        console.log(`🔧 パラメータ設定: ${paramId} = ${value}`);
-        return true;
+        console.warn(`⚠️ モデルがアクセス不可能です`);
+        return false;
         
     } catch (error) {
         console.error(`❌ パラメータ設定エラー (${paramId}):`, error);
@@ -444,27 +454,33 @@ window.getLive2DParameters = function() {
             return [];
         }
         
-        const model = currentModel.internalModel;
         const parameters = [];
         
-        if (model && model.coreModel) {
-            const paramCount = model.coreModel.getParameterCount();
+        // 🔥 修正: 正しいパラメータ取得方法
+        if (currentModel.internalModel && currentModel.internalModel.coreModel) {
+            const coreModel = currentModel.internalModel.coreModel;
+            const paramCount = coreModel.getParameterCount();
             
             for (let i = 0; i < paramCount; i++) {
-                const paramId = model.coreModel.getParameterId(i);
-                const currentValue = model.coreModel.getParameterValue(i);
-                const defaultValue = model.coreModel.getParameterDefaultValue(i);
-                const minValue = model.coreModel.getParameterMinValue(i);
-                const maxValue = model.coreModel.getParameterMaxValue(i);
-                
-                parameters.push({
-                    id: paramId,
-                    index: i,
-                    currentValue,
-                    defaultValue,
-                    minValue,
-                    maxValue
-                });
+                try {
+                    // パラメータIDを取得
+                    const paramId = coreModel.getParameterId(i);
+                    const currentValue = coreModel.getParameterValueByIndex(i);
+                    const defaultValue = coreModel.getParameterDefaultValueByIndex(i);
+                    const minValue = coreModel.getParameterMinValueByIndex(i);
+                    const maxValue = coreModel.getParameterMaxValueByIndex(i);
+                    
+                    parameters.push({
+                        id: paramId,
+                        index: i,
+                        currentValue,
+                        defaultValue,
+                        minValue,
+                        maxValue
+                    });
+                } catch (e) {
+                    console.warn(`⚠️ パラメータ ${i} の情報取得失敗:`, e);
+                }
             }
         }
         
@@ -519,6 +535,37 @@ window.testLipSync = async function() {
         if (!currentModel) {
             console.error("❌ モデルが読み込まれていません");
             return false;
+        }
+        
+        // まずパラメータを確認
+        console.log("🔍 モデルパラメータ確認中...");
+        const params = window.getLive2DParameters();
+        console.log(`📋 発見されたパラメータ数: ${params.length}`);
+        
+        // 口関連パラメータを探す
+        const mouthParams = params.filter(p => 
+            p.id.toLowerCase().includes('mouth') || 
+            p.id.toLowerCase().includes('lip') ||
+            p.id.includes('口')
+        );
+        console.log("👄 口関連パラメータ:", mouthParams.map(p => p.id));
+        
+        // テストパラメータ設定
+        if (mouthParams.length > 0) {
+            const testParam = mouthParams[0];
+            console.log(`🧪 テストパラメータ: ${testParam.id}`);
+            
+            // 段階的にテスト
+            for (let i = 0; i <= 10; i++) {
+                const testValue = (testParam.maxValue - testParam.minValue) * (i / 10) + testParam.minValue;
+                window.setLive2DParameter(testParam.id, testValue);
+                await new Promise(resolve => setTimeout(resolve, 200));
+            }
+            
+            // 元に戻す
+            window.setLive2DParameter(testParam.id, testParam.defaultValue);
+            
+            console.log("✅ 基本パラメータテスト完了");
         }
         
         // テストデータ
