@@ -11,11 +11,12 @@ class BasicLipSyncWidget(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        # 🔥 数値強化：独立版に合わせて大幅アップ
         self.settings = {
             'enabled': True,
-            'sensitivity': 80,
-            'response_speed': 70,
-            'mouth_open_scale': 100,
+            'sensitivity': 120,          # 80 → 120（50%アップ）
+            'response_speed': 85,        # 70 → 85
+            'mouth_open_scale': 150,     # 100 → 150（50%アップ）
             'auto_optimize': True
         }
         self.init_ui()
@@ -46,7 +47,7 @@ class BasicLipSyncWidget(QWidget):
         sens_label = QLabel("反応感度:")
         sens_label.setFixedWidth(100)
         self.sensitivity_slider = QSlider(Qt.Orientation.Horizontal)
-        self.sensitivity_slider.setRange(10, 200)
+        self.sensitivity_slider.setRange(10, 300)  # 上限を200→300に拡大
         self.sensitivity_slider.setValue(self.settings['sensitivity'])
         self.sensitivity_value = QLabel(f"{self.settings['sensitivity']}%")
         self.sensitivity_value.setFixedWidth(50)
@@ -78,7 +79,7 @@ class BasicLipSyncWidget(QWidget):
         mouth_label = QLabel("口の開き:")
         mouth_label.setFixedWidth(100)
         self.mouth_scale_slider = QSlider(Qt.Orientation.Horizontal)
-        self.mouth_scale_slider.setRange(50, 200)
+        self.mouth_scale_slider.setRange(50, 300)  # 上限を200→300に拡大
         self.mouth_scale_slider.setValue(self.settings['mouth_open_scale'])
         self.mouth_scale_value = QLabel(f"{self.settings['mouth_open_scale']}%")
         self.mouth_scale_value.setFixedWidth(50)
@@ -146,13 +147,14 @@ class PhonemeMappingWidget(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        # 🔥 音素数値強化：独立版レベルまで大幅アップ
         self.phoneme_settings = {
-            'a': {'mouth_open': 100, 'mouth_form': 0},      # あ
-            'i': {'mouth_open': 30, 'mouth_form': -100},    # い
-            'u': {'mouth_open': 40, 'mouth_form': -70},     # う
-            'e': {'mouth_open': 60, 'mouth_form': -30},     # え
-            'o': {'mouth_open': 80, 'mouth_form': 70},      # お
-            'n': {'mouth_open': 10, 'mouth_form': 0}        # ん
+            'a': {'mouth_open': 150, 'mouth_form': 0},      # 100 → 150（あ：最大開口）
+            'i': {'mouth_open': 45, 'mouth_form': -150},    # 30 → 45, -100 → -150（い：横に広げる）
+            'u': {'mouth_open': 60, 'mouth_form': -105},    # 40 → 60, -70 → -105（う：すぼめる）
+            'e': {'mouth_open': 90, 'mouth_form': -45},     # 60 → 90, -30 → -45（え：中間的開口）
+            'o': {'mouth_open': 120, 'mouth_form': 105},    # 80 → 120, 70 → 105（お：丸く開く）
+            'n': {'mouth_open': 15, 'mouth_form': 0}        # 10 → 15（ん：閉じ気味）
         }
         self.init_ui()
         
@@ -190,7 +192,7 @@ class PhonemeMappingWidget(QWidget):
             open_label = QLabel("開き:")
             open_label.setFixedWidth(50)
             open_slider = QSlider(Qt.Orientation.Horizontal)
-            open_slider.setRange(0, 100)
+            open_slider.setRange(0, 200)  # 上限を100→200に拡大
             open_slider.setValue(self.phoneme_settings[phoneme]['mouth_open'])
             open_value = QLabel(f"{self.phoneme_settings[phoneme]['mouth_open']}")
             open_value.setFixedWidth(30)
@@ -205,7 +207,7 @@ class PhonemeMappingWidget(QWidget):
             form_label = QLabel("形:")
             form_label.setFixedWidth(50)
             form_slider = QSlider(Qt.Orientation.Horizontal)
-            form_slider.setRange(-100, 100)
+            form_slider.setRange(-200, 200)  # 範囲を-100,100→-200,200に拡大
             form_slider.setValue(self.phoneme_settings[phoneme]['mouth_form'])
             form_value = QLabel(f"{self.phoneme_settings[phoneme]['mouth_form']}")
             form_value.setFixedWidth(30)
@@ -250,7 +252,26 @@ class PhonemeMappingWidget(QWidget):
             }
         """)
         reset_button.clicked.connect(self.reset_to_default)
+        
+        # 🔥 強化版リセットボタン追加
+        strong_button = QPushButton("強化版デフォルト")
+        strong_button.setStyleSheet("""
+            QPushButton {
+                background-color: #dc3545;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-size: 11px;
+                padding: 6px 12px;
+            }
+            QPushButton:hover {
+                background-color: #c82333;
+            }
+        """)
+        strong_button.clicked.connect(self.set_strong_default)
+        
         button_layout.addStretch()
+        button_layout.addWidget(strong_button)
         button_layout.addWidget(reset_button)
         
         layout.addWidget(phoneme_group)
@@ -264,6 +285,7 @@ class PhonemeMappingWidget(QWidget):
         self.phoneme_sliders[phoneme]['form_value'].setText(str(value))
         
     def reset_to_default(self):
+        """元のデフォルト設定（弱い）"""
         default_settings = {
             'a': {'mouth_open': 100, 'mouth_form': 0},
             'i': {'mouth_open': 30, 'mouth_form': -100},
@@ -274,6 +296,24 @@ class PhonemeMappingWidget(QWidget):
         }
         
         for phoneme, settings in default_settings.items():
+            sliders = self.phoneme_sliders[phoneme]
+            sliders['open_slider'].setValue(settings['mouth_open'])
+            sliders['form_slider'].setValue(settings['mouth_form'])
+            
+        self.on_settings_changed()
+        
+    def set_strong_default(self):
+        """強化版デフォルト設定（独立版レベル）"""
+        strong_settings = {
+            'a': {'mouth_open': 150, 'mouth_form': 0},
+            'i': {'mouth_open': 45, 'mouth_form': -150},
+            'u': {'mouth_open': 60, 'mouth_form': -105},
+            'e': {'mouth_open': 90, 'mouth_form': -45},
+            'o': {'mouth_open': 120, 'mouth_form': 105},
+            'n': {'mouth_open': 15, 'mouth_form': 0}
+        }
+        
+        for phoneme, settings in strong_settings.items():
             sliders = self.phoneme_sliders[phoneme]
             sliders['open_slider'].setValue(settings['mouth_open'])
             sliders['form_slider'].setValue(settings['mouth_form'])
@@ -299,10 +339,10 @@ class AdvancedLipSyncWidget(QWidget):
         super().__init__(parent)
         self.advanced_settings = {
             'delay_compensation': 0,
-            'smoothing_factor': 70,
+            'smoothing_factor': 60,      # 70 → 60（より機敏に）
             'prediction_enabled': True,
             'consonant_detection': True,
-            'volume_threshold': 5,
+            'volume_threshold': 3,       # 5 → 3（より敏感に）
             'quality_mode': 'balanced'
         }
         self.init_ui()

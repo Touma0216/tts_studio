@@ -15,13 +15,12 @@ from .keyboard_shortcuts import KeyboardShortcutManager
 from .sliding_menu import SlidingMenuWidget
 from .help_dialog import HelpDialog
 from .character_display import CharacterDisplayWidget
-from .tabbed_lip_sync_control import TabbedLipSyncControl  # 🆕 追加
 from core.tts_engine import TTSEngine
 from core.model_manager import ModelManager
 from core.audio_processor import AudioProcessor
 from core.audio_analyzer import AudioAnalyzer
 from core.audio_effects_processor import AudioEffectsProcessor
-from core.lip_sync_engine import LipSyncEngine  # 🆕 追加
+from core.lip_sync_engine import LipSyncEngine
 
 class TTSStudioMainWindow(QMainWindow):
     def __init__(self, live2d_url=None, live2d_server_manager=None):
@@ -34,7 +33,7 @@ class TTSStudioMainWindow(QMainWindow):
         self.audio_analyzer = AudioAnalyzer()
         self.audio_effects_processor = AudioEffectsProcessor()
         
-        # 🆕 リップシンクエンジン追加
+        # リップシンクエンジン追加
         self.lip_sync_engine = LipSyncEngine()
         
         self.last_generated_audio = None
@@ -44,7 +43,7 @@ class TTSStudioMainWindow(QMainWindow):
         self.help_dialog = HelpDialog(self)
         self.setup_audio_processing_integration()
         
-        # 🆕 リップシンク統合設定
+        # リップシンク統合設定
         self.setup_lipsync_integration()
         
         self.sliding_menu = SlidingMenuWidget(self)
@@ -89,34 +88,22 @@ class TTSStudioMainWindow(QMainWindow):
         self.multi_text.row_removed.connect(self.on_text_row_removed)
         self.multi_text.row_numbers_updated.connect(self.on_row_numbers_updated)
         
-        # 🆕 タブエリアを水平分割してリップシンク制御を追加
-        tab_horizontal_splitter = QSplitter(Qt.Orientation.Horizontal)
-        tab_horizontal_splitter.setStyleSheet("""
-            QSplitter::handle { background-color: #dee2e6; width: 3px; }
-            QSplitter::handle:hover { background-color: #adb5bd; }
-        """)
-        
+        # 🔧 修正：統合されたタブコントロール（リップシンク統合済み）
         self.tabbed_audio_control = TabbedAudioControl()
         self.tabbed_audio_control.parameters_changed.connect(self.on_parameters_changed)
         self.tabbed_audio_control.cleaner_settings_changed.connect(self.on_cleaner_settings_changed)
         self.tabbed_audio_control.effects_settings_changed.connect(self.on_effects_settings_changed)
+        # 🔧 修正：統合されたリップシンク設定変更ハンドラー
+        self.tabbed_audio_control.lip_sync_settings_changed.connect(self.on_lipsync_settings_changed)
         self.tabbed_audio_control.add_text_row("initial", 1)
 
-        # 🆕 リップシンク制御タブ追加
-        self.lip_sync_control = TabbedLipSyncControl()
-        self.lip_sync_control.settings_changed.connect(self.on_lipsync_settings_changed)
-        
-        tab_horizontal_splitter.addWidget(self.tabbed_audio_control)
-        tab_horizontal_splitter.addWidget(self.lip_sync_control)
-        tab_horizontal_splitter.setSizes([400, 300])  # 音声制御:リップシンク制御 = 4:3
-
         self.vertical_splitter.addWidget(self.multi_text)
-        self.vertical_splitter.addWidget(tab_horizontal_splitter)
+        self.vertical_splitter.addWidget(self.tabbed_audio_control)
 
         self.multi_text.setMaximumHeight(360)
         self.vertical_splitter.setSizes([360, 340])
         self.multi_text.setMinimumHeight(40)
-        tab_horizontal_splitter.setMinimumHeight(250)
+        self.tabbed_audio_control.setMinimumHeight(250)
 
         # 折りたたみ設定（上側のみ折りたたみ可能）
         self.vertical_splitter.setCollapsible(0, True)
@@ -131,7 +118,7 @@ class TTSStudioMainWindow(QMainWindow):
         self.save_continuous_btn = QPushButton("連続保存(Ctrl + Shift + S)")
         self.save_continuous_btn.setStyleSheet(self._orange_btn_css())
         
-        # 🆕 リップシンクテストボタン追加
+        # リップシンクテストボタン追加
         self.test_lipsync_btn = QPushButton("🎭 リップシンクテスト")
         self.test_lipsync_btn.setStyleSheet("""
             QPushButton { background-color: #6f42c1; color: white; border: none; border-radius: 4px; font-size: 13px; font-weight: bold; padding: 6px 16px; }
@@ -148,7 +135,7 @@ class TTSStudioMainWindow(QMainWindow):
         self.sequential_play_btn.clicked.connect(self.play_sequential)
         self.save_individual_btn.clicked.connect(self.save_individual)
         self.save_continuous_btn.clicked.connect(self.save_continuous)
-        self.test_lipsync_btn.clicked.connect(self.test_lipsync_function)  # 🆕 リップシンクテスト
+        self.test_lipsync_btn.clicked.connect(self.test_lipsync_function)
         
         # 左側レイアウト組み立て
         left_layout.addWidget(self.vertical_splitter, 1)
@@ -189,7 +176,6 @@ class TTSStudioMainWindow(QMainWindow):
             QPushButton:disabled { background-color: #f0f0f0; color: #aaaaaa; }
         """
 
-    # 🆕 リップシンク統合設定
     def setup_lipsync_integration(self):
         """リップシンク機能の統合設定"""
         try:
@@ -204,7 +190,6 @@ class TTSStudioMainWindow(QMainWindow):
         except Exception as e:
             print(f"❌ リップシンク統合エラー: {e}")
 
-    # 🆕 リップシンクテスト機能
     def test_lipsync_function(self):
         """リップシンク機能をテスト"""
         try:
@@ -311,7 +296,6 @@ class TTSStudioMainWindow(QMainWindow):
         except Exception as e:
             print(f"⚠️ リップシンクテスト停止エラー: {e}")
 
-    # 🆕 リップシンク設定変更ハンドラー
     def on_lipsync_settings_changed(self, settings):
         """リップシンク設定変更時の処理"""
         try:
@@ -430,7 +414,6 @@ class TTSStudioMainWindow(QMainWindow):
         finally:
             if progress: progress.deleteLater()
 
-    # 🆕 リップシンク統合音声合成
     def synthesize_with_lipsync(self, text, parameters):
         """音声合成とリップシンクデータ生成を同時実行"""
         try:
@@ -439,7 +422,7 @@ class TTSStudioMainWindow(QMainWindow):
             
             # リップシンクデータ生成
             lipsync_data = None
-            if self.lip_sync_engine.is_available() and self.lip_sync_control.is_enabled():
+            if self.lip_sync_engine.is_available() and self.tabbed_audio_control.is_lip_sync_enabled():
                 lipsync_data = self.lip_sync_engine.analyze_text_for_lipsync(text)
                 
                 # Live2Dモデルが読み込まれている場合、リップシンクを開始
@@ -516,7 +499,6 @@ class TTSStudioMainWindow(QMainWindow):
         try:
             if self.tts_engine.load_model(**paths):
                 self.model_manager.add_model(**paths)
-                # 🆕 リップシンクテストボタンも有効化
                 for btn in [self.sequential_play_btn, self.save_individual_btn, self.save_continuous_btn, self.test_lipsync_btn]:
                     btn.setEnabled(True)
                 model_name = Path(paths["model_path"]).parent.name
@@ -542,7 +524,6 @@ class TTSStudioMainWindow(QMainWindow):
             if self.model_manager.validate_model_files(last):
                 paths = {k: last[k] for k in ["model_path", "config_path", "style_path"]}
                 if self.tts_engine.load_model(**paths):
-                    # 🆕 リップシンクテストボタンも有効化
                     for btn in [self.sequential_play_btn, self.save_individual_btn, self.save_continuous_btn, self.test_lipsync_btn]:
                         btn.setEnabled(True)
                     model_name = Path(paths["model_path"]).parent.name
@@ -603,7 +584,7 @@ class TTSStudioMainWindow(QMainWindow):
         tab_parameters = self.tabbed_audio_control.get_parameters(row_id) or parameters
         
         try:
-            # 🆕 リップシンク統合音声合成
+            # リップシンク統合音声合成
             sr, audio, lipsync_data = self.synthesize_with_lipsync(text, tab_parameters)
             
             # 音声処理
