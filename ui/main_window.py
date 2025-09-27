@@ -252,6 +252,8 @@ class TTSStudioMainWindow(QMainWindow):
                 
                 # Live2DのWebViewにリップシンクデータを送信
                 webview = self.character_display.live2d_webview
+                if hasattr(self.character_display, 'sync_current_live2d_settings_to_webview'):
+                    self.character_display.sync_current_live2d_settings_to_webview()
                 script = f"""
                 if (typeof window.startLipSync === 'function') {{
                     const lipSyncData = {js_data};
@@ -265,6 +267,9 @@ class TTSStudioMainWindow(QMainWindow):
                 """
                 
                 webview.page().runJavaScript(script, self.on_lipsync_test_result)
+
+                if hasattr(self.character_display, 'sync_current_live2d_settings_to_webview'):
+                    QTimer.singleShot(0, self.character_display.sync_current_live2d_settings_to_webview)
                 
                 # タイマーで停止
                 QTimer.singleShot(int(lipsync_data.total_duration * 1000) + 1000, self.stop_lipsync_test)
@@ -446,6 +451,9 @@ class TTSStudioMainWindow(QMainWindow):
             }
             
             webview = self.character_display.live2d_webview
+            if hasattr(self.character_display, 'sync_current_live2d_settings_to_webview'):
+                self.character_display.sync_current_live2d_settings_to_webview()
+
             script = f"""
             if (typeof window.startLipSync === 'function') {{
                 window.startLipSync({js_data});
@@ -453,6 +461,10 @@ class TTSStudioMainWindow(QMainWindow):
             """
             webview.page().runJavaScript(script)
             
+
+            if hasattr(self.character_display, 'sync_current_live2d_settings_to_webview'):
+                QTimer.singleShot(0, self.character_display.sync_current_live2d_settings_to_webview)
+
         except Exception as e:
             print(f"❌ Live2Dリップシンク送信エラー: {e}")
             

@@ -1229,6 +1229,19 @@ class CharacterDisplayWidget(QWidget):
             
             self.live2d_webview.update_model_settings(js_settings)
 
+    def sync_current_live2d_settings_to_webview(self):
+        """現在のスライダー設定をLive2D WebViewへ反映"""
+        if not hasattr(self, 'live2d_webview') or not self.live2d_webview.is_model_loaded:
+            return
+
+        current_settings = {
+            'zoom_percent': self.live2d_zoom_slider.value(),
+            'h_position': self.live2d_h_position_slider.value(),
+            'v_position': self.live2d_v_position_slider.value(),
+        }
+
+        self.apply_settings_to_webview(current_settings)
+
     def enable_live2d_controls(self):
         """Live2D制御を有効化"""
         for control in [
