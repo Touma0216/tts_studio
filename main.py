@@ -145,6 +145,7 @@ def main():
     window.show()
     app.aboutToQuit.connect(live2d_manager.stop_server)
     sys.exit(app.exec())
+    
 
 if __name__ == "__main__":
     main()

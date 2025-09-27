@@ -395,19 +395,30 @@ class TTSEngine:
             actual_styles = self._get_actual_styles_from_model()
             print(f"🔍 モデル内の実際の感情: {actual_styles}")
             
-            for actual_style in actual_styles:
-                self.emotion_mapping[actual_style] = actual_style
-                self.emotion_mapping[actual_style.lower()] = actual_style
+            # 既存のマッピングをクリア
+            self.emotion_mapping = {}
+            
+            # KMeansベースのスタイルマッピング
+            if 'Style_0' in actual_styles:
+                # Style_0 = Neutral (通常は最初のクラスタ)
+                self.emotion_mapping['neutral'] = 'Style_0'
+                self.emotion_mapping['Neutral'] = 'Style_0'
                 
-                if actual_style.lower() == 'fear':
-                    self.emotion_mapping['Fear'] = actual_style
-                    self.emotion_mapping['FEAR'] = actual_style
-                elif actual_style.lower() == 'happy':
-                    self.emotion_mapping['happiness'] = actual_style
-                    self.emotion_mapping['Happiness'] = actual_style
-                elif actual_style.lower() == 'sad':
-                    self.emotion_mapping['sadness'] = actual_style
-                    self.emotion_mapping['Sadness'] = actual_style
+                # 他のスタイルを感情に割り当て
+                if len(actual_styles) >= 2:
+                    self.emotion_mapping['fear'] = 'Style_1'
+                    self.emotion_mapping['Fear'] = 'Style_1'
+                if len(actual_styles) >= 3:
+                    self.emotion_mapping['sadness'] = 'Style_2'
+                    self.emotion_mapping['Sad'] = 'Style_2'
+                if len(actual_styles) >= 4:
+                    self.emotion_mapping['surprise'] = 'Style_3'
+                    self.emotion_mapping['Surprise'] = 'Style_3'
+            else:
+                # 従来の感情名の場合
+                for actual_style in actual_styles:
+                    self.emotion_mapping[actual_style] = actual_style
+                    self.emotion_mapping[actual_style.lower()] = actual_style
             
             print(f"🔄 更新された感情マッピング: {self.emotion_mapping}")
             

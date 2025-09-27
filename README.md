@@ -8,7 +8,7 @@ tts_studio-main/
 │   └── live2d_dist/                  # Live2D環境
 │       ├── index.html                # Live2Dビューアー用HTML
 │       ├── main.js                   # Live2D制御JavaScript
-│       ├── lip_sync/                 # 🆕 リップシンク専用ディレクトリ
+│       ├── lip_sync/                 # リップシンク専用ディレクトリ
 │       │   ├── phoneme_classifier.js # 音素分類・予測エンジン
 │       │   ├── audio_analyzer.js     # リアルタイム音声解析
 │       │   ├── lip_sync_controller.js# Live2D統合制御
@@ -31,9 +31,9 @@ tts_studio-main/
 │   ├── tts_engine.py                 # Style-Bert-VITS2音声合成エンジン
 │   ├── image_manager.py              # 画像履歴・UI設定管理システム
 │   ├── live2d_manager.py             # Live2Dモデル管理システム
-│   ├── lip_sync_engine.py            # 🆕 メインリップシンクエンジン
-│   ├── phoneme_analyzer.py           # 🆕 音素解析・最適化エンジン
-│   └── audio_realtime_processor.py   # 🆕 リアルタイム音声処理
+│   ├── lip_sync_engine.py            # メインリップシンクエンジン
+│   ├── phoneme_analyzer.py           # 音素解析・最適化エンジン
+│   └── audio_realtime_processor.py   # リアルタイム音声処理
 └── ui/                               # ユーザーインターフェース
     ├── __init__.py                   # パッケージ初期化
     ├── audio_cleaner_control.py      # 音声クリーナー制御UI
@@ -51,4 +51,4 @@ tts_studio-main/
     ├── sliding_menu.py               # スライド式ファイルメニューUI
     ├── tabbed_audio_control.py       # タブ式音声制御統合UI
     ├── tabbed_emotion_control.py     # タブ式感情・パラメータ制御UI
-    └── tabbed_lip_sync_control.py    # 🆕 タブ式リップシンク制御UI
+    └── tabbed_lip_sync_control.py    # タブ式リップシンク制御UI

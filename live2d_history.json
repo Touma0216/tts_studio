@@ -1,25 +1,25 @@
 {
   "models": [
     {
-      "id": "a6ec8cb5-f4bc-4026-b851-75c2a4b0f182",
-      "model_folder_path": "C:\\Users\\masa2\\Downloads\\LiveroiD_A-Y01",
-      "name": "LiveroiD_A-Y01",
-      "created_at": "2025-09-21T13:02:11.049184",
-      "last_used": "2025-09-26T00:12:24.279993",
+      "id": "b067e41a-ab83-44e4-93bd-c84b34ab27ec",
+      "model_folder_path": "C:\\Users\\masa2\\Downloads\\Touma",
+      "name": "Touma",
+      "created_at": "2025-09-27T00:38:58.136754",
+      "last_used": "2025-09-27T13:23:51.593099",
       "ui_settings": {
-        "scale": 0.2,
-        "position_x": -1.8,
-        "position_y": -0.2,
+        "scale": 1.0,
+        "position_x": 0.0,
+        "position_y": 0.0,
         "auto_breath": true,
         "auto_eye_blink": true,
         "lip_sync_gain": 1.0,
         "background_visible": true,
-        "zoom_percent": 300,
-        "h_position": 48,
-        "v_position": 98,
-        "minimap_visible": true
+        "zoom_percent": 197,
+        "h_position": 50,
+        "v_position": 100,
+        "minimap_visible": false
       }
     }
   ],
-  "last_updated": "2025-09-26T00:13:56.061594"
+  "last_updated": "2025-09-27T13:23:51.593099"
 }
