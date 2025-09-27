@@ -196,7 +196,9 @@ window.setExpression = function(expressionName) {
 window.updateModelSettings = function(settings) {
     if (currentModel) {
         try {
+            // ---- スケール更新 ----
             if (settings.scale !== undefined) {
+                // 位置には触らず scale だけ更新
                 const modelBounds = currentModel.getBounds();
                 const baseScaleX = (window.innerWidth * 0.9) / (modelBounds.width / currentModel.scale.x);
                 const baseScaleY = (window.innerHeight * 0.9) / (modelBounds.height / currentModel.scale.y);
@@ -204,29 +206,36 @@ window.updateModelSettings = function(settings) {
                 currentModel.scale.set(baseScale * settings.scale);
             }
 
+            // ---- 表示サイズと移動範囲計算 ----
             const modelHeight = currentModel.getBounds().height;
             const viewHeight = window.innerHeight;
             const overflowHeight = Math.max(0, modelHeight - viewHeight);
+
+            // デフォルト基準位置
+            const baseX = window.innerWidth / 2;
             const baseY = viewHeight * 0.9;
 
-            // 上下の移動範囲に少し「余裕（パディング）」を追加
-            const padding = viewHeight * 0.1; 
-            
-            // 新しい移動範囲を「はみ出した高さ + 余裕」で計算
-            const moveRange = (overflowHeight + padding) / 2;
+            // 上下の移動範囲に余裕を追加（10% → 30%）
+            const padding = viewHeight * 0.3;
 
-            let finalX = window.innerWidth / 2;
+            // 移動範囲の計算を強化（÷2を外してフルに使う）
+            const moveRange = overflowHeight + padding;
+
+            // ---- X位置の計算 ----
+            let finalX = currentModel.x || baseX;
             if (settings.position_x !== undefined) {
                 const moveRangeX = window.innerWidth / 3;
-                finalX = (window.innerWidth / 2) + (settings.position_x * moveRangeX);
+                finalX = baseX + (settings.position_x * moveRangeX);
             }
-            
-            let finalY = baseY;
+
+            // ---- Y位置の計算 ----
+            let finalY = currentModel.y || baseY;
             if (settings.position_y !== undefined) {
                 const offsetY = settings.position_y * moveRange;
                 finalY = baseY + offsetY;
             }
 
+            // ---- 反映 ----
             currentModel.x = finalX;
             currentModel.y = finalY;
 
@@ -235,6 +244,7 @@ window.updateModelSettings = function(settings) {
         }
     }
 };
+
 
 window.setBackgroundVisible = function(visible) {
     if (app && app.renderer) {
