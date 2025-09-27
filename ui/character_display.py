@@ -1,6 +1,7 @@
 import os
 import shutil
 import json
+import time
 from pathlib import Path
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
                              QFileDialog, QFrame, QApplication, QMessageBox,
@@ -511,7 +512,7 @@ class Live2DWebView(QWebEngineView):
         self.page().runJavaScript(script)
 
 class CharacterDisplayWidget(QWidget):
-    """キャラクター表示エリア（修正版：直感的操作・高倍率対応）"""
+    """キャラクター表示エリア（修正版：直感的操作・高倍率対応・リップシンク位置リセット防止）"""
     live2d_model_loaded = pyqtSignal(str)
     
     def __init__(self, live2d_url=None, live2d_server_manager=None, parent=None):
@@ -536,6 +537,9 @@ class CharacterDisplayWidget(QWidget):
         self.current_live2d_h_position = 50     # 中央
         self.current_live2d_v_position = 50     # 中央
         
+        # 🔧 追加：リップシンク状態管理
+        self._lipsync_in_progress = False
+        
         self.is_initializing = True
         
         self.init_ui()
@@ -544,6 +548,14 @@ class CharacterDisplayWidget(QWidget):
         self.resize_timer.timeout.connect(self.update_image_display)
         
         QTimer.singleShot(100, self.restore_last_tab_and_content)
+
+    def mark_lipsync_in_progress(self, in_progress: bool):
+        """リップシンク実行状態をマーク（設定同期制御用）"""
+        self._lipsync_in_progress = in_progress
+        if in_progress:
+            print("🎭 リップシンク開始：設定同期を一時無効化")
+        else:
+            print("✅ リップシンク終了：設定同期を再有効化")
 
     def init_ui(self):
         self.setStyleSheet("QWidget { background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 4px; }")
@@ -1213,8 +1225,14 @@ class CharacterDisplayWidget(QWidget):
                 delattr(self, '_pending_model_data')
 
     def sync_current_live2d_settings_to_webview(self):
-        """現在のスライダー設定をLive2D WebViewへ反映（位置リセット防止）"""
+        """現在のスライダー設定をLive2D WebViewへ反映（修正版：位置リセット防止）"""
         if not hasattr(self, 'live2d_webview') or not self.live2d_webview.is_model_loaded:
+            print("⚠️ Live2D未読み込み：設定同期をスキップ")
+            return
+
+        # 🔧 追加：リップシンク実行中の設定同期を防止
+        if hasattr(self, '_lipsync_in_progress') and self._lipsync_in_progress:
+            print("🎭 リップシンク実行中：設定同期をスキップ（位置リセット防止）")
             return
 
         # 現在のスライダー値を取得
@@ -1224,13 +1242,13 @@ class CharacterDisplayWidget(QWidget):
             'v_position': self.live2d_v_position_slider.value(),
         }
 
-        # WebViewに設定を適用（改良版のapply_settings_to_webviewを使用）
+        # WebViewに設定を適用
         self.apply_settings_to_webview(current_settings)
         
         print(f"🔧 Live2D設定を同期: ズーム={current_settings['zoom_percent']}%, 位置=({current_settings['h_position']}, {current_settings['v_position']})")
 
     def apply_settings_to_webview(self, ui_settings):
-        """UI設定をWebViewに適用（修正版：重複防止・デバッグログ付き）"""
+        """UI設定をWebViewに適用（修正版：位置リセット防止・重複防止強化）"""
         if not self.live2d_webview.is_model_loaded:
             print("⚠️ Live2Dモデル未読み込み：設定適用をスキップ")
             return
@@ -1247,16 +1265,29 @@ class CharacterDisplayWidget(QWidget):
         js_settings['position_x'] = -(h_pos - 50) / 50.0  # 右スライダー→キャラ左（修正）
         js_settings['position_y'] = (v_pos - 50) / 50.0   # 下スライダー→キャラ下（画像表示と同じ）
         
-        # 設定重複チェック（前回と同じ設定なら適用しない）
-        if hasattr(self, '_last_applied_settings') and self._last_applied_settings == js_settings:
-            print("🔄 Live2D設定変更なし：適用をスキップ")
+        # 🔧 追加：設定の厳密な重複チェック
+        settings_key = f"{js_settings['scale']:.3f}_{js_settings['position_x']:.3f}_{js_settings['position_y']:.3f}"
+        
+        if hasattr(self, '_last_applied_settings_key') and self._last_applied_settings_key == settings_key:
+            print("🔄 Live2D設定変更なし（厳密チェック）：適用をスキップ")
             return
+        
+        # 🔧 追加：連続適用防止のためのクールダウン
+        current_time = time.time()
+        if hasattr(self, '_last_settings_apply_time'):
+            if current_time - self._last_settings_apply_time < 0.05:  # 50ms以内の連続適用を防止
+                print("🔄 Live2D設定適用クールダウン中：スキップ")
+                return
         
         # 設定をWebViewに送信
         print(f"🎭 Live2D設定適用: scale={js_settings['scale']:.2f}, pos_x={js_settings['position_x']:.2f}, pos_y={js_settings['position_y']:.2f}")
         self.live2d_webview.update_model_settings(js_settings)
         
-        # 最後に適用した設定を記録
+        # 最後に適用した設定とタイムスタンプを記録
+        self._last_applied_settings_key = settings_key
+        self._last_settings_apply_time = current_time
+        
+        # 旧方式の記録も維持（互換性のため）
         self._last_applied_settings = js_settings.copy()
 
     def enable_live2d_controls(self):
@@ -1273,16 +1304,18 @@ class CharacterDisplayWidget(QWidget):
             self.toggle_minimap_btn.setEnabled(True)
 
     def clear_live2d_model(self):
-        """Live2Dモデルをクリア（修正版：設定キャッシュもクリア）"""
+        """Live2Dモデルをクリア（修正版：設定キャッシュもクリア・強化版）"""
         self.live2d_webview.is_model_loaded = False
         self.current_live2d_folder = None
         self.current_live2d_id = None
         self.live2d_info_label.setText("Live2Dモデルが読み込まれていません")
         
-        # 設定キャッシュをクリア
-        if hasattr(self, '_last_applied_settings'):
-            delattr(self, '_last_applied_settings')
-            print("🧹 Live2D設定キャッシュをクリア")
+        # 🔧 追加：設定キャッシュを完全クリア
+        for attr in ['_last_applied_settings', '_last_applied_settings_key', '_last_settings_apply_time', '_lipsync_in_progress']:
+            if hasattr(self, attr):
+                delattr(self, attr)
+                
+        print("🧹 Live2D設定キャッシュを完全クリア")
         
         for control in [
             self.live2d_zoom_slider, 
@@ -1299,7 +1332,7 @@ class CharacterDisplayWidget(QWidget):
         
         self.live2d_webview.load_initial_page()
         
-        print("✅ Live2Dモデルクリア完了")
+        print("✅ Live2Dモデルクリア完了（強化版）")
 
     def restore_live2d_settings(self, ui_settings):
         """Live2D設定を復元（500%対応）"""

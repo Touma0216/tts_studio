@@ -205,7 +205,7 @@ class TTSStudioMainWindow(QMainWindow):
         self.tts_thread.start()
 
     def test_lipsync_function(self):
-        """リップシンク機能をテスト（修正版：位置リセット問題解決）"""
+        """リップシンク機能をテスト（修正版：位置リセット完全解決）"""
         try:
             print("🎭 リップシンクテスト開始")
             
@@ -230,10 +230,19 @@ class TTSStudioMainWindow(QMainWindow):
             self.test_lipsync_btn.setText("解析中...")
             QApplication.processEvents()
             
+            # リップシンク実行状態をマーク
+            if hasattr(self.character_display, 'mark_lipsync_in_progress'):
+                self.character_display.mark_lipsync_in_progress(True)
+            
             lipsync_data = self.lip_sync_engine.analyze_text_for_lipsync(test_text)
             
             if lipsync_data:
                 print(f"✅ リップシンクデータ生成成功: {len(lipsync_data.vowel_frames)}フレーム")
+                
+                # 現在の位置設定を保存
+                current_zoom = self.character_display.live2d_zoom_slider.value()
+                current_h_pos = self.character_display.live2d_h_position_slider.value()
+                current_v_pos = self.character_display.live2d_v_position_slider.value()
                 
                 # JavaScriptに送信するデータを準備
                 js_data = {
@@ -250,29 +259,42 @@ class TTSStudioMainWindow(QMainWindow):
                     ]
                 }
                 
-                # Live2DのWebViewにリップシンクデータを送信
+                # Live2DのWebViewにリップシンクデータを送信（位置保持版）
                 webview = self.character_display.live2d_webview
                 
-                # 修正：設定同期は1回のみ、リップシンク前に実行
-                if hasattr(self.character_display, 'sync_current_live2d_settings_to_webview'):
-                    self.character_display.sync_current_live2d_settings_to_webview()
+                # 🔧 修正：リップシンク開始と同時に位置を明示的に維持
+                scale_value = current_zoom / 100.0
+                pos_x = -(current_h_pos - 50) / 50.0
+                pos_y = (current_v_pos - 50) / 50.0
                 
                 script = f"""
-                if (typeof window.startLipSync === 'function') {{
-                    const lipSyncData = {js_data};
-                    const result = window.startLipSync(lipSyncData);
-                    console.log('リップシンクテスト結果:', result);
-                    result;
-                }} else {{
-                    console.error('startLipSync関数が見つかりません');
-                    false;
-                }}
+                new Promise((resolve) => {{
+                    // 1. リップシンク開始
+                    if (typeof window.startLipSync === 'function') {{
+                        const lipSyncData = {js_data};
+                        const result = window.startLipSync(lipSyncData);
+                        console.log('🎭 リップシンク開始:', result);
+                        
+                        // 2. 即座に位置設定を再適用（位置リセットを防ぐ）
+                        if (typeof window.updateModelSettings === 'function') {{
+                            const settings = {{
+                                'scale': {scale_value},
+                                'position_x': {pos_x},
+                                'position_y': {pos_y}
+                            }};
+                            window.updateModelSettings(settings);
+                            console.log('🔧 位置設定を即座に再適用:', settings);
+                        }}
+                        
+                        resolve(result);
+                    }} else {{
+                        console.error('❌ startLipSync関数が見つかりません');
+                        resolve(false);
+                    }}
+                }})
                 """
                 
                 webview.page().runJavaScript(script, self.on_lipsync_test_result)
-
-                # 修正：重複する設定同期を削除
-                # QTimer.singleShot(0, ...)の部分を削除
                 
                 # タイマーで停止
                 QTimer.singleShot(int(lipsync_data.total_duration * 1000) + 1000, self.stop_lipsync_test)
@@ -282,12 +304,18 @@ class TTSStudioMainWindow(QMainWindow):
                 QMessageBox.warning(self, "リップシンクテスト", "リップシンクデータの生成に失敗しました。")
                 self.test_lipsync_btn.setEnabled(True)
                 self.test_lipsync_btn.setText("🎭 リップシンクテスト")
+                # エラー時もリップシンク状態をクリア
+                if hasattr(self.character_display, 'mark_lipsync_in_progress'):
+                    self.character_display.mark_lipsync_in_progress(False)
                 
         except Exception as e:
             print(f"❌ リップシンクテストエラー: {e}")
             QMessageBox.critical(self, "エラー", f"リップシンクテストでエラーが発生しました:\n{str(e)}")
             self.test_lipsync_btn.setEnabled(True)
             self.test_lipsync_btn.setText("🎭 リップシンクテスト")
+            # エラー時もリップシンク状態をクリア
+            if hasattr(self.character_display, 'mark_lipsync_in_progress'):
+                self.character_display.mark_lipsync_in_progress(False)
 
     def on_lipsync_test_result(self, result):
         """リップシンクテスト結果を処理"""
@@ -299,9 +327,12 @@ class TTSStudioMainWindow(QMainWindow):
             QMessageBox.warning(self, "リップシンクテスト", "リップシンクテストの開始に失敗しました。")
             self.test_lipsync_btn.setEnabled(True)
             self.test_lipsync_btn.setText("🎭 リップシンクテスト")
+            # 失敗時もリップシンク状態をクリア
+            if hasattr(self.character_display, 'mark_lipsync_in_progress'):
+                self.character_display.mark_lipsync_in_progress(False)
 
     def stop_lipsync_test(self):
-        """リップシンクテストを停止"""
+        """リップシンクテストを停止（修正版：状態管理追加）"""
         try:
             webview = self.character_display.live2d_webview
             script = """
@@ -310,6 +341,10 @@ class TTSStudioMainWindow(QMainWindow):
             }
             """
             webview.page().runJavaScript(script)
+            
+            # 🔧 追加：テスト終了時にリップシンク状態をクリア
+            if hasattr(self.character_display, 'mark_lipsync_in_progress'):
+                self.character_display.mark_lipsync_in_progress(False)
             
             self.test_lipsync_btn.setEnabled(True)
             self.test_lipsync_btn.setText("🎭 リップシンクテスト")
@@ -437,8 +472,13 @@ class TTSStudioMainWindow(QMainWindow):
             if progress: progress.deleteLater()
 
     def send_lipsync_to_live2d(self, lipsync_data):
-        """Live2Dにリップシンクデータを送信（修正版：位置リセット問題解決）"""
+        """Live2Dにリップシンクデータを送信（修正版：位置リセット完全解決）"""
         try:
+            # 現在の位置設定を保存
+            current_zoom = self.character_display.live2d_zoom_slider.value()
+            current_h_pos = self.character_display.live2d_h_position_slider.value()
+            current_v_pos = self.character_display.live2d_v_position_slider.value()
+            
             js_data = {
                 'text': lipsync_data.text,
                 'total_duration': lipsync_data.total_duration,
@@ -455,19 +495,40 @@ class TTSStudioMainWindow(QMainWindow):
             
             webview = self.character_display.live2d_webview
             
-            # 修正：設定同期は1回のみ、リップシンク前に実行
-            if hasattr(self.character_display, 'sync_current_live2d_settings_to_webview'):
-                self.character_display.sync_current_live2d_settings_to_webview()
+            # 🔧 修正：リップシンク開始と同時に位置を明示的に維持
+            scale_value = current_zoom / 100.0
+            pos_x = -(current_h_pos - 50) / 50.0
+            pos_y = (current_v_pos - 50) / 50.0
 
             script = f"""
-            if (typeof window.startLipSync === 'function') {{
-                window.startLipSync({js_data});
-            }}
+            (function() {{
+                // 1. リップシンク開始
+                if (typeof window.startLipSync === 'function') {{
+                    const lipSyncData = {js_data};
+                    const result = window.startLipSync(lipSyncData);
+                    console.log('🎭 音声再生時リップシンク開始:', result);
+                    
+                    // 2. 10ms後に位置設定を再適用（確実に位置維持）
+                    setTimeout(() => {{
+                        if (typeof window.updateModelSettings === 'function') {{
+                            const settings = {{
+                                'scale': {scale_value},
+                                'position_x': {pos_x},
+                                'position_y': {pos_y}
+                            }};
+                            window.updateModelSettings(settings);
+                            console.log('🔧 リップシンク後位置復元:', settings);
+                        }}
+                    }}, 10);
+                    
+                    return result;
+                }} else {{
+                    console.error('❌ startLipSync関数が見つかりません');
+                    return false;
+                }}
+            }})()
             """
             webview.page().runJavaScript(script)
-            
-            # 修正：重複する設定同期を削除
-            # QTimer.singleShot(0, ...)の部分を削除
 
         except Exception as e:
             print(f"❌ Live2Dリップシンク送信エラー: {e}")
@@ -581,19 +642,23 @@ class TTSStudioMainWindow(QMainWindow):
             return audio
             
     def play_single_text(self, row_id, text, parameters):
-        """単一テキスト再生（リップシンク統合版）"""
+        """単一テキスト再生（リップシンク統合版・位置リセット防止）"""
         if not self.tts_engine.is_loaded:
             QMessageBox.warning(self, "エラー", "モデルが読み込まれていません。")
             return
         
-
         if self._tts_busy:
             print("⏳ 別の音声合成処理が実行中のため待機してください。")
             return
-
         
         tab_parameters = self.tabbed_audio_control.get_parameters(row_id) or parameters
-
+        
+        # 🔧 追加：リップシンク実行前に状態をマーク
+        if (self.tabbed_audio_control.is_lip_sync_enabled() and
+            hasattr(self.character_display, 'live2d_webview') and
+            self.character_display.live2d_webview.is_model_loaded):
+            if hasattr(self.character_display, 'mark_lipsync_in_progress'):
+                self.character_display.mark_lipsync_in_progress(True)
 
         self._tts_busy = True
         self.statusBar().showMessage("音声合成中...")
@@ -601,16 +666,22 @@ class TTSStudioMainWindow(QMainWindow):
         self.tts_synthesis_requested.emit(text, tab_parameters, enable_lipsync)
 
     def on_tts_synthesis_finished(self, sample_rate, audio, lipsync_data, error_message):
-        """ワーカースレッドからの合成結果を受け取りUI側の処理を行う"""
+        """ワーカースレッドからの合成結果を受け取りUI側の処理を行う（位置リセット防止版）"""
         self.statusBar().clearMessage()
         self._tts_busy = False
 
         if error_message:
+            # 🔧 追加：エラー時もリップシンク状態をクリア
+            if hasattr(self.character_display, 'mark_lipsync_in_progress'):
+                self.character_display.mark_lipsync_in_progress(False)
             print(error_message)
             QMessageBox.critical(self, "エラー", "音声合成に失敗しました。\n詳細はコンソールを確認してください。")
             return
 
         if audio is None or sample_rate is None:
+            # 🔧 追加：データなし時もリップシンク状態をクリア
+            if hasattr(self.character_display, 'mark_lipsync_in_progress'):
+                self.character_display.mark_lipsync_in_progress(False)
             return
         
         try:
@@ -618,7 +689,6 @@ class TTSStudioMainWindow(QMainWindow):
             audio = self.apply_audio_effects(audio, sample_rate)
             self.last_generated_audio, self.last_sample_rate = audio, sample_rate
 
-            
             # 音声再生
             import sounddevice as sd
             sd.play(audio, sample_rate, blocking=False)
@@ -627,11 +697,32 @@ class TTSStudioMainWindow(QMainWindow):
                 self.tabbed_audio_control.is_lip_sync_enabled() and
                 hasattr(self.character_display, 'live2d_webview') and
                 self.character_display.live2d_webview.is_model_loaded):
+                
                 self.send_lipsync_to_live2d(lipsync_data)
                 print(f"🎭 リップシンク実行: {len(lipsync_data.vowel_frames)}フレーム")
+                
+                # 🔧 追加：リップシンク終了後に状態をクリア（タイマー使用）
+                duration_ms = int(lipsync_data.total_duration * 1000) + 500  # 少し余裕を持たせる
+                QTimer.singleShot(duration_ms, lambda: self._clear_lipsync_state())
+            else:
+                # 🔧 追加：リップシンクなしの場合は即座に状態クリア
+                if hasattr(self.character_display, 'mark_lipsync_in_progress'):
+                    self.character_display.mark_lipsync_in_progress(False)
             
         except Exception as e:
+            # 🔧 追加：例外時もリップシンク状態をクリア
+            if hasattr(self.character_display, 'mark_lipsync_in_progress'):
+                self.character_display.mark_lipsync_in_progress(False)
             QMessageBox.critical(self, "エラー", f"音声再生処理に失敗しました: {str(e)}")
+
+    def _clear_lipsync_state(self):
+        """リップシンク状態をクリア（内部メソッド）"""
+        try:
+            if hasattr(self.character_display, 'mark_lipsync_in_progress'):
+                self.character_display.mark_lipsync_in_progress(False)
+            print("✅ リップシンク状態をクリア")
+        except Exception as e:
+            print(f"⚠️ リップシンク状態クリアエラー: {e}")
             
     def trim_silence(self, audio, sample_rate, threshold=0.01):
         non_silent = np.where(np.abs(audio) > threshold)[0]
