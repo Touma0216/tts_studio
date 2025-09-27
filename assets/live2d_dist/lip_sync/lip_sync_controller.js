@@ -1,5 +1,5 @@
 /**
- * Live2Dリップシンク統合制御モジュール
+ * Live2Dリップシンク統合制御モジュール（修正版：位置リセット完全防止）
  * Python側のデータとJavaScript側の処理を統合
  */
 
@@ -22,6 +22,15 @@ class LipSyncController {
         this.animationSequence = [];
         this.currentFrameIndex = 0;
         
+        // 🔧 追加：位置保護システム
+        this.positionProtection = {
+            enabled: false,
+            originalTransform: null,
+            lastSafeTransform: null,
+            protectionStartTime: 0,
+            maxProtectionDuration: 1000 // 1秒間保護
+        };
+        
         // 設定
         this.settings = {
             enabled: true,
@@ -32,7 +41,10 @@ class LipSyncController {
             mouthOpenScale: 100,
             autoOptimize: true,
             realtimeThreshold: 0.6,
-            hybridBlendRatio: 0.5
+            hybridBlendRatio: 0.5,
+            // 🔧 追加：位置保護設定
+            positionProtectionEnabled: true,
+            transformMonitoringEnabled: true
         };
         
         // パフォーマンス監視
@@ -43,11 +55,153 @@ class LipSyncController {
             averageProcessingTime: 0
         };
         
-        console.log("🎭 LipSyncController initialized");
+        console.log("🎭 LipSyncController initialized with position protection");
     }
     
     /**
-     * Live2Dモデルを設定
+     * 🔧 追加：モデルの変形情報を保存
+     */
+    saveModelTransform() {
+        if (!this.live2dModel) return null;
+        
+        try {
+            const transform = {
+                scale: this.live2dModel.scale ? {
+                    x: this.live2dModel.scale.x,
+                    y: this.live2dModel.scale.y
+                } : { x: 1.0, y: 1.0 },
+                position: {
+                    x: this.live2dModel.x || 0,
+                    y: this.live2dModel.y || 0
+                },
+                anchor: this.live2dModel.anchor ? {
+                    x: this.live2dModel.anchor.x,
+                    y: this.live2dModel.anchor.y
+                } : { x: 0.5, y: 1.0 },
+                timestamp: Date.now()
+            };
+            
+            console.log("💾 モデル変形情報を保存:", transform);
+            return transform;
+        } catch (error) {
+            console.warn("⚠️ モデル変形情報保存失敗:", error);
+            return null;
+        }
+    }
+    
+    /**
+     * 🔧 追加：モデルの変形情報を復元
+     */
+    restoreModelTransform(transform) {
+        if (!this.live2dModel || !transform) return false;
+        
+        try {
+            // スケール復元
+            if (this.live2dModel.scale && transform.scale) {
+                this.live2dModel.scale.x = transform.scale.x;
+                this.live2dModel.scale.y = transform.scale.y;
+            }
+            
+            // 位置復元
+            if (transform.position) {
+                this.live2dModel.x = transform.position.x;
+                this.live2dModel.y = transform.position.y;
+            }
+            
+            // アンカー復元
+            if (this.live2dModel.anchor && transform.anchor) {
+                this.live2dModel.anchor.x = transform.anchor.x;
+                this.live2dModel.anchor.y = transform.anchor.y;
+            }
+            
+            console.log("🔄 モデル変形情報を復元:", transform);
+            return true;
+        } catch (error) {
+            console.warn("⚠️ モデル変形情報復元失敗:", error);
+            return false;
+        }
+    }
+    
+    /**
+     * 🔧 追加：位置保護を開始
+     */
+    startPositionProtection() {
+        if (!this.settings.positionProtectionEnabled) return;
+        
+        try {
+            this.positionProtection.originalTransform = this.saveModelTransform();
+            this.positionProtection.enabled = true;
+            this.positionProtection.protectionStartTime = Date.now();
+            
+            console.log("🛡️ 位置保護開始");
+        } catch (error) {
+            console.warn("⚠️ 位置保護開始失敗:", error);
+        }
+    }
+    
+    /**
+     * 🔧 追加：位置保護を終了
+     */
+    stopPositionProtection() {
+        try {
+            this.positionProtection.enabled = false;
+            this.positionProtection.originalTransform = null;
+            this.positionProtection.lastSafeTransform = null;
+            
+            console.log("🛡️ 位置保護終了");
+        } catch (error) {
+            console.warn("⚠️ 位置保護終了失敗:", error);
+        }
+    }
+    
+    /**
+     * 🔧 追加：変形監視とリストア
+     */
+    monitorAndProtectTransform() {
+        if (!this.positionProtection.enabled || !this.positionProtection.originalTransform) {
+            return;
+        }
+        
+        const currentTime = Date.now();
+        const protectionDuration = currentTime - this.positionProtection.protectionStartTime;
+        
+        // 最大保護時間を超えたら保護を解除
+        if (protectionDuration > this.positionProtection.maxProtectionDuration) {
+            this.stopPositionProtection();
+            return;
+        }
+        
+        try {
+            const currentTransform = this.saveModelTransform();
+            if (!currentTransform) return;
+            
+            const original = this.positionProtection.originalTransform;
+            
+            // 位置やスケールが大幅に変更されたかチェック
+            const scaleThreshold = 0.1;
+            const positionThreshold = 50;
+            
+            const scaleChanged = Math.abs(currentTransform.scale.x - original.scale.x) > scaleThreshold ||
+                               Math.abs(currentTransform.scale.y - original.scale.y) > scaleThreshold;
+            
+            const positionChanged = Math.abs(currentTransform.position.x - original.position.x) > positionThreshold ||
+                                  Math.abs(currentTransform.position.y - original.position.y) > positionThreshold;
+            
+            if (scaleChanged || positionChanged) {
+                console.log("🚨 不正な変形を検出、元の状態に復元");
+                this.restoreModelTransform(original);
+                
+                // 安全な変形として記録
+                this.positionProtection.lastSafeTransform = this.saveModelTransform();
+            }
+            
+        } catch (error) {
+            console.warn("⚠️ 変形監視エラー:", error);
+        }
+    }
+    
+    /**
+     * Live2Dモデルを設定（修正版：位置保護強化）
      * @param {Object} model - Live2Dモデル
      */
     setModel(model) {
@@ -57,7 +211,14 @@ class LipSyncController {
             // モデルの利用可能パラメータをチェック
             this.validateModelParameters();
             
-            console.log("✅ Live2Dモデル設定完了");
+            // 🔧 追加：初期変形状態を保存
+            if (this.settings.transformMonitoringEnabled) {
+                setTimeout(() => {
+                    this.positionProtection.lastSafeTransform = this.saveModelTransform();
+                }, 100);
+            }
+            
+            console.log("✅ Live2Dモデル設定完了（位置保護機能付き）");
             return true;
             
         } catch (error) {
@@ -151,13 +312,13 @@ class LipSyncController {
     }
     
     /**
-     * リップシンクを開始
+     * リップシンクを開始（修正版：完全位置保護）
      * @param {Object} lipSyncData - Python側からのリップシンクデータ
      * @returns {boolean} 成功時true
      */
     async startLipSync(lipSyncData) {
         try {
-            console.log("🎵 リップシンク開始:", lipSyncData);
+            console.log("🎵 リップシンク開始（完全位置保護版）:", lipSyncData);
             
             if (!this.live2dModel) {
                 throw new Error("Live2Dモデルが設定されていません");
@@ -168,6 +329,9 @@ class LipSyncController {
                 return false;
             }
             
+            // 🔧 追加：開始前に位置保護を有効化
+            this.startPositionProtection();
+            
             // 既存のアニメーション停止
             this.stopLipSync();
             
@@ -177,34 +341,65 @@ class LipSyncController {
             this.currentFrameIndex = 0;
             
             // モード別処理
+            let result = false;
             switch (this.settings.mode) {
                 case 'tts':
-                    return this.startTTSMode(lipSyncData);
+                    result = this.startTTSMode(lipSyncData);
+                    break;
                 
                 case 'realtime':
-                    return this.startRealtimeMode();
+                    result = this.startRealtimeMode();
+                    break;
                 
                 case 'hybrid':
-                    return this.startHybridMode(lipSyncData);
+                    result = this.startHybridMode(lipSyncData);
+                    break;
                 
                 default:
                     console.warn("⚠️ 未知のモード:", this.settings.mode);
-                    return this.startTTSMode(lipSyncData);
+                    result = this.startTTSMode(lipSyncData);
+                    break;
             }
+            
+            // 🔧 追加：開始後の位置保護監視を開始
+            if (result && this.positionProtection.enabled) {
+                this.startTransformMonitoring();
+            }
+            
+            return result;
             
         } catch (error) {
             console.error("❌ リップシンク開始エラー:", error);
+            this.stopPositionProtection();
             return false;
         }
     }
     
     /**
-     * TTSモード開始（音素データベース）
+     * 🔧 追加：変形監視を開始
+     */
+    startTransformMonitoring() {
+        if (!this.settings.transformMonitoringEnabled) return;
+        
+        const monitorInterval = setInterval(() => {
+            if (!this.positionProtection.enabled) {
+                clearInterval(monitorInterval);
+                return;
+            }
+            
+            this.monitorAndProtectTransform();
+        }, 16); // 約60FPSで監視
+        
+        console.log("👁️ 変形監視開始");
+    }
+    
+    /**
+     * TTSモード開始（修正版：位置保護強化）
      * @param {Object} lipSyncData - リップシンクデータ
      */
     startTTSMode(lipSyncData) {
         try {
-            console.log("🔤 TTSモード開始");
+            console.log("🔤 TTSモード開始（位置保護付き）");
             
             if (!this.phonemeClassifier) {
                 throw new Error("PhonemeClassifier が利用できません");
@@ -298,7 +493,7 @@ class LipSyncController {
     }
     
     /**
-     * リップシンクを停止
+     * リップシンクを停止（修正版：位置保護解除）
      */
     stopLipSync() {
         try {
@@ -321,6 +516,11 @@ class LipSyncController {
             // パラメータをリセット
             this.resetMouthParameters();
             
+            // 🔧 追加：位置保護を解除
+            setTimeout(() => {
+                this.stopPositionProtection();
+            }, 100); // 少し遅延して解除
+            
             // データクリア
             this.currentLipSyncData = null;
             this.animationSequence = [];
@@ -336,7 +536,7 @@ class LipSyncController {
     }
     
     /**
-     * TTSモードのアニメーション処理
+     * TTSモードのアニメーション処理（修正版：位置保護）
      */
     animateTTSMode() {
         if (!this.isActive || this.currentMode !== 'tts' && this.currentMode !== 'hybrid') {
@@ -346,6 +546,11 @@ class LipSyncController {
         try {
             const currentTime = Date.now() / 1000;
             const elapsedTime = currentTime - this.animationStartTime;
+            
+            // 🔧 追加：変形監視
+            if (this.positionProtection.enabled) {
+                this.monitorAndProtectTransform();
+            }
             
             // 現在時刻に対応するフレームを検索
             const activeFrame = this.findActiveFrame(elapsedTime);
@@ -362,8 +567,8 @@ class LipSyncController {
                     );
                 }
                 
-                // パラメータ適用
-                this.applyParametersToModel(parameters);
+                // パラメータ適用（口パラメータのみ）
+                this.applyMouthParametersOnly(parameters);
             } else {
                 // アニメーション終了判定
                 const totalDuration = this.currentLipSyncData?.total_duration || 0;
@@ -385,6 +590,58 @@ class LipSyncController {
         } catch (error) {
             console.error("⚠️ TTSアニメーションエラー:", error);
             this.animationId = requestAnimationFrame(() => this.animateTTSMode());
+        }
+    }
+    
+    /**
+     * 🔧 追加：口パラメータのみを適用（位置パラメータを保護）
+     */
+    applyMouthParametersOnly(parameters) {
+        if (!this.live2dModel) {
+            return;
+        }
+        
+        try {
+            const coreModel = this.live2dModel.internalModel?.coreModel;
+            
+            if (coreModel) {
+                Object.keys(parameters).forEach(paramId => {
+                    // 口関連パラメータのみ処理
+                    const id = paramId.toLowerCase();
+                    const isMouthParam = id.includes('mouth') || id.includes('lip') || id.includes('口');
+                    
+                    if (!isMouthParam) {
+                        return; // 口以外のパラメータはスキップ
+                    }
+                    
+                    const value = parameters[paramId];
+                    
+                    try {
+                        // パラメータ値にスケールを適用
+                        const scaledValue = value * (this.settings.mouthOpenScale / 100.0);
+                        
+                        const paramIndex = coreModel.getParameterIndex(paramId);
+                        if (paramIndex >= 0) {
+                            coreModel.setParameterValueByIndex(paramIndex, scaledValue);
+                        } else {
+                            // 代替パラメータを試す
+                            this.tryAlternativeParameter(paramId, scaledValue, coreModel);
+                        }
+                    } catch (e) {
+                        // パラメータが存在しない場合は警告（初回のみ）
+                        if (!this.warnedParameters) {
+                            this.warnedParameters = new Set();
+                        }
+                        if (!this.warnedParameters.has(paramId)) {
+                            console.warn(`⚠️ パラメータ '${paramId}' が見つかりません`);
+                            this.warnedParameters.add(paramId);
+                        }
+                    }
+                });
+            }
+            
+        } catch (error) {
+            console.error("⚠️ 口パラメータ適用エラー:", error);
         }
     }
     
@@ -422,9 +679,9 @@ class LipSyncController {
                 parameters = this.generateFallbackParameters(analysisResult);
             }
             
-            // モード別処理
+            // モード別処理（位置保護付き）
             if (this.currentMode === 'realtime') {
-                this.applyParametersToModel(parameters);
+                this.applyMouthParametersOnly(parameters);
             } else if (this.currentMode === 'hybrid') {
                 // ハイブリッドモードでは後で使用するために保存
                 this.lastRealtimeParameters = parameters;
@@ -514,50 +771,12 @@ class LipSyncController {
     }
     
     /**
-     * Live2Dモデルにパラメータを適用
+     * Live2Dモデルにパラメータを適用（修正版：口パラメータのみ）
      * @param {Object} parameters - パラメータ
      */
     applyParametersToModel(parameters) {
-        if (!this.live2dModel) {
-            return;
-        }
-        
-        try {
-            // 🔥 修正: 正しいパラメータアクセス方法
-            const coreModel = this.live2dModel.internalModel?.coreModel;
-            
-            if (coreModel) {
-                Object.keys(parameters).forEach(paramId => {
-                    const value = parameters[paramId];
-                    
-                    try {
-                        // パラメータ値にスケールを適用
-                        const scaledValue = value * (this.settings.mouthOpenScale / 100.0);
-                        
-                        // 🔥 修正: インデックスベースのアクセス
-                        const paramIndex = coreModel.getParameterIndex(paramId);
-                        if (paramIndex >= 0) {
-                            coreModel.setParameterValueByIndex(paramIndex, scaledValue);
-                        } else {
-                            // 代替パラメータを試す
-                            this.tryAlternativeParameter(paramId, scaledValue, coreModel);
-                        }
-                    } catch (e) {
-                        // パラメータが存在しない場合は警告（初回のみ）
-                        if (!this.warnedParameters) {
-                            this.warnedParameters = new Set();
-                        }
-                        if (!this.warnedParameters.has(paramId)) {
-                            console.warn(`⚠️ パラメータ '${paramId}' が見つかりません`);
-                            this.warnedParameters.add(paramId);
-                        }
-                    }
-                });
-            }
-            
-        } catch (error) {
-            console.error("⚠️ パラメータ適用エラー:", error);
-        }
+        // 🔧 修正：口パラメータのみ適用に変更
+        this.applyMouthParametersOnly(parameters);
     }
     
     /**
@@ -636,7 +855,7 @@ class LipSyncController {
             'ParamMouthOpenX': 0.0
         };
         
-        this.applyParametersToModel(defaultParams);
+        this.applyMouthParametersOnly(defaultParams);
     }
     
     /**
@@ -665,7 +884,6 @@ class LipSyncController {
         }
         
         try {
-            // 🔥 修正: 正しいパラメータ取得方法
             const coreModel = this.live2dModel.internalModel?.coreModel;
             const parameters = [];
             
@@ -703,11 +921,11 @@ class LipSyncController {
     }
     
     /**
-     * 直接パラメータ設定（外部API用）
+     * 直接パラメータ設定（外部API用・修正版：口パラメータのみ）
      * @param {Object} parameters - パラメータ
      */
     setParameters(parameters) {
-        this.applyParametersToModel(parameters);
+        this.applyMouthParametersOnly(parameters);
     }
     
     /**
@@ -787,6 +1005,7 @@ class LipSyncController {
             hasModel: !!this.live2dModel,
             hasAudioAnalyzer: !!this.audioAnalyzer,
             hasPhonemeClassifier: !!this.phonemeClassifier,
+            positionProtection: this.positionProtection,
             settings: this.settings,
             currentData: this.currentLipSyncData ? {
                 text: this.currentLipSyncData.text,

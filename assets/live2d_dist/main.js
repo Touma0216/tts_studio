@@ -12,6 +12,10 @@ let lipSyncController = null;
 let isLipSyncEnabled = false;
 let currentLipSyncData = null;
 
+// 🔧 追加：位置保護機能
+let preservedModelSettings = null;
+let isPositionProtected = false;
+
 async function initialize() {
     const canvas = document.getElementById('live2d-canvas');
     
@@ -193,58 +197,106 @@ window.setExpression = function(expressionName) {
     }
 };
 
+// 🔧 追加：現在のモデル設定を保存
+function preserveCurrentModelSettings() {
+    if (!currentModel) return null;
+    
+    try {
+        preservedModelSettings = {
+            scale: currentModel.scale.x,
+            x: currentModel.x,
+            y: currentModel.y,
+            anchor: { x: currentModel.anchor.x, y: currentModel.anchor.y }
+        };
+        console.log("💾 モデル設定を保存:", preservedModelSettings);
+        return preservedModelSettings;
+    } catch (error) {
+        console.warn("⚠️ モデル設定保存失敗:", error);
+        return null;
+    }
+}
+
+// 🔧 追加：保存された設定を復元
+function restorePreservedModelSettings() {
+    if (!currentModel || !preservedModelSettings) return false;
+    
+    try {
+        currentModel.scale.set(preservedModelSettings.scale);
+        currentModel.x = preservedModelSettings.x;
+        currentModel.y = preservedModelSettings.y;
+        currentModel.anchor.set(preservedModelSettings.anchor.x, preservedModelSettings.anchor.y);
+        
+        console.log("🔄 モデル設定を復元:", preservedModelSettings);
+        return true;
+    } catch (error) {
+        console.warn("⚠️ モデル設定復元失敗:", error);
+        return false;
+    }
+}
+
 window.updateModelSettings = function(settings) {
-    if (currentModel) {
-        try {
-            // ---- スケール更新 ----
-            if (settings.scale !== undefined) {
-                // 位置には触らず scale だけ更新
-                const modelBounds = currentModel.getBounds();
-                const baseScaleX = (window.innerWidth * 0.9) / (modelBounds.width / currentModel.scale.x);
-                const baseScaleY = (window.innerHeight * 0.9) / (modelBounds.height / currentModel.scale.y);
-                const baseScale = Math.min(baseScaleX, baseScaleY);
-                currentModel.scale.set(baseScale * settings.scale);
-            }
-
-            // ---- 表示サイズと移動範囲計算 ----
-            const modelHeight = currentModel.getBounds().height;
-            const viewHeight = window.innerHeight;
-            const overflowHeight = Math.max(0, modelHeight - viewHeight);
-
-            // デフォルト基準位置
-            const baseX = window.innerWidth / 2;
-            const baseY = viewHeight * 0.9;
-
-            // 上下の移動範囲に余裕を追加（10% → 20%）
-            const padding = viewHeight * 0.2;
-
-            // 移動範囲の計算を強化（÷2を外してフルに使う）
-            const moveRange = overflowHeight + padding;
-
-            // ---- X位置の計算 ----
-            let finalX = currentModel.x || baseX;
-            if (settings.position_x !== undefined) {
-                const moveRangeX = window.innerWidth / 3;
-                finalX = baseX + (settings.position_x * moveRangeX);
-            }
-
-            // ---- Y位置の計算 ----
-            let finalY = currentModel.y || baseY;
-            if (settings.position_y !== undefined) {
-                const offsetY = settings.position_y * moveRange;
-                finalY = baseY + offsetY;
-            }
-
-            // ---- 反映 ----
-            currentModel.x = finalX;
-            currentModel.y = finalY;
-
-        } catch (e) {
-            console.error("モデル設定更新エラー:", e);
+    if (!currentModel) return;
+    
+    try {
+        // 🔧 修正：位置保護中の場合は設定を保存してから適用
+        if (isPositionProtected) {
+            preserveCurrentModelSettings();
         }
+        
+        // ---- スケール更新 ----
+        if (settings.scale !== undefined) {
+            // 位置には触らず scale だけ更新
+            const modelBounds = currentModel.getBounds();
+            const baseScaleX = (window.innerWidth * 0.9) / (modelBounds.width / currentModel.scale.x);
+            const baseScaleY = (window.innerHeight * 0.9) / (modelBounds.height / currentModel.scale.y);
+            const baseScale = Math.min(baseScaleX, baseScaleY);
+            currentModel.scale.set(baseScale * settings.scale);
+        }
+
+        // ---- 表示サイズと移動範囲計算 ----
+        const modelHeight = currentModel.getBounds().height;
+        const viewHeight = window.innerHeight;
+        const overflowHeight = Math.max(0, modelHeight - viewHeight);
+
+        // デフォルト基準位置
+        const baseX = window.innerWidth / 2;
+        const baseY = viewHeight * 0.9;
+
+        // 上下の移動範囲に余裕を追加（10% → 20%）
+        const padding = viewHeight * 0.2;
+
+        // 移動範囲の計算を強化（÷2を外してフルに使う）
+        const moveRange = overflowHeight + padding;
+
+        // ---- X位置の計算 ----
+        let finalX = currentModel.x || baseX;
+        if (settings.position_x !== undefined) {
+            const moveRangeX = window.innerWidth / 3;
+            finalX = baseX + (settings.position_x * moveRangeX);
+        }
+
+        // ---- Y位置の計算 ----
+        let finalY = currentModel.y || baseY;
+        if (settings.position_y !== undefined) {
+            const offsetY = settings.position_y * moveRange;
+            finalY = baseY + offsetY;
+        }
+
+        // ---- 反映 ----
+        currentModel.x = finalX;
+        currentModel.y = finalY;
+
+        // 🔧 追加：位置保護中の場合は復元された設定を保存
+        if (isPositionProtected && preservedModelSettings) {
+            preservedModelSettings.scale = currentModel.scale.x;
+            preservedModelSettings.x = currentModel.x;
+            preservedModelSettings.y = currentModel.y;
+        }
+
+    } catch (e) {
+        console.error("モデル設定更新エラー:", e);
     }
 };
-
 
 window.setBackgroundVisible = function(visible) {
     if (app && app.renderer) {
@@ -274,11 +326,11 @@ window.addEventListener('resize', () => {
 });
 
 // =============================================================================
-// リップシンク関連API
+// リップシンク関連API（修正版：位置リセット防止）
 // =============================================================================
 
 /**
- * リップシンクを開始
+ * リップシンクを開始（修正版：位置保護機能付き）
  * @param {Object} lipSyncData - Python側からのリップシンクデータ
  * @returns {boolean} 成功時true
  */
@@ -296,19 +348,67 @@ window.startLipSync = function(lipSyncData) {
             return false;
         }
         
+        // 🔧 追加：リップシンク開始前に現在の設定を保護
+        console.log("🛡️ 位置保護開始");
+        isPositionProtected = true;
+        preserveCurrentModelSettings();
+        
         currentLipSyncData = lipSyncData;
         isLipSyncEnabled = true;
         
-        return lipSyncController.startLipSync(lipSyncData);
+        // リップシンク開始
+        const startResult = lipSyncController.startLipSync(lipSyncData);
+        
+        // 🔧 追加：開始直後に設定を復元（複数回試行）
+        if (startResult && preservedModelSettings) {
+            // 即座に復元
+            setTimeout(() => {
+                if (isPositionProtected) {
+                    restorePreservedModelSettings();
+                    console.log("🔄 位置復元（即座）");
+                }
+            }, 10);
+            
+            // 50ms後にも復元
+            setTimeout(() => {
+                if (isPositionProtected) {
+                    restorePreservedModelSettings();
+                    console.log("🔄 位置復元（50ms後）");
+                }
+            }, 50);
+            
+            // 100ms後にも復元
+            setTimeout(() => {
+                if (isPositionProtected) {
+                    restorePreservedModelSettings();
+                    console.log("🔄 位置復元（100ms後）");
+                }
+            }, 100);
+            
+            // 200ms後に保護解除
+            setTimeout(() => {
+                isPositionProtected = false;
+                preservedModelSettings = null;
+                console.log("🛡️ 位置保護終了");
+            }, 200);
+        } else {
+            // 失敗時は即座に保護解除
+            isPositionProtected = false;
+            preservedModelSettings = null;
+        }
+        
+        return startResult;
         
     } catch (error) {
         console.error("❌ リップシンク開始エラー:", error);
+        isPositionProtected = false;
+        preservedModelSettings = null;
         return false;
     }
 };
 
 /**
- * リップシンクを停止
+ * リップシンクを停止（修正版：位置保護対応）
  * @returns {boolean} 成功時true
  */
 window.stopLipSync = function() {
@@ -317,6 +417,10 @@ window.stopLipSync = function() {
         
         isLipSyncEnabled = false;
         currentLipSyncData = null;
+        
+        // 🔧 追加：停止時に位置保護を解除
+        isPositionProtected = false;
+        preservedModelSettings = null;
         
         if (lipSyncController) {
             return lipSyncController.stopLipSync();
@@ -331,7 +435,7 @@ window.stopLipSync = function() {
 };
 
 /**
- * リップシンクパラメータを直接設定
+ * リップシンクパラメータを直接設定（修正版：位置保護対応）
  * @param {Object} parameters - Live2Dパラメータ
  * @returns {boolean} 成功時true
  */
@@ -340,6 +444,19 @@ window.setLipSyncParameters = function(parameters) {
         if (!currentModel) {
             console.warn("⚠️ モデルが読み込まれていません");
             return false;
+        }
+        
+        // 🔧 追加：位置保護中の場合は口パラメータのみ適用
+        if (isPositionProtected) {
+            const mouthOnlyParams = {};
+            Object.keys(parameters).forEach(paramId => {
+                const id = paramId.toLowerCase();
+                if (id.includes('mouth') || id.includes('lip') || id.includes('口')) {
+                    mouthOnlyParams[paramId] = parameters[paramId];
+                }
+            });
+            parameters = mouthOnlyParams;
+            console.log("🛡️ 位置保護中：口パラメータのみ適用", parameters);
         }
         
         if (lipSyncController) {
@@ -401,6 +518,7 @@ window.getLipSyncStatus = function() {
         isEnabled: isLipSyncEnabled,
         hasModel: !!currentModel,
         hasController: !!lipSyncController,
+        isPositionProtected: isPositionProtected,
         currentData: currentLipSyncData ? {
             text: currentLipSyncData.text,
             duration: currentLipSyncData.total_duration,
@@ -517,6 +635,10 @@ window.getLipSyncDebugInfo = function() {
                     currentModel.internalModel?.coreModel?.getParameterCount() || 0
                 ) : 0
             },
+            positionProtection: {
+                isProtected: isPositionProtected,
+                preservedSettings: preservedModelSettings
+            },
             system: {
                 pixiVersion: PIXI.VERSION || 'unknown',
                 browserUserAgent: navigator.userAgent,
@@ -535,12 +657,12 @@ window.getLipSyncDebugInfo = function() {
 };
 
 /**
- * テスト用：基本的なリップシンクテスト
+ * テスト用：基本的なリップシンクテスト（修正版：位置保護付き）
  * @returns {Promise<boolean>} テスト成功時true
  */
 window.testLipSync = async function() {
     try {
-        console.log("🧪 リップシンクテスト開始");
+        console.log("🧪 リップシンクテスト開始（位置保護付き）");
         
         if (!currentModel) {
             console.error("❌ モデルが読み込まれていません");
@@ -591,11 +713,11 @@ window.testLipSync = async function() {
             ]
         };
         
-        // テスト実行
+        // テスト実行（位置保護機能付き）
         const success = window.startLipSync(testData);
         
         if (success) {
-            console.log("✅ リップシンクテスト成功");
+            console.log("✅ リップシンクテスト成功（位置保護付き）");
             setTimeout(() => {
                 window.stopLipSync();
                 console.log("✅ リップシンクテスト完了");
