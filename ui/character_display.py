@@ -336,7 +336,7 @@ class Live2DWebView(QWebEngineView):
         current_zoom = self.character_display.live2d_zoom_slider.value()
         
         if delta > 0:
-            new_zoom = min(300, current_zoom + zoom_step)  # 最大300%
+            new_zoom = min(500, current_zoom + zoom_step)  # 最大300%
         else:
             new_zoom = max(80, current_zoom - zoom_step)   # 最小80%
         
@@ -710,7 +710,7 @@ class CharacterDisplayWidget(QWidget):
         
         slider_layout = QHBoxLayout()
         self.live2d_zoom_slider = QSlider(Qt.Orientation.Horizontal)
-        self.live2d_zoom_slider.setRange(80, 300)  # 80%〜300%に調整（適切な範囲）
+        self.live2d_zoom_slider.setRange(80, 500)  # 80%〜300%に調整（適切な範囲）
         self.live2d_zoom_slider.setValue(100)
         self.live2d_zoom_slider.setEnabled(False)
         slider_style = "QSlider::groove:horizontal { border: 1px solid #bbb; background: white; height: 4px; border-radius: 2px; } QSlider::sub-page:horizontal { background: #66e; } QSlider::handle:horizontal { background: #eee; border: 1px solid #777; width: 14px; margin: -6px 0; border-radius: 7px; }"

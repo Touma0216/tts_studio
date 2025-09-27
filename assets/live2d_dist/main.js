@@ -215,8 +215,8 @@ window.updateModelSettings = function(settings) {
             const baseX = window.innerWidth / 2;
             const baseY = viewHeight * 0.9;
 
-            // 上下の移動範囲に余裕を追加（10% → 30%）
-            const padding = viewHeight * 0.3;
+            // 上下の移動範囲に余裕を追加（10% → 20%）
+            const padding = viewHeight * 0.2;
 
             // 移動範囲の計算を強化（÷2を外してフルに使う）
             const moveRange = overflowHeight + padding;

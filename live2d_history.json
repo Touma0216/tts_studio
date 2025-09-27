@@ -5,7 +5,7 @@
       "model_folder_path": "C:\\Users\\masa2\\Downloads\\Touma",
       "name": "Touma",
       "created_at": "2025-09-27T00:38:58.136754",
-      "last_used": "2025-09-27T14:23:49.923617",
+      "last_used": "2025-09-27T16:24:48.795980",
       "ui_settings": {
         "scale": 1.0,
         "position_x": 0.0,
@@ -16,10 +16,10 @@
         "background_visible": true,
         "zoom_percent": 500,
         "h_position": 49,
-        "v_position": 58,
+        "v_position": 96,
         "minimap_visible": true
       }
     }
   ],
-  "last_updated": "2025-09-27T14:23:49.923617"
+  "last_updated": "2025-09-27T16:24:48.795980"
 }
