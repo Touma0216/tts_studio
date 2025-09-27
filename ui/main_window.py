@@ -3,7 +3,7 @@ import numpy as np
 from pathlib import Path
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QPushButton, QLabel, QFileDialog, QFrame, QApplication, QMessageBox, QSplitter)
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread
 from PyQt6.QtGui import QFont, QAction
 
 # 自作モジュール
@@ -15,6 +15,7 @@ from .keyboard_shortcuts import KeyboardShortcutManager
 from .sliding_menu import SlidingMenuWidget
 from .help_dialog import HelpDialog
 from .character_display import CharacterDisplayWidget
+from .tts_worker import TTSWorker
 from core.tts_engine import TTSEngine
 from core.model_manager import ModelManager
 from core.audio_processor import AudioProcessor
@@ -23,6 +24,7 @@ from core.audio_effects_processor import AudioEffectsProcessor
 from core.lip_sync_engine import LipSyncEngine
 
 class TTSStudioMainWindow(QMainWindow):
+    tts_synthesis_requested = pyqtSignal(str, dict, bool)
     def __init__(self, live2d_url=None, live2d_server_manager=None):
         super().__init__()
         self.live2d_url = live2d_url
@@ -35,9 +37,11 @@ class TTSStudioMainWindow(QMainWindow):
         
         # リップシンクエンジン追加
         self.lip_sync_engine = LipSyncEngine()
+        self.setup_tts_worker()
         
         self.last_generated_audio = None
         self.last_sample_rate = None
+        self._tts_busy = False
         
         self.init_ui()
         self.help_dialog = HelpDialog(self)
@@ -189,6 +193,16 @@ class TTSStudioMainWindow(QMainWindow):
                 
         except Exception as e:
             print(f"❌ リップシンク統合エラー: {e}")
+
+    def setup_tts_worker(self):
+        """TTS合成をバックグラウンドで実行するワーカースレッドの初期化"""
+        self.tts_thread = QThread(self)
+        self.tts_worker = TTSWorker(self.tts_engine, self.lip_sync_engine)
+        self.tts_worker.moveToThread(self.tts_thread)
+        self.tts_worker.synthesis_finished.connect(self.on_tts_synthesis_finished)
+        self.tts_synthesis_requested.connect(self.tts_worker.synthesize)
+        self.tts_thread.finished.connect(self.tts_worker.deleteLater)
+        self.tts_thread.start()
 
     def test_lipsync_function(self):
         """リップシンク機能をテスト"""
@@ -414,31 +428,6 @@ class TTSStudioMainWindow(QMainWindow):
         finally:
             if progress: progress.deleteLater()
 
-    def synthesize_with_lipsync(self, text, parameters):
-        """音声合成とリップシンクデータ生成を同時実行"""
-        try:
-            # 音声合成
-            sr, audio = self.tts_engine.synthesize(text, **parameters)
-            
-            # リップシンクデータ生成
-            lipsync_data = None
-            if self.lip_sync_engine.is_available() and self.tabbed_audio_control.is_lip_sync_enabled():
-                lipsync_data = self.lip_sync_engine.analyze_text_for_lipsync(text)
-                
-                # Live2Dモデルが読み込まれている場合、リップシンクを開始
-                if (lipsync_data and 
-                    hasattr(self.character_display, 'live2d_webview') and 
-                    self.character_display.live2d_webview.is_model_loaded):
-                    
-                    self.send_lipsync_to_live2d(lipsync_data)
-            
-            return sr, audio, lipsync_data
-            
-        except Exception as e:
-            print(f"❌ リップシンク統合音声合成エラー: {e}")
-            # リップシンクが失敗しても音声合成は続行
-            return self.tts_engine.synthesize(text, **parameters) + (None,)
-
     def send_lipsync_to_live2d(self, lipsync_data):
         """Live2Dにリップシンクデータを送信"""
         try:
@@ -581,29 +570,52 @@ class TTSStudioMainWindow(QMainWindow):
             QMessageBox.warning(self, "エラー", "モデルが読み込まれていません。")
             return
         
+
+        if self._tts_busy:
+            print("⏳ 別の音声合成処理が実行中のため待機してください。")
+            return
+
+        
         tab_parameters = self.tabbed_audio_control.get_parameters(row_id) or parameters
+
+
+        self._tts_busy = True
+        self.statusBar().showMessage("音声合成中...")
+        enable_lipsync = self.tabbed_audio_control.is_lip_sync_enabled()
+        self.tts_synthesis_requested.emit(text, tab_parameters, enable_lipsync)
+
+    def on_tts_synthesis_finished(self, sample_rate, audio, lipsync_data, error_message):
+        """ワーカースレッドからの合成結果を受け取りUI側の処理を行う"""
+        self.statusBar().clearMessage()
+        self._tts_busy = False
+
+        if error_message:
+            print(error_message)
+            QMessageBox.critical(self, "エラー", "音声合成に失敗しました。\n詳細はコンソールを確認してください。")
+            return
+
+        if audio is None or sample_rate is None:
+            return
         
         try:
-            # リップシンク統合音声合成
-            sr, audio, lipsync_data = self.synthesize_with_lipsync(text, tab_parameters)
-            
-            # 音声処理
-            audio = self.apply_audio_cleaning(audio, sr)
-            audio = self.apply_audio_effects(audio, sr)
-            
-            # 音声データを保存
-            self.last_generated_audio, self.last_sample_rate = audio, sr
+            audio = self.apply_audio_cleaning(audio, sample_rate)
+            audio = self.apply_audio_effects(audio, sample_rate)
+            self.last_generated_audio, self.last_sample_rate = audio, sample_rate
+
             
             # 音声再生
             import sounddevice as sd
-            sd.play(audio, sr, blocking=False)
-            
-            # リップシンクデータがあればログ出力
-            if lipsync_data:
+            sd.play(audio, sample_rate, blocking=False)
+
+            if (lipsync_data and
+                self.tabbed_audio_control.is_lip_sync_enabled() and
+                hasattr(self.character_display, 'live2d_webview') and
+                self.character_display.live2d_webview.is_model_loaded):
+                self.send_lipsync_to_live2d(lipsync_data)
                 print(f"🎭 リップシンク実行: {len(lipsync_data.vowel_frames)}フレーム")
             
         except Exception as e:
-            QMessageBox.critical(self, "エラー", f"音声合成に失敗しました: {str(e)}")
+            QMessageBox.critical(self, "エラー", f"音声再生処理に失敗しました: {str(e)}")
             
     def trim_silence(self, audio, sample_rate, threshold=0.01):
         non_silent = np.where(np.abs(audio) > threshold)[0]
@@ -698,6 +710,10 @@ class TTSStudioMainWindow(QMainWindow):
             if self.tts_engine: self.tts_engine.unload_model()
             self.model_manager.save_history()
             if hasattr(self.character_display, 'live2d_manager'):
+                self.character_display.live2d_manager.save_history()
+            if hasattr(self, 'tts_thread') and self.tts_thread.isRunning():
+                self.tts_thread.quit()
+                self.tts_thread.wait(5000)
                 self.character_display.live2d_manager.save_history()
         except Exception as e:
             print(f"終了処理中にエラー: {e}")
