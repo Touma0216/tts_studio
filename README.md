@@ -51,4 +51,5 @@ tts_studio-main/
     ├── sliding_menu.py               # スライド式ファイルメニューUI
     ├── tabbed_audio_control.py       # タブ式音声制御統合UI
     ├── tabbed_emotion_control.py     # タブ式感情・パラメータ制御UI
-    └── tabbed_lip_sync_control.py    # タブ式リップシンク制御UI
+    ├── tabbed_lip_sync_control.py    # タブ式リップシンク制御UI
+    └── tts_worker.py                 # TTS生成・リップシンク処理用バックグラウンドワーカー
