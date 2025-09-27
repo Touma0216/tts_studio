@@ -205,7 +205,7 @@ class TTSStudioMainWindow(QMainWindow):
         self.tts_thread.start()
 
     def test_lipsync_function(self):
-        """リップシンク機能をテスト"""
+        """リップシンク機能をテスト（修正版：位置リセット問題解決）"""
         try:
             print("🎭 リップシンクテスト開始")
             
@@ -252,8 +252,11 @@ class TTSStudioMainWindow(QMainWindow):
                 
                 # Live2DのWebViewにリップシンクデータを送信
                 webview = self.character_display.live2d_webview
+                
+                # 修正：設定同期は1回のみ、リップシンク前に実行
                 if hasattr(self.character_display, 'sync_current_live2d_settings_to_webview'):
                     self.character_display.sync_current_live2d_settings_to_webview()
+                
                 script = f"""
                 if (typeof window.startLipSync === 'function') {{
                     const lipSyncData = {js_data};
@@ -268,8 +271,8 @@ class TTSStudioMainWindow(QMainWindow):
                 
                 webview.page().runJavaScript(script, self.on_lipsync_test_result)
 
-                if hasattr(self.character_display, 'sync_current_live2d_settings_to_webview'):
-                    QTimer.singleShot(0, self.character_display.sync_current_live2d_settings_to_webview)
+                # 修正：重複する設定同期を削除
+                # QTimer.singleShot(0, ...)の部分を削除
                 
                 # タイマーで停止
                 QTimer.singleShot(int(lipsync_data.total_duration * 1000) + 1000, self.stop_lipsync_test)
@@ -434,7 +437,7 @@ class TTSStudioMainWindow(QMainWindow):
             if progress: progress.deleteLater()
 
     def send_lipsync_to_live2d(self, lipsync_data):
-        """Live2Dにリップシンクデータを送信"""
+        """Live2Dにリップシンクデータを送信（修正版：位置リセット問題解決）"""
         try:
             js_data = {
                 'text': lipsync_data.text,
@@ -451,6 +454,8 @@ class TTSStudioMainWindow(QMainWindow):
             }
             
             webview = self.character_display.live2d_webview
+            
+            # 修正：設定同期は1回のみ、リップシンク前に実行
             if hasattr(self.character_display, 'sync_current_live2d_settings_to_webview'):
                 self.character_display.sync_current_live2d_settings_to_webview()
 
@@ -461,9 +466,8 @@ class TTSStudioMainWindow(QMainWindow):
             """
             webview.page().runJavaScript(script)
             
-
-            if hasattr(self.character_display, 'sync_current_live2d_settings_to_webview'):
-                QTimer.singleShot(0, self.character_display.sync_current_live2d_settings_to_webview)
+            # 修正：重複する設定同期を削除
+            # QTimer.singleShot(0, ...)の部分を削除
 
         except Exception as e:
             print(f"❌ Live2Dリップシンク送信エラー: {e}")

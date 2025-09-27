@@ -336,7 +336,7 @@ class Live2DWebView(QWebEngineView):
         current_zoom = self.character_display.live2d_zoom_slider.value()
         
         if delta > 0:
-            new_zoom = min(500, current_zoom + zoom_step)  # 最大300%
+            new_zoom = min(500, current_zoom + zoom_step)  # 最大500%
         else:
             new_zoom = max(80, current_zoom - zoom_step)   # 最小80%
         
@@ -710,7 +710,7 @@ class CharacterDisplayWidget(QWidget):
         
         slider_layout = QHBoxLayout()
         self.live2d_zoom_slider = QSlider(Qt.Orientation.Horizontal)
-        self.live2d_zoom_slider.setRange(80, 500)  # 80%〜300%に調整（適切な範囲）
+        self.live2d_zoom_slider.setRange(80, 500)  # 80%〜500%に調整（適切な範囲）
         self.live2d_zoom_slider.setValue(100)
         self.live2d_zoom_slider.setEnabled(False)
         slider_style = "QSlider::groove:horizontal { border: 1px solid #bbb; background: white; height: 4px; border-radius: 2px; } QSlider::sub-page:horizontal { background: #66e; } QSlider::handle:horizontal { background: #eee; border: 1px solid #777; width: 14px; margin: -6px 0; border-radius: 7px; }"
@@ -1212,35 +1212,52 @@ class CharacterDisplayWidget(QWidget):
             if hasattr(self, '_pending_model_data'):
                 delattr(self, '_pending_model_data')
 
-    def apply_settings_to_webview(self, ui_settings):
-        """UI設定をWebViewに適用（修正版：直感的な座標系）"""
-        if self.live2d_webview.is_model_loaded:
-            js_settings = {}
-            
-            # ズーム設定
-            zoom_percent = ui_settings.get('zoom_percent', 100)
-            js_settings['scale'] = zoom_percent / 100.0
-            
-            # 位置設定（修正版：直感的な操作）
-            h_pos = ui_settings.get('h_position', 50)
-            v_pos = ui_settings.get('v_position', 50)
-            js_settings['position_x'] = -(h_pos - 50) / 50.0  # 右スライダー→キャラ左（修正）
-            js_settings['position_y'] = (v_pos - 50) / 50.0   # 下スライダー→キャラ下（画像表示と同じ）
-            
-            self.live2d_webview.update_model_settings(js_settings)
-
     def sync_current_live2d_settings_to_webview(self):
-        """現在のスライダー設定をLive2D WebViewへ反映"""
+        """現在のスライダー設定をLive2D WebViewへ反映（位置リセット防止）"""
         if not hasattr(self, 'live2d_webview') or not self.live2d_webview.is_model_loaded:
             return
 
+        # 現在のスライダー値を取得
         current_settings = {
             'zoom_percent': self.live2d_zoom_slider.value(),
             'h_position': self.live2d_h_position_slider.value(),
             'v_position': self.live2d_v_position_slider.value(),
         }
 
+        # WebViewに設定を適用（改良版のapply_settings_to_webviewを使用）
         self.apply_settings_to_webview(current_settings)
+        
+        print(f"🔧 Live2D設定を同期: ズーム={current_settings['zoom_percent']}%, 位置=({current_settings['h_position']}, {current_settings['v_position']})")
+
+    def apply_settings_to_webview(self, ui_settings):
+        """UI設定をWebViewに適用（修正版：重複防止・デバッグログ付き）"""
+        if not self.live2d_webview.is_model_loaded:
+            print("⚠️ Live2Dモデル未読み込み：設定適用をスキップ")
+            return
+        
+        js_settings = {}
+        
+        # ズーム設定
+        zoom_percent = ui_settings.get('zoom_percent', 100)
+        js_settings['scale'] = zoom_percent / 100.0
+        
+        # 位置設定（修正版：直感的な操作）
+        h_pos = ui_settings.get('h_position', 50)
+        v_pos = ui_settings.get('v_position', 50)
+        js_settings['position_x'] = -(h_pos - 50) / 50.0  # 右スライダー→キャラ左（修正）
+        js_settings['position_y'] = (v_pos - 50) / 50.0   # 下スライダー→キャラ下（画像表示と同じ）
+        
+        # 設定重複チェック（前回と同じ設定なら適用しない）
+        if hasattr(self, '_last_applied_settings') and self._last_applied_settings == js_settings:
+            print("🔄 Live2D設定変更なし：適用をスキップ")
+            return
+        
+        # 設定をWebViewに送信
+        print(f"🎭 Live2D設定適用: scale={js_settings['scale']:.2f}, pos_x={js_settings['position_x']:.2f}, pos_y={js_settings['position_y']:.2f}")
+        self.live2d_webview.update_model_settings(js_settings)
+        
+        # 最後に適用した設定を記録
+        self._last_applied_settings = js_settings.copy()
 
     def enable_live2d_controls(self):
         """Live2D制御を有効化"""
@@ -1256,11 +1273,16 @@ class CharacterDisplayWidget(QWidget):
             self.toggle_minimap_btn.setEnabled(True)
 
     def clear_live2d_model(self):
-        """Live2Dモデルをクリア"""
+        """Live2Dモデルをクリア（修正版：設定キャッシュもクリア）"""
         self.live2d_webview.is_model_loaded = False
         self.current_live2d_folder = None
         self.current_live2d_id = None
         self.live2d_info_label.setText("Live2Dモデルが読み込まれていません")
+        
+        # 設定キャッシュをクリア
+        if hasattr(self, '_last_applied_settings'):
+            delattr(self, '_last_applied_settings')
+            print("🧹 Live2D設定キャッシュをクリア")
         
         for control in [
             self.live2d_zoom_slider, 
@@ -1276,6 +1298,8 @@ class CharacterDisplayWidget(QWidget):
         self.live2d_zoom_label.setText("100%")
         
         self.live2d_webview.load_initial_page()
+        
+        print("✅ Live2Dモデルクリア完了")
 
     def restore_live2d_settings(self, ui_settings):
         """Live2D設定を復元（500%対応）"""
