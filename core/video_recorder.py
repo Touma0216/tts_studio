@@ -7,8 +7,10 @@ import tempfile
 from pathlib import Path
 from typing import Optional, Callable
 from datetime import datetime
+import base64
+import time
 
-from PyQt6.QtCore import QObject, QTimer, pyqtSignal, QSize
+from PyQt6.QtCore import QObject, QTimer, pyqtSignal, QSize, pyqtSlot
 from PyQt6.QtGui import QImage, QPainter
 from PyQt6.QtWidgets import QWidget
 
@@ -18,11 +20,11 @@ class VideoRecorder(QObject):
     
     # シグナル
     recording_started = pyqtSignal()
-    frame_captured = pyqtSignal(int, int)  # 現在フレーム, 総フレーム数
-    recording_finished = pyqtSignal(str)  # 出力ファイルパス
-    recording_error = pyqtSignal(str)  # エラーメッセージ
+    frame_captured = pyqtSignal(int, int)
+    recording_finished = pyqtSignal(str)
+    recording_error = pyqtSignal(str)
     encoding_started = pyqtSignal()
-    encoding_progress = pyqtSignal(int)  # エンコード進行率（0-100）
+    encoding_progress = pyqtSignal(int)
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -34,34 +36,21 @@ class VideoRecorder(QObject):
         self.total_frames = 0
         self.fps = 60
         self.output_format = "mov"
-        self.duration = 0.0
         self.output_path = ""
         
-        # 🆕 ffmpegパスを取得
         self.ffmpeg_path = self._get_ffmpeg_path()
         
-        # キャプチャタイマー
         self.capture_timer = QTimer(self)
         self.capture_timer.timeout.connect(self._capture_frame)
         
-        # 録画終了タイマー
         self.stop_timer = QTimer(self)
         self.stop_timer.setSingleShot(True)
         self.stop_timer.timeout.connect(self._finish_recording)
     
     def _get_ffmpeg_path(self) -> str:
-        """
-        ffmpegの実行ファイルパスを取得
-        優先順位：
-        1. assets/ffmpeg/bin/ffmpeg.exe (埋め込み版)
-        2. システムPATH上のffmpeg
-        """
-        # 1. 埋め込み版ffmpegを探す
         if getattr(sys, 'frozen', False):
-            # PyInstallerでパッケージ化されている場合
             base_path = Path(sys._MEIPASS)
         else:
-            # 開発環境の場合
             base_path = Path(__file__).parent.parent
         
         embedded_ffmpeg = base_path / "assets" / "ffmpeg" / "bin" / "ffmpeg.exe"
@@ -70,9 +59,8 @@ class VideoRecorder(QObject):
             print(f"✅ 埋め込みffmpeg使用: {embedded_ffmpeg}")
             return str(embedded_ffmpeg)
         
-        # 2. システムPATH上のffmpegを探す
         print("⚠️ 埋め込みffmpegが見つかりません。システムPATHから探します...")
-        return "ffmpeg"  # システムPATHから探す
+        return "ffmpeg"
     
     def start_recording(
         self,
@@ -82,19 +70,6 @@ class VideoRecorder(QObject):
         output_format: str = "mov",
         output_path: str = ""
     ) -> bool:
-        """
-        録画を開始
-        
-        Args:
-            widget: キャプチャ対象のウィジェット（QWebEngineView）
-            duration: 録画時間（秒）
-            fps: フレームレート（30 or 60）
-            output_format: 出力形式（"mov", "mp4", "webm"）
-            output_path: 出力先フォルダパス
-        
-        Returns:
-            bool: 録画開始成功時True
-        """
         if self.is_recording:
             print("⚠️ すでに録画中です")
             return False
@@ -108,66 +83,44 @@ class VideoRecorder(QObject):
             return False
         
         try:
-            # 初期化
             self.capture_widget = widget
             self.fps = fps
             self.output_format = output_format
             self.output_path = output_path
             self.frame_count = 0
             self.total_frames = int(duration * fps)
-            self.duration = duration
-
             
-            # 一時ディレクトリ作成
             self.temp_dir = Path(tempfile.mkdtemp(prefix="tts_studio_capture_"))
             print(f"📁 一時フォルダ作成: {self.temp_dir}")
             
-            # 録画開始
             self.is_recording = True
             self.recording_started.emit()
             
-            # 🔥 フレームキャプチャ開始（1/fps秒間隔）
             interval_ms = int(1000 / fps)
             self.capture_timer.start(interval_ms)
             
-            # 🔥 録画終了タイマー（duration + 0.1秒のバッファ）
-            # バッファを追加することでタイマー誤差を吸収
-            self.stop_timer.start(int((duration + 0.1) * 1000))
+            self.stop_timer.start(int(duration * 1000))
             
-            print(f"🎬 録画開始: {duration}秒間, {fps}fps, {self.total_frames}フレーム, タイマー:{int((duration + 0.1) * 1000)}ms")
+            print(f"🎬 録画開始: {duration}秒間, {fps}fps, {self.total_frames}フレーム")
             return True
             
         except Exception as e:
             print(f"❌ 録画開始エラー: {e}")
-            import traceback
-            traceback.print_exc()
             self.recording_error.emit(f"録画開始に失敗しました: {str(e)}")
             self._cleanup()
             return False
     
     def _capture_frame(self):
-        """1フレームをキャプチャ"""
-        if not self.is_recording:
-            print(f"⚠️ キャプチャスキップ: is_recording=False (フレーム{self.frame_count})")
-            return
-        
-        if not self.capture_widget:
-            print(f"⚠️ キャプチャスキップ: capture_widget=None")
+        if not self.is_recording or not self.capture_widget:
             return
         
         try:
-            # QWebEngineView用の正しいキャプチャ方法
-            # grab()を使って画面をキャプチャ（render()よりも高速で正確）
             pixmap = self.capture_widget.grab()
-            
-            # QPixmap → QImage変換（透過対応）
             image = pixmap.toImage()
             
-            # ARGB32フォーマットに変換（透過対応）
             if image.format() != QImage.Format.Format_ARGB32:
                 image = image.convertToFormat(QImage.Format.Format_ARGB32)
             
-            # PNG保存（透過対応）
             frame_path = self.temp_dir / f"frame_{self.frame_count:06d}.png"
             success = image.save(str(frame_path), "PNG")
             
@@ -178,15 +131,9 @@ class VideoRecorder(QObject):
             self.frame_count += 1
             self.frame_captured.emit(self.frame_count, self.total_frames)
             
-            # デバッグ出力（10フレームごと）
             if self.frame_count % 10 == 0:
                 progress = int((self.frame_count / self.total_frames * 100))
-                print(f"📸 キャプチャ: {self.frame_count}/{self.total_frames} ({progress}%) is_recording={self.is_recording}")
-            
-            # 🔥 予定フレーム数に達したら自動停止
-            if self.frame_count >= self.total_frames:
-                print(f"✅ 予定フレーム数に達しました: {self.frame_count}/{self.total_frames}")
-                self._finish_recording()
+                print(f"📸 キャプチャ: {self.frame_count}/{self.total_frames} ({progress}%)")
             
         except Exception as e:
             print(f"❌ フレームキャプチャエラー: {e}")
@@ -196,19 +143,14 @@ class VideoRecorder(QObject):
             self.recording_error.emit(f"フレームキャプチャに失敗しました: {str(e)}")
     
     def _finish_recording(self):
-        """録画を終了してエンコード開始"""
         if not self.is_recording:
-            print("⚠️ 既に録画停止済み")
             return
         
-        # キャプチャタイマー停止
         self.capture_timer.stop()
         self.is_recording = False
         
         print(f"✅ キャプチャ完了: {self.frame_count}フレーム")
-        print(f"⏱️ _finish_recording呼び出し時刻")
         
-        # キャプチャしたフレーム数を確認
         if self.frame_count == 0:
             error_msg = "フレームが1枚もキャプチャされませんでした"
             print(f"❌ {error_msg}")
@@ -216,20 +158,12 @@ class VideoRecorder(QObject):
             self._cleanup()
             return
         
-        # 実際にキャプチャされたフレーム数でエンコード
         print(f"📊 実際のフレーム数: {self.frame_count}, 予定: {self.total_frames}")
         
-        # エンコード開始
         self._encode_video()
     
     def stop_recording(self):
-        """録画を強制停止"""
         if self.is_recording:
-            import traceback
-            print("⏹️ 録画を強制停止します")
-            print("呼び出し元:")
-            traceback.print_stack()
-            
             self.capture_timer.stop()
             self.stop_timer.stop()
             self.is_recording = False
@@ -237,51 +171,21 @@ class VideoRecorder(QObject):
             print("⏹️ 録画を停止しました")
     
     def _encode_video(self):
-        """キャプチャしたフレームを動画にエンコード"""
         try:
             self.encoding_started.emit()
             print("🎞️ エンコード開始...")
             
-            # 出力ファイル名生成
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"capture_{timestamp}.{self.output_format}"
             output_file = Path(self.output_path) / filename
             
-            # ffmpegコマンド構築
             input_pattern = str(self.temp_dir / "frame_%06d.png")
-
-            # 実際の録画フレームレートを算出（予定より少ない場合に補正）
-            recording_duration = self.duration if self.duration > 0 else (
-                (self.total_frames / self.fps) if self.fps > 0 else 0
-            )
-
-            if recording_duration > 0:
-                actual_fps = max(self.frame_count / recording_duration, 1.0)
-            else:
-                actual_fps = float(self.fps)
-
-            print(
-                f"⏱️ 実測フレームレート: {actual_fps:.2f}fps (目標: {self.fps}fps)"
-            )
-
-            # ffmpegの入力フレームレートには実測値を指定し、
-            # 最終的な出力は目標fpsに補正する（不足分はフレーム複製）
-            base_cmd = [
-                self.ffmpeg_path,
-                "-framerate",
-                f"{actual_fps:.6f}",
-                "-i",
-                input_pattern,
-                "-vf",
-                f"fps={self.fps}",
-            ]
-
             
             if self.output_format == "mov":
-                # MOV (ProRes 4444) - 透過対応
                 cmd = [
-                    *base_cmd,
-
+                    self.ffmpeg_path,
+                    "-framerate", str(self.fps),
+                    "-i", input_pattern,
                     "-c:v", "prores_ks",
                     "-profile:v", "4444",
                     "-pix_fmt", "yuva444p10le",
@@ -289,9 +193,10 @@ class VideoRecorder(QObject):
                     str(output_file)
                 ]
             elif self.output_format == "webm":
-                # WebM (VP9) - 透過対応
                 cmd = [
-                    *base_cmd,
+                    self.ffmpeg_path,
+                    "-framerate", str(self.fps),
+                    "-i", input_pattern,
                     "-c:v", "libvpx-vp9",
                     "-pix_fmt", "yuva420p",
                     "-b:v", "2M",
@@ -299,11 +204,11 @@ class VideoRecorder(QObject):
                     "-y",
                     str(output_file)
                 ]
-            else:  # mp4
-                # MP4 (H.264) - 透過（制限あり）
+            else:
                 cmd = [
-                    *base_cmd,
-
+                    self.ffmpeg_path,
+                    "-framerate", str(self.fps),
+                    "-i", input_pattern,
                     "-c:v", "libx264",
                     "-pix_fmt", "yuva420p",
                     "-crf", "18",
@@ -314,7 +219,6 @@ class VideoRecorder(QObject):
             
             print(f"🔧 ffmpegコマンド: {' '.join(cmd)}")
             
-            # ffmpeg実行
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -322,7 +226,6 @@ class VideoRecorder(QObject):
                 universal_newlines=True
             )
             
-            # プロセス完了待ち
             stdout, stderr = process.communicate()
             
             if process.returncode == 0:
@@ -334,7 +237,6 @@ class VideoRecorder(QObject):
                 print(f"❌ {error_msg}")
                 self.recording_error.emit(error_msg)
             
-            # クリーンアップ
             self._cleanup()
             
         except FileNotFoundError:
@@ -350,22 +252,18 @@ class VideoRecorder(QObject):
             self._cleanup()
     
     def _cleanup(self):
-        """一時ファイルとディレクトリを削除"""
         try:
             if self.temp_dir and self.temp_dir.exists():
                 shutil.rmtree(self.temp_dir)
                 print(f"🗑️ 一時フォルダ削除: {self.temp_dir}")
                 self.temp_dir = None
-            self.duration = 0.0
-
         except Exception as e:
             print(f"⚠️ クリーンアップエラー: {e}")
     
     def is_ffmpeg_available(self) -> bool:
-        """ffmpegが利用可能かチェック"""
         try:
             result = subprocess.run(
-                [self.ffmpeg_path, "-version"],  # 🆕 埋め込みパス使用
+                [self.ffmpeg_path, "-version"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 timeout=5
@@ -379,10 +277,86 @@ class VideoRecorder(QObject):
             return False
     
     def get_recording_status(self) -> dict:
-        """録画状態を取得"""
         return {
             'is_recording': self.is_recording,
             'frame_count': self.frame_count,
             'total_frames': self.total_frames,
             'progress': int((self.frame_count / self.total_frames * 100) if self.total_frames > 0 else 0)
         }
+
+
+class VideoBridge(QObject):
+    """JavaScript MediaRecorder用ブリッジ"""
+    
+    video_ready = pyqtSignal(str)
+    
+    def __init__(self, ffmpeg_path, output_dir, parent=None):
+        super().__init__(parent)
+        self.ffmpeg_path = ffmpeg_path
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+    
+    @pyqtSlot(str, 'QVariantMap')
+    def receiveVideo(self, base64Data, metadata):
+        """JavaScript側から録画データ受信"""
+        try:
+            print(f"📥 受信: {metadata.get('frameCount', 0)}フレーム, "
+                  f"{metadata.get('size', 0) / 1024 / 1024:.2f}MB")
+            
+            videoBytes = base64.b64decode(base64Data)
+            
+            temp_dir = Path(tempfile.mkdtemp(prefix='yukkuri_'))
+            temp_webm = temp_dir / 'recorded.webm'
+            with open(temp_webm, 'wb') as f:
+                f.write(videoBytes)
+            
+            print(f"💾 一時保存: {temp_webm}")
+            
+            output_file = self._convert_to_prores(temp_webm)
+            
+            print(f"✅ 変換完了: {output_file}")
+            self.video_ready.emit(str(output_file))
+            
+        except Exception as e:
+            print(f"❌ 動画処理エラー: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _convert_to_prores(self, input_path):
+        """WebM → 背景透過 → ProRes 4444"""
+        timestamp = int(time.time())
+        
+        temp_alpha_webm = input_path.parent / 'alpha.webm'
+        output_mov = self.output_dir / f"clip_{timestamp}.mov"
+        
+        print("🎨 Step 1/2: 背景透過処理中...")
+        subprocess.run([
+            self.ffmpeg_path, '-i', str(input_path),
+            '-c:v', 'libvpx-vp9',
+            '-vf', 'chromakey=0x00FF00:0.1:0.1,format=yuva420p',
+            '-pix_fmt', 'yuva420p',
+            '-b:v', '0', '-crf', '18',
+            '-quality', 'good', '-speed', '2',
+            '-threads', '12',
+            '-c:a', 'copy',
+            '-y',
+            str(temp_alpha_webm)
+        ], check=True, capture_output=True)
+        
+        print("🎞️ Step 2/2: ProRes変換中...")
+        subprocess.run([
+            self.ffmpeg_path, '-i', str(temp_alpha_webm),
+            '-c:v', 'prores_ks',
+            '-profile:v', '4',
+            '-pix_fmt', 'yuva444p10le',
+            '-alpha_bits', '16',
+            '-vendor', 'apl0',
+            '-c:a', 'pcm_s16le',
+            '-y',
+            str(output_mov)
+        ], check=True, capture_output=True)
+        
+        size_mb = output_mov.stat().st_size / 1024 / 1024
+        print(f"📦 出力: {output_mov.name} ({size_mb:.1f}MB)")
+        
+        return output_mov

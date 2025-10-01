@@ -6,7 +6,6 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread
 from PyQt6.QtGui import QFont, QAction
 
-# 自作モジュール
 from .model_history import ModelHistoryWidget
 from .model_loader import ModelLoaderDialog
 from .tabbed_audio_control import TabbedAudioControl
@@ -22,7 +21,7 @@ from core.audio_processor import AudioProcessor
 from core.audio_analyzer import AudioAnalyzer
 from core.audio_effects_processor import AudioEffectsProcessor
 from core.lip_sync_engine import LipSyncEngine
-from core.video_recorder import VideoRecorder  # 🆕 追加
+from core.video_recorder import VideoRecorder, VideoBridge
 
 class TTSStudioMainWindow(QMainWindow):
     tts_synthesis_requested = pyqtSignal(str, dict, bool)
@@ -36,10 +35,8 @@ class TTSStudioMainWindow(QMainWindow):
         self.audio_analyzer = AudioAnalyzer()
         self.audio_effects_processor = AudioEffectsProcessor()
         
-        # リップシンクエンジン追加
         self.lip_sync_engine = LipSyncEngine()
         
-        # 🆕 動画レコーダー追加
         self.video_recorder = VideoRecorder()
         self.video_recorder.recording_started.connect(self.on_recording_started)
         self.video_recorder.frame_captured.connect(self.on_frame_captured)
@@ -47,6 +44,12 @@ class TTSStudioMainWindow(QMainWindow):
         self.video_recorder.recording_error.connect(self.on_recording_error)
         self.video_recorder.encoding_started.connect(self.on_encoding_started)
         self.video_recorder.encoding_progress.connect(self.on_encoding_progress)
+        
+        self.video_bridge = VideoBridge(
+            ffmpeg_path=self.video_recorder.ffmpeg_path,
+            output_dir=Path("./output_videos")
+        )
+        self.video_bridge.video_ready.connect(self.on_javascript_video_ready)
         
         self.setup_tts_worker()
         
@@ -58,7 +61,6 @@ class TTSStudioMainWindow(QMainWindow):
         self.help_dialog = HelpDialog(self)
         self.setup_audio_processing_integration()
         
-        # リップシンク統合設定
         self.setup_lipsync_integration()
         
         self.sliding_menu = SlidingMenuWidget(self)
@@ -72,8 +74,9 @@ class TTSStudioMainWindow(QMainWindow):
         self.keyboard_shortcuts = KeyboardShortcutManager(self)
         self.load_last_model()
         
-        # 🆕 動画書き出しシグナル接続
         self.setup_video_export_integration()
+        
+        self._setup_webchannel()
 
     def init_ui(self):
         self.setWindowTitle("TTSスタジオ - ほのか")
@@ -93,7 +96,6 @@ class TTSStudioMainWindow(QMainWindow):
         left_layout = QVBoxLayout(left_widget)
         left_layout.setContentsMargins(0, 0, 0, 0)
         
-        # テキスト入力とタブエリアの間に縦方向スプリッターを追加
         self.vertical_splitter = QSplitter(Qt.Orientation.Vertical)
         self.vertical_splitter.setStyleSheet("""
             QSplitter::handle { background-color: #dee2e6; height: 3px; }
@@ -106,18 +108,15 @@ class TTSStudioMainWindow(QMainWindow):
         self.multi_text.row_removed.connect(self.on_text_row_removed)
         self.multi_text.row_numbers_updated.connect(self.on_row_numbers_updated)
         
-        # 統合されたタブコントロール
         self.tabbed_audio_control = TabbedAudioControl()
         self.tabbed_audio_control.parameters_changed.connect(self.on_parameters_changed)
         self.tabbed_audio_control.cleaner_settings_changed.connect(self.on_cleaner_settings_changed)
         self.tabbed_audio_control.effects_settings_changed.connect(self.on_effects_settings_changed)
         self.tabbed_audio_control.lip_sync_settings_changed.connect(self.on_lipsync_settings_changed)
-        # モデリングシグナル接続
         self.tabbed_audio_control.modeling_parameter_changed.connect(self.on_modeling_parameter_changed)
         self.tabbed_audio_control.modeling_parameters_changed.connect(self.on_modeling_parameters_changed)
         self.tabbed_audio_control.drag_control_toggled.connect(self.on_drag_control_toggled)
         self.tabbed_audio_control.drag_sensitivity_changed.connect(self.on_drag_sensitivity_changed)
-        # 統合されたリップシンク設定変更ハンドラー
         self.tabbed_audio_control.lip_sync_settings_changed.connect(self.on_lipsync_settings_changed)
         self.tabbed_audio_control.add_text_row("initial", 1)
 
@@ -129,11 +128,9 @@ class TTSStudioMainWindow(QMainWindow):
         self.multi_text.setMinimumHeight(40)
         self.tabbed_audio_control.setMinimumHeight(250)
 
-        # 折りたたみ設定（上側のみ折りたたみ可能）
         self.vertical_splitter.setCollapsible(0, True)
         self.vertical_splitter.setCollapsible(1, False)
         
-        # 🆕 下部ボタンエリア（キャプチャボタン追加）
         controls = QHBoxLayout()
         controls.addStretch()
         self.sequential_play_btn = QPushButton("連続して再生(Ctrl + R)")
@@ -143,7 +140,6 @@ class TTSStudioMainWindow(QMainWindow):
         self.save_continuous_btn = QPushButton("連続保存(Ctrl + Shift + S)")
         self.save_continuous_btn.setStyleSheet(self._orange_btn_css())
         
-        # リップシンクテストボタン
         self.test_lipsync_btn = QPushButton("🎭 リップシンクテスト")
         self.test_lipsync_btn.setStyleSheet("""
             QPushButton { background-color: #6f42c1; color: white; border: none; border-radius: 4px; font-size: 13px; font-weight: bold; padding: 6px 16px; }
@@ -152,7 +148,6 @@ class TTSStudioMainWindow(QMainWindow):
             QPushButton:disabled { background-color: #f0f0f0; color: #aaaaaa; }
         """)
         
-        # 🆕 キャプチャボタン追加
         self.capture_btn = QPushButton("📹 キャプチャ")
         self.capture_btn.setStyleSheet("""
             QPushButton { background-color: #e91e63; color: white; border: none; border-radius: 4px; font-size: 13px; font-weight: bold; padding: 6px 16px; }
@@ -171,9 +166,8 @@ class TTSStudioMainWindow(QMainWindow):
         self.save_individual_btn.clicked.connect(self.save_individual)
         self.save_continuous_btn.clicked.connect(self.save_continuous)
         self.test_lipsync_btn.clicked.connect(self.test_lipsync_function)
-        self.capture_btn.clicked.connect(self.start_manual_capture)  # 🆕
+        self.capture_btn.clicked.connect(self.start_manual_capture)
         
-        # 左側レイアウト組み立て
         left_layout.addWidget(self.vertical_splitter, 1)
         left_layout.addLayout(controls)
         
@@ -212,35 +206,24 @@ class TTSStudioMainWindow(QMainWindow):
             QPushButton:disabled { background-color: #f0f0f0; color: #aaaaaa; }
         """
 
-    # ================================
-    # 🆕 動画書き出し統合
-    # ================================
-    
     def setup_video_export_integration(self):
-        """動画書き出し機能の統合設定"""
         try:
-            # シグナル接続
             self.tabbed_audio_control.video_auto_save_toggled.connect(self.on_video_auto_save_toggled)
             self.tabbed_audio_control.video_capture_requested.connect(self.on_video_capture_requested)
             self.tabbed_audio_control.video_deleted.connect(self.on_video_deleted)
             self.tabbed_audio_control.all_videos_deleted.connect(self.on_all_videos_deleted)
-            
             print("✅ 動画書き出し機能統合完了")
         except Exception as e:
             print(f"❌ 動画書き出し統合エラー: {e}")
     
     def on_video_auto_save_toggled(self, enabled: bool):
-        """リップシンク起動時の自動保存ON/OFF"""
         print(f"📹 動画自動保存: {'ON' if enabled else 'OFF'}")
     
     def on_video_capture_requested(self, duration: int):
-        """キャプチャ要求（タブ内からの要求）"""
         self.start_manual_capture()
     
     def on_video_deleted(self, video_path: str):
-        """動画削除通知"""
         print(f"🗑️ 動画削除: {video_path}")
-        # 必要に応じてファイルシステムから削除
         try:
             if Path(video_path).exists():
                 Path(video_path).unlink()
@@ -248,19 +231,15 @@ class TTSStudioMainWindow(QMainWindow):
             print(f"⚠️ ファイル削除エラー: {e}")
     
     def on_all_videos_deleted(self):
-        """全動画削除通知"""
         print("🗑️ 全動画削除")
     
     def start_manual_capture(self):
-        """手動キャプチャ開始"""
-        # Live2Dモデルチェック
         if not hasattr(self.character_display, 'live2d_webview') or not self.character_display.live2d_webview.is_model_loaded:
             QMessageBox.warning(self, "キャプチャエラー", 
                 "Live2Dモデルが読み込まれていません。\n"
                 "先にLive2Dモデルを読み込んでからキャプチャしてください。")
             return
         
-        # 出力先チェック
         settings = self.tabbed_audio_control.get_video_export_settings()
         if not settings['output_path']:
             QMessageBox.warning(self, "キャプチャエラー",
@@ -269,7 +248,6 @@ class TTSStudioMainWindow(QMainWindow):
             self.tabbed_audio_control.set_video_tab_active()
             return
         
-        # ffmpegチェック
         if not self.video_recorder.is_ffmpeg_available():
             QMessageBox.critical(self, "ffmpeg未検出",
                 "ffmpegが見つかりません。\n\n"
@@ -278,10 +256,8 @@ class TTSStudioMainWindow(QMainWindow):
                 "システムのPATHに追加してください。")
             return
         
-        # キャプチャ時間取得
         duration = self.tabbed_audio_control.video_export_control.get_capture_duration()
         
-        # 録画開始
         success = self.video_recorder.start_recording(
             widget=self.character_display.live2d_webview,
             duration=duration,
@@ -294,18 +270,15 @@ class TTSStudioMainWindow(QMainWindow):
             QMessageBox.warning(self, "録画エラー", "録画の開始に失敗しました。")
     
     def on_recording_started(self):
-        """録画開始時"""
         print("🎬 録画開始")
         self.capture_btn.setEnabled(False)
         self.capture_btn.setText("📹 録画中...")
         self.tabbed_audio_control.reset_video_progress()
     
     def on_frame_captured(self, current_frame: int, total_frames: int):
-        """フレームキャプチャ時"""
         progress = int((current_frame / total_frames * 100) if total_frames > 0 else 0)
         self.tabbed_audio_control.set_video_progress(progress)
         
-        # ボタンテキスト更新（5フレームごと）
         if current_frame % 5 == 0:
             remaining = total_frames - current_frame
             fps = self.video_recorder.fps
@@ -313,26 +286,21 @@ class TTSStudioMainWindow(QMainWindow):
             self.capture_btn.setText(f"📹 録画中... (残り{remaining_sec:.1f}秒)")
     
     def on_encoding_started(self):
-        """エンコード開始時"""
         print("🎞️ エンコード開始")
         self.capture_btn.setText("🎞️ エンコード中...")
         self.tabbed_audio_control.reset_video_progress()
     
     def on_encoding_progress(self, progress: int):
-        """エンコード進行時"""
         self.tabbed_audio_control.set_video_progress(progress)
     
     def on_recording_finished(self, video_path: str):
-        """録画完了時"""
         print(f"✅ 録画完了: {video_path}")
         self.capture_btn.setEnabled(True)
         self.capture_btn.setText("📹 キャプチャ")
         self.tabbed_audio_control.reset_video_progress()
         
-        # 動画リストに追加
         self.tabbed_audio_control.add_saved_video(video_path)
         
-        # 完了メッセージ
         QMessageBox.information(
             self,
             "録画完了",
@@ -340,7 +308,6 @@ class TTSStudioMainWindow(QMainWindow):
         )
     
     def on_recording_error(self, error_message: str):
-        """録画エラー時"""
         print(f"❌ 録画エラー: {error_message}")
         self.capture_btn.setEnabled(True)
         self.capture_btn.setText("📹 キャプチャ")
@@ -351,22 +318,11 @@ class TTSStudioMainWindow(QMainWindow):
             "録画エラー",
             f"録画中にエラーが発生しました:\n\n{error_message}"
         )
-    
-    def _finish_capture(self):
-        """キャプチャ終了処理"""
-        self.capture_btn.setEnabled(True)
-        self.capture_btn.setText("📹 キャプチャ")
-        print("✅ キャプチャ完了")
-        
-        # TODO: 動画ファイルをリストに追加
-        # self.tabbed_audio_control.add_saved_video(video_path)
 
     def setup_lipsync_integration(self):
-        """リップシンク機能の統合設定"""
         try:
             print("🎭 リップシンク機能統合中...")
             
-            # リップシンクエンジンが利用可能かチェック
             if self.lip_sync_engine.is_available():
                 print("✅ リップシンクエンジン利用可能")
             else:
@@ -376,7 +332,6 @@ class TTSStudioMainWindow(QMainWindow):
             print(f"❌ リップシンク統合エラー: {e}")
 
     def setup_tts_worker(self):
-        """TTS合成をバックグラウンドで実行するワーカースレッドの初期化"""
         self.tts_thread = QThread(self)
         self.tts_worker = TTSWorker(self.tts_engine, self.lip_sync_engine)
         self.tts_worker.moveToThread(self.tts_thread)
@@ -386,22 +341,18 @@ class TTSStudioMainWindow(QMainWindow):
         self.tts_thread.start()
 
     def on_lipsync_settings_changed(self, settings):
-        """リップシンク設定変更時の処理 - 完全修正版"""
         try:
             print(f"🔧 リップシンク設定変更開始: {list(settings.keys())}")
             
-            # リップシンクエンジンに設定を適用
             if self.lip_sync_engine:
                 self.lip_sync_engine.update_settings(settings)
                 
-                # デバッグ：現在の音素マッピングを表示
                 current_mapping = self.lip_sync_engine.get_vowel_mapping()
                 print("📊 エンジン側音素マッピング:")
                 for vowel, params in current_mapping.items():
                     if vowel != 'sil':
                         print(f"  {vowel}: 開き={params['mouth_open']}, 形={params['mouth_form']}")
             
-            # Live2D側に送信するデータを簡素化
             if (hasattr(self.character_display, 'live2d_webview') and 
                 self.character_display.live2d_webview.is_model_loaded):
                 
@@ -413,26 +364,21 @@ class TTSStudioMainWindow(QMainWindow):
             traceback.print_exc()
 
     def _send_simple_lipsync_settings(self, settings):
-        """Live2D側にシンプルな設定を送信"""
         try:
             webview = self.character_display.live2d_webview
             
-            # シンプルな設定データを準備
             simple_settings = {}
             
-            # 基本設定
             if 'basic' in settings:
                 basic = settings['basic']
                 simple_settings['enabled'] = basic.get('enabled', True)
                 simple_settings['sensitivity'] = basic.get('sensitivity', 100) / 100.0
                 simple_settings['mouth_scale'] = basic.get('mouth_open_scale', 100) / 100.0
             
-            # 音素設定（0-1範囲に正規化）
             if 'phoneme' in settings:
                 simple_settings['vowels'] = {}
                 for vowel, params in settings['phoneme'].items():
                     if isinstance(params, dict):
-                        # 0-1範囲に正規化（Live2D標準）
                         mouth_open = max(0, min(1, params.get('mouth_open', 0) / 100.0))
                         mouth_form = max(-1, min(1, params.get('mouth_form', 0) / 100.0))
                         
@@ -443,7 +389,6 @@ class TTSStudioMainWindow(QMainWindow):
                         
                         print(f"  送信: {vowel} = 開き{mouth_open:.3f}, 形{mouth_form:.3f}")
             
-            # JavaScriptに送信（シンプル版）
             import json
             settings_json = json.dumps(simple_settings, ensure_ascii=False)
             
@@ -452,7 +397,6 @@ class TTSStudioMainWindow(QMainWindow):
                 try {{
                     console.log('🔧 シンプル設定受信:', {settings_json});
                     
-                    // グローバル変数に保存
                     if (!window.lipSyncSettings) {{
                         window.lipSyncSettings = {{}};
                     }}
@@ -473,32 +417,27 @@ class TTSStudioMainWindow(QMainWindow):
             print(f"❌ シンプル設定送信エラー: {e}")
 
     def _on_settings_sent(self, result):
-        """設定送信結果を処理"""
         if result:
             print("✅ Live2D側設定保存完了")
         else:
             print("⚠️ Live2D側設定保存失敗")
 
     def test_lipsync_function(self):
-        """リップシンク機能をテスト - 音声同期版"""
         try:
             print("🎭 リップシンクテスト開始（音声同期版）")
             
-            # Live2Dモデルが読み込まれているかチェック
             if not hasattr(self.character_display, 'live2d_webview') or not self.character_display.live2d_webview.is_model_loaded:
                 QMessageBox.warning(self, "リップシンクテスト", 
                     "Live2Dモデルが読み込まれていません。\n"
                     "先にLive2Dモデルを読み込んでからテストしてください。")
                 return
             
-            # TTSモデルが読み込まれているかチェック
             if not self.tts_engine.is_loaded:
                 QMessageBox.warning(self, "リップシンクテスト",
                     "音声モデルが読み込まれていません。\n"
                     "先に音声モデルを読み込んでからテストしてください。")
                 return
             
-            # テキストを取得
             texts_data = self.multi_text.get_all_texts_and_parameters()
             if texts_data and texts_data[0]['text'].strip():
                 test_text = texts_data[0]['text']
@@ -516,19 +455,16 @@ class TTSStudioMainWindow(QMainWindow):
                 
             print(f"🎵 テストテキスト: '{test_text[:30]}...'")
             
-            # ボタン状態変更
             self.test_lipsync_btn.setEnabled(False)
             self.test_lipsync_btn.setText("音声生成中...")
             QApplication.processEvents()
             
-            # TTS音声を生成
             sr, audio = self.tts_engine.synthesize(test_text, **test_params)
             print(f"✅ 音声生成完了: {len(audio)} samples, {sr}Hz, {len(audio)/sr:.3f}秒")
             
             self.test_lipsync_btn.setText("解析中...")
             QApplication.processEvents()
             
-            # 生成された音声データを使ってリップシンクデータを生成
             lipsync_data = self.lip_sync_engine.analyze_text_for_lipsync(
                 text=test_text,
                 audio_data=audio,
@@ -538,16 +474,13 @@ class TTSStudioMainWindow(QMainWindow):
             if lipsync_data:
                 print(f"✅ リップシンクデータ生成成功: {len(lipsync_data.vowel_frames)}フレーム, {lipsync_data.total_duration:.3f}秒")
                 
-                # 音声を再生
                 import sounddevice as sd
                 sd.play(audio, sr, blocking=False)
                 
-                # リップシンクを送信
                 self.send_lipsync_to_live2d(lipsync_data)
                 
                 self.test_lipsync_btn.setText("テスト実行中...")
                 
-                # タイマーで停止
                 QTimer.singleShot(int(lipsync_data.total_duration * 1000) + 500, self._reset_test_button)
                 
             else:
@@ -563,19 +496,15 @@ class TTSStudioMainWindow(QMainWindow):
             self._reset_test_button()
 
     def _reset_test_button(self):
-        """テストボタンをリセット"""
         self.test_lipsync_btn.setEnabled(True)
         self.test_lipsync_btn.setText("🎭 リップシンクテスト")
 
     def send_lipsync_to_live2d(self, lipsync_data):
-        """Live2Dにリップシンクデータを送信 - 位置リセット防止版"""
         try:
             print(f"🎭 Live2Dリップシンク送信: {len(lipsync_data.vowel_frames)}フレーム, {lipsync_data.total_duration:.3f}秒")
             
-            # リップシンク開始：位置リセット防止を有効化
             self.character_display.mark_lipsync_in_progress(True)
             
-            # シンプルなデータ準備
             simple_data = {
                 'text': lipsync_data.text,
                 'duration': lipsync_data.total_duration,
@@ -616,19 +545,15 @@ class TTSStudioMainWindow(QMainWindow):
             }})()
             """
             
-            # JavaScriptにリップシンク開始命令を送信
             webview.page().runJavaScript(script)
 
-            # JS呼び出し直後に、現在のUIスライダーの設定を強制的に再同期させる
             QTimer.singleShot(10, self.character_display.sync_current_live2d_settings_to_webview)
             
-            # リップシンク終了後に位置リセット防止を無効化（タイマー）
             QTimer.singleShot(int(lipsync_data.total_duration * 1000) + 500, 
                             lambda: self.character_display.mark_lipsync_in_progress(False))
 
         except Exception as e:
             print(f"❌ Live2Dリップシンク送信エラー: {e}")
-            # エラー時も必ず無効化
             self.character_display.mark_lipsync_in_progress(False)
 
     def create_menu_bar(self):
@@ -677,7 +602,6 @@ class TTSStudioMainWindow(QMainWindow):
         
     def on_live2d_model_loaded(self, model_path):
         self.character_display.live2d_model_loaded.connect(self.on_live2d_model_loaded)
-        # パラメータ読み込み完了シグナル接続
         self.character_display.live2d_parameters_loaded.connect(self.on_live2d_parameters_loaded)
         model_name = Path(model_path).name
         print(f"Live2Dモデルが読み込まれました: {model_name}")
@@ -687,7 +611,6 @@ class TTSStudioMainWindow(QMainWindow):
         else:
             base_title = current_title
         self.setWindowTitle(f"{base_title} - {model_name} (Live2D)")
-        # モデル読み込み直後にドラッグ制御の状態を同期
         QTimer.singleShot(100, self.sync_drag_control_state)
 
     def setup_audio_processing_integration(self):
@@ -765,7 +688,7 @@ class TTSStudioMainWindow(QMainWindow):
             if self.tts_engine.load_model(**paths):
                 self.model_manager.add_model(**paths)
                 for btn in [self.sequential_play_btn, self.save_individual_btn, self.save_continuous_btn, 
-                           self.test_lipsync_btn, self.capture_btn]:  # 🆕 キャプチャボタンも有効化
+                           self.test_lipsync_btn, self.capture_btn]:
                     btn.setEnabled(True)
                 model_name = Path(paths["model_path"]).parent.name
                 if hasattr(self.character_display, 'current_live2d_folder') and self.character_display.current_live2d_folder:
@@ -782,8 +705,6 @@ class TTSStudioMainWindow(QMainWindow):
             QMessageBox.critical(self, "エラー", f"モデル読み込み中にエラーが発生しました:\n{str(e)}")
 
     def load_last_model(self):
-        """アプリ起動時の自動復元：音声モデル + Live2Dモデル"""
-        # 1. 音声モデルの自動復元
         models = self.model_manager.get_all_models()
         if models:
             last = models[0]
@@ -791,18 +712,16 @@ class TTSStudioMainWindow(QMainWindow):
                 paths = {k: last[k] for k in ["model_path", "config_path", "style_path"]}
                 if self.tts_engine.load_model(**paths):
                     for btn in [self.sequential_play_btn, self.save_individual_btn, self.save_continuous_btn, 
-                               self.test_lipsync_btn, self.capture_btn]:  # 🆕 キャプチャボタンも有効化
+                               self.test_lipsync_btn, self.capture_btn]:
                         btn.setEnabled(True)
                     model_name = Path(paths["model_path"]).parent.name
                     self.setWindowTitle(f"TTSスタジオ - {model_name}")
                     self.update_emotion_ui_after_model_load()
                     print(f"✅ 音声モデル自動復元完了: {model_name}")
         
-        # 2. Live2Dモデルの自動復元
         self.load_last_live2d_model()
 
     def load_last_live2d_model(self):
-        """最後に使用したLive2Dモデルを自動復元"""
         try:
             if hasattr(self.character_display, 'live2d_manager'):
                 last_live2d = self.character_display.live2d_manager.get_last_model()
@@ -843,7 +762,6 @@ class TTSStudioMainWindow(QMainWindow):
             return audio
             
     def play_single_text(self, row_id, text, parameters):
-        """単一テキスト再生（リップシンク統合版）"""
         if not self.tts_engine.is_loaded:
             QMessageBox.warning(self, "エラー", "モデルが読み込まれていません。")
             return
@@ -859,7 +777,6 @@ class TTSStudioMainWindow(QMainWindow):
         self.tts_synthesis_requested.emit(text, tab_parameters, enable_lipsync)
 
     def on_tts_synthesis_finished(self, sample_rate, audio, lipsync_data, error_message):
-        """ワーカースレッドからの合成結果を受け取りUI側の処理を行う"""
         self._tts_busy = False
 
         if error_message:
@@ -875,8 +792,7 @@ class TTSStudioMainWindow(QMainWindow):
             audio = self.apply_audio_effects(audio, sample_rate)
             self.last_generated_audio, self.last_sample_rate = audio, sample_rate
 
-            # 🆕 リップシンク自動保存がONの場合、録画開始
-            should_auto_record = (
+            should_record_js = (
                 self.tabbed_audio_control.is_video_auto_save_enabled() and
                 lipsync_data and
                 self.tabbed_audio_control.is_lip_sync_enabled() and
@@ -884,31 +800,13 @@ class TTSStudioMainWindow(QMainWindow):
                 self.character_display.live2d_webview.is_model_loaded
             )
             
-            if should_auto_record:
-                # 音声の長さを計算
-                audio_duration = len(audio) / sample_rate
-                
-                # 録画設定取得
-                settings = self.tabbed_audio_control.get_video_export_settings()
-                
-                if settings['output_path']:
-                    # 録画開始（音声の長さ + 0.5秒のバッファ）
-                    self.video_recorder.start_recording(
-                        widget=self.character_display.live2d_webview,
-                        duration=audio_duration + 0.5,
-                        fps=settings['fps'],
-                        output_format=settings['format'],
-                        output_path=settings['output_path']
-                    )
-                    print(f"📹 自動録画開始: {audio_duration:.2f}秒")
-                else:
-                    print("⚠️ 出力先未設定のため自動録画をスキップ")
-
-            # 音声再生
+            if should_record_js:
+                print("📹 JavaScript録画開始")
+                self.start_javascript_recording(audio, sample_rate)
+            
             import sounddevice as sd
             sd.play(audio, sample_rate, blocking=False)
 
-            # リップシンク送信
             if (lipsync_data and
                 self.tabbed_audio_control.is_lip_sync_enabled() and
                 hasattr(self.character_display, 'live2d_webview') and
@@ -1006,7 +904,6 @@ class TTSStudioMainWindow(QMainWindow):
             
     def closeEvent(self, event):
         try:
-            # 🆕 録画中の場合は停止
             if hasattr(self, 'video_recorder') and self.video_recorder.is_recording:
                 self.video_recorder.stop_recording()
             
@@ -1026,12 +923,7 @@ class TTSStudioMainWindow(QMainWindow):
             print(f"終了処理中にエラー: {e}")
         event.accept()
 
-    # ================================
-    # モデリング関連ハンドラー
-    # ================================
-    
     def on_live2d_parameters_loaded(self, parameters: list, model_id: str):
-        """Live2Dモデルのパラメータ読み込み完了時"""
         try:
             print(f"🎨 パラメータ読み込み: {len(parameters)}個")
             self.tabbed_audio_control.load_model_parameters(parameters, model_id)
@@ -1039,7 +931,6 @@ class TTSStudioMainWindow(QMainWindow):
             print(f"❌ パラメータ読み込みエラー: {e}")
     
     def on_modeling_parameter_changed(self, param_id: str, value: float):
-        """モデリングパラメータ変更時（単一）"""
         try:
             if hasattr(self.character_display, 'set_live2d_parameter'):
                 self.character_display.set_live2d_parameter(param_id, value)
@@ -1047,7 +938,6 @@ class TTSStudioMainWindow(QMainWindow):
             print(f"❌ パラメータ設定エラー ({param_id}): {e}")
     
     def on_modeling_parameters_changed(self, parameters: dict):
-        """モデリングパラメータ変更時（全体）"""
         try:
             if hasattr(self.character_display, 'set_live2d_parameters'):
                 self.character_display.set_live2d_parameters(parameters)
@@ -1055,7 +945,6 @@ class TTSStudioMainWindow(QMainWindow):
             print(f"❌ パラメータ一括設定エラー: {e}")
 
     def on_drag_control_toggled(self, enabled: bool):
-        """ドラッグ制御ON/OFF切り替え"""
         try:
             if hasattr(self.character_display, 'enable_drag_control'):
                 self.character_display.enable_drag_control(enabled)
@@ -1063,7 +952,6 @@ class TTSStudioMainWindow(QMainWindow):
             print(f"❌ ドラッグ制御切り替えエラー: {e}")
     
     def on_drag_sensitivity_changed(self, sensitivity: float):
-        """ドラッグ感度変更"""
         try:
             if hasattr(self.character_display, 'set_drag_sensitivity'):
                 self.character_display.set_drag_sensitivity(sensitivity)
@@ -1071,7 +959,6 @@ class TTSStudioMainWindow(QMainWindow):
             print(f"❌ ドラッグ感度変更エラー: {e}")
 
     def sync_drag_control_state(self):
-        """UIとLive2Dドラッグ制御の状態を同期"""
         modeling_control = getattr(self.tabbed_audio_control, 'modeling_control', None)
         if not modeling_control:
             return
@@ -1085,3 +972,92 @@ class TTSStudioMainWindow(QMainWindow):
             self.on_drag_sensitivity_changed(modeling_control.get_drag_sensitivity())
         except Exception as e:
             print(f"⚠️ ドラッグ感度同期エラー: {e}")
+
+    def _setup_webchannel(self):
+        """QWebChannelの初期化とVideoBridge登録"""
+        try:
+            from PyQt6.QtWebChannel import QWebChannel
+            
+            if not hasattr(self.character_display, 'live2d_webview'):
+                print("⚠️ live2d_webview未作成（後で登録します）")
+                QTimer.singleShot(1000, self._setup_webchannel)
+                return
+            
+            page = self.character_display.live2d_webview.page()
+            
+            channel = QWebChannel(page)
+            page.setWebChannel(channel)
+            
+            channel.registerObject('videoBridge', self.video_bridge)
+            print("✅ QWebChannel + VideoBridge登録完了")
+            
+            page.runJavaScript("""
+                new QWebChannel(qt.webChannelTransport, function(channel) {
+                    window.videoBridge = channel.objects.videoBridge;
+                    console.log('✅ videoBridge接続完了');
+                });
+            """)
+            
+        except Exception as e:
+            print(f"❌ QWebChannel登録エラー: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def start_javascript_recording(self, audio, sample_rate):
+        """JavaScript録画開始"""
+        try:
+            duration = len(audio) / sample_rate + 0.5
+            
+            import io
+            import wave
+            import base64
+            
+            wav_buffer = io.BytesIO()
+            with wave.open(wav_buffer, 'wb') as wav_file:
+                wav_file.setnchannels(1)
+                wav_file.setsampwidth(2)
+                wav_file.setframerate(sample_rate)
+                wav_file.writeframes((audio * 32767).astype(np.int16).tobytes())
+            
+            audio_base64 = base64.b64encode(wav_buffer.getvalue()).decode('utf-8')
+            
+            script = f"""
+            (async function() {{
+                try {{
+                    const audioBlob = new Blob(
+                        [Uint8Array.from(atob('{audio_base64}'), c => c.charCodeAt(0))],
+                        {{type: 'audio/wav'}}
+                    );
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    const audio = new Audio(audioUrl);
+                    
+                    if (window.yukkuriRecorder) {{
+                        console.log('🎬 JS録画開始: {duration:.2f}秒');
+                        await window.yukkuriRecorder.startRecording(audio, {duration});
+                        audio.play();
+                    }} else {{
+                        console.error('❌ yukkuriRecorder未初期化');
+                    }}
+                }} catch (error) {{
+                    console.error('❌ JS録画エラー:', error);
+                }}
+            }})();
+            """
+            
+            self.character_display.live2d_webview.page().runJavaScript(script)
+            print(f"📹 JavaScript録画開始: {duration:.2f}秒")
+            
+        except Exception as e:
+            print(f"❌ JS録画開始エラー: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def on_javascript_video_ready(self, video_path):
+        """JavaScript録画完了"""
+        print(f"🎉 JavaScript録画完了: {video_path}")
+        self.tabbed_audio_control.add_saved_video(video_path)
+        QMessageBox.information(
+            self,
+            "録画完了",
+            f"保存完了:\n{Path(video_path).name}\n\nダヴィンチリゾルブで使用できます。"
+        )

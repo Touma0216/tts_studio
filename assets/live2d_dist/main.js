@@ -1622,3 +1622,152 @@ window.animateParameters = function(parameters, duration = 500) {
 };
 
 console.log("✅ モデリング制御関数群を追加しました");
+
+// ========================================
+// 🎬 ゆっくり実況用JavaScript録画
+// ========================================
+
+class YukkuriRecorder {
+    constructor(canvas) {
+        this.canvas = canvas;
+        this.isRecording = false;
+        this.chunks = [];
+        this.frameCount = 0;
+        this.recorder = null;
+    }
+    
+    async startRecording(audioElement, duration) {
+        console.log(`🎬 JS録画開始: ${duration}秒`);
+        
+        try {
+            // Canvas stream（手動制御）
+            const videoStream = this.canvas.captureStream(0);
+            const videoTrack = videoStream.getVideoTracks()[0];
+            
+            // 音声stream取得
+            const audioContext = new AudioContext();
+            const audioSource = audioContext.createMediaElementSource(audioElement);
+            const audioDestination = audioContext.createMediaStreamDestination();
+            audioSource.connect(audioDestination);
+            audioSource.connect(audioContext.destination);
+            
+            // 統合stream
+            const combinedStream = new MediaStream([
+                videoTrack,
+                ...audioDestination.stream.getAudioTracks()
+            ]);
+            
+            // MediaRecorder設定
+            this.recorder = new MediaRecorder(combinedStream, {
+                mimeType: 'video/webm;codecs=vp9,opus',
+                videoBitsPerSecond: 16000000,
+                audioBitsPerSecond: 192000
+            });
+            
+            this.chunks = [];
+            this.frameCount = 0;
+            
+            this.recorder.ondataavailable = (e) => {
+                if (e.data.size > 0) {
+                    this.chunks.push(e.data);
+                    console.log(`📦 チャンク受信: ${e.data.size} bytes`);
+                }
+            };
+            
+            this.recorder.start(5000);
+            this.isRecording = true;
+            
+            // 60fps手動キャプチャ
+            this.startFrameCapture(videoTrack);
+            
+            // 指定時間後に自動停止
+            setTimeout(() => this.stopRecording(), duration * 1000);
+            
+            console.log('✅ JS録画セットアップ完了');
+            
+        } catch (error) {
+            console.error('❌ JS録画開始エラー:', error);
+        }
+    }
+    
+    startFrameCapture(track) {
+        const fps = 60;
+        const frameTime = 1000 / fps;
+        let lastTime = performance.now();
+        
+        const captureLoop = () => {
+            if (!this.isRecording) return;
+            
+            // Live2D更新
+            if (currentModel) {
+                currentModel.update(16.67);
+                app.renderer.render(app.stage);
+                track.requestFrame();
+                this.frameCount++;
+            }
+            
+            // 次フレーム
+            const now = performance.now();
+            const elapsed = now - lastTime;
+            const nextDelay = Math.max(0, frameTime - elapsed);
+            lastTime = now + nextDelay;
+            
+            setTimeout(captureLoop, nextDelay);
+        };
+        
+        captureLoop();
+    }
+    
+    async stopRecording() {
+        console.log(`⏹️ JS録画停止: ${this.frameCount}フレーム`);
+        this.isRecording = false;
+        
+        if (!this.recorder || this.recorder.state === 'inactive') {
+            console.warn('⚠️ Recorder not active');
+            return;
+        }
+        
+        this.recorder.stop();
+        
+        return new Promise(resolve => {
+            this.recorder.onstop = async () => {
+                const blob = new Blob(this.chunks, {type: 'video/webm'});
+                const sizeMB = (blob.size / 1024 / 1024).toFixed(2);
+                console.log(`📦 録画完了: ${sizeMB}MB, ${this.frameCount}フレーム`);
+                
+                // Base64変換
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const base64 = reader.result.split(',')[1];
+                    
+                    // QWebChannel経由でPythonへ送信
+                    if (window.videoBridge) {
+                        console.log('📤 Python側に送信中...');
+                        window.videoBridge.receiveVideo(base64, {
+                            frameCount: this.frameCount,
+                            duration: this.frameCount / 60,
+                            size: blob.size
+                        });
+                    } else {
+                        console.error('❌ videoBridge未定義');
+                    }
+                    
+                    resolve();
+                };
+                reader.readAsDataURL(blob);
+            };
+        });
+    }
+}
+
+// グローバル初期化
+console.log('🎬 YukkuriRecorder初期化中...');
+window.yukkuriRecorder = new YukkuriRecorder(document.getElementById('live2d-canvas'));
+console.log('✅ YukkuriRecorder初期化完了');
+
+// QWebChannelとの接続確認
+if (typeof QWebChannel !== 'undefined') {
+    console.log('✅ QWebChannel利用可能');
+} else {
+    console.warn('⚠️ QWebChannel未定義');
+}

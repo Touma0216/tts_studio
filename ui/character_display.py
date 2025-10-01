@@ -1759,3 +1759,25 @@ class CharacterDisplayWidget(QWidget):
             print("↺ ドラッグ角度リセット")
         except Exception as e:
             print(f"❌ ドラッグ角度リセットエラー: {e}")
+    def register_video_bridge(self, video_bridge):
+        """VideoBridgeをQWebChannelに登録"""
+        try:
+            if not hasattr(self, 'live2d_webview'):
+                print("⚠️ live2d_webview未初期化")
+                return
+            
+            # QWebChannel取得または作成
+            page = self.live2d_webview.page()
+            channel = page.webChannel()
+            
+            if channel is None:
+                from PyQt6.QtWebChannel import QWebChannel
+                channel = QWebChannel(page)
+                page.setWebChannel(channel)
+            
+            # ブリッジ登録
+            channel.registerObject('videoBridge', video_bridge)
+            print("✅ VideoBridge登録完了")
+            
+        except Exception as e:
+            print(f"❌ VideoBridge登録エラー: {e}")
