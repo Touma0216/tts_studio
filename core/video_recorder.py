@@ -123,29 +123,37 @@ class VideoRecorder(QObject):
             self.is_recording = True
             self.recording_started.emit()
             
-            # フレームキャプチャ開始（1/fps秒間隔）
+            # 🔥 フレームキャプチャ開始（1/fps秒間隔）
             interval_ms = int(1000 / fps)
             self.capture_timer.start(interval_ms)
             
-            # 録画終了タイマー
-            self.stop_timer.start(int(duration * 1000))
+            # 🔥 録画終了タイマー（duration + 0.1秒のバッファ）
+            # バッファを追加することでタイマー誤差を吸収
+            self.stop_timer.start(int((duration + 0.1) * 1000))
             
-            print(f"🎬 録画開始: {duration}秒間, {fps}fps, {self.total_frames}フレーム")
+            print(f"🎬 録画開始: {duration}秒間, {fps}fps, {self.total_frames}フレーム, タイマー:{int((duration + 0.1) * 1000)}ms")
             return True
             
         except Exception as e:
             print(f"❌ 録画開始エラー: {e}")
+            import traceback
+            traceback.print_exc()
             self.recording_error.emit(f"録画開始に失敗しました: {str(e)}")
             self._cleanup()
             return False
     
     def _capture_frame(self):
         """1フレームをキャプチャ"""
-        if not self.is_recording or not self.capture_widget:
+        if not self.is_recording:
+            print(f"⚠️ キャプチャスキップ: is_recording=False (フレーム{self.frame_count})")
+            return
+        
+        if not self.capture_widget:
+            print(f"⚠️ キャプチャスキップ: capture_widget=None")
             return
         
         try:
-            # 🔥 QWebEngineView用の正しいキャプチャ方法
+            # QWebEngineView用の正しいキャプチャ方法
             # grab()を使って画面をキャプチャ（render()よりも高速で正確）
             pixmap = self.capture_widget.grab()
             
@@ -170,7 +178,12 @@ class VideoRecorder(QObject):
             # デバッグ出力（10フレームごと）
             if self.frame_count % 10 == 0:
                 progress = int((self.frame_count / self.total_frames * 100))
-                print(f"📸 キャプチャ: {self.frame_count}/{self.total_frames} ({progress}%)")
+                print(f"📸 キャプチャ: {self.frame_count}/{self.total_frames} ({progress}%) is_recording={self.is_recording}")
+            
+            # 🔥 予定フレーム数に達したら自動停止
+            if self.frame_count >= self.total_frames:
+                print(f"✅ 予定フレーム数に達しました: {self.frame_count}/{self.total_frames}")
+                self._finish_recording()
             
         except Exception as e:
             print(f"❌ フレームキャプチャエラー: {e}")
@@ -182,6 +195,7 @@ class VideoRecorder(QObject):
     def _finish_recording(self):
         """録画を終了してエンコード開始"""
         if not self.is_recording:
+            print("⚠️ 既に録画停止済み")
             return
         
         # キャプチャタイマー停止
@@ -189,8 +203,9 @@ class VideoRecorder(QObject):
         self.is_recording = False
         
         print(f"✅ キャプチャ完了: {self.frame_count}フレーム")
+        print(f"⏱️ _finish_recording呼び出し時刻")
         
-        # 🔥 キャプチャしたフレーム数を確認
+        # キャプチャしたフレーム数を確認
         if self.frame_count == 0:
             error_msg = "フレームが1枚もキャプチャされませんでした"
             print(f"❌ {error_msg}")
@@ -207,6 +222,11 @@ class VideoRecorder(QObject):
     def stop_recording(self):
         """録画を強制停止"""
         if self.is_recording:
+            import traceback
+            print("⏹️ 録画を強制停止します")
+            print("呼び出し元:")
+            traceback.print_stack()
+            
             self.capture_timer.stop()
             self.stop_timer.stop()
             self.is_recording = False
