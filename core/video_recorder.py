@@ -34,6 +34,7 @@ class VideoRecorder(QObject):
         self.total_frames = 0
         self.fps = 60
         self.output_format = "mov"
+        self.duration = 0.0
         self.output_path = ""
         
         # 🆕 ffmpegパスを取得
@@ -114,6 +115,8 @@ class VideoRecorder(QObject):
             self.output_path = output_path
             self.frame_count = 0
             self.total_frames = int(duration * fps)
+            self.duration = duration
+
             
             # 一時ディレクトリ作成
             self.temp_dir = Path(tempfile.mkdtemp(prefix="tts_studio_capture_"))
@@ -246,13 +249,39 @@ class VideoRecorder(QObject):
             
             # ffmpegコマンド構築
             input_pattern = str(self.temp_dir / "frame_%06d.png")
+
+            # 実際の録画フレームレートを算出（予定より少ない場合に補正）
+            recording_duration = self.duration if self.duration > 0 else (
+                (self.total_frames / self.fps) if self.fps > 0 else 0
+            )
+
+            if recording_duration > 0:
+                actual_fps = max(self.frame_count / recording_duration, 1.0)
+            else:
+                actual_fps = float(self.fps)
+
+            print(
+                f"⏱️ 実測フレームレート: {actual_fps:.2f}fps (目標: {self.fps}fps)"
+            )
+
+            # ffmpegの入力フレームレートには実測値を指定し、
+            # 最終的な出力は目標fpsに補正する（不足分はフレーム複製）
+            base_cmd = [
+                self.ffmpeg_path,
+                "-framerate",
+                f"{actual_fps:.6f}",
+                "-i",
+                input_pattern,
+                "-vf",
+                f"fps={self.fps}",
+            ]
+
             
             if self.output_format == "mov":
                 # MOV (ProRes 4444) - 透過対応
                 cmd = [
-                    self.ffmpeg_path,  # 🆕 埋め込みパス使用
-                    "-framerate", str(self.fps),
-                    "-i", input_pattern,
+                    *base_cmd,
+
                     "-c:v", "prores_ks",
                     "-profile:v", "4444",
                     "-pix_fmt", "yuva444p10le",
@@ -262,9 +291,7 @@ class VideoRecorder(QObject):
             elif self.output_format == "webm":
                 # WebM (VP9) - 透過対応
                 cmd = [
-                    self.ffmpeg_path,  # 🆕 埋め込みパス使用
-                    "-framerate", str(self.fps),
-                    "-i", input_pattern,
+                    *base_cmd,
                     "-c:v", "libvpx-vp9",
                     "-pix_fmt", "yuva420p",
                     "-b:v", "2M",
@@ -275,9 +302,8 @@ class VideoRecorder(QObject):
             else:  # mp4
                 # MP4 (H.264) - 透過（制限あり）
                 cmd = [
-                    self.ffmpeg_path,  # 🆕 埋め込みパス使用
-                    "-framerate", str(self.fps),
-                    "-i", input_pattern,
+                    *base_cmd,
+
                     "-c:v", "libx264",
                     "-pix_fmt", "yuva420p",
                     "-crf", "18",
@@ -330,6 +356,8 @@ class VideoRecorder(QObject):
                 shutil.rmtree(self.temp_dir)
                 print(f"🗑️ 一時フォルダ削除: {self.temp_dir}")
                 self.temp_dir = None
+            self.duration = 0.0
+
         except Exception as e:
             print(f"⚠️ クリーンアップエラー: {e}")
     
