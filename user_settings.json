@@ -1,0 +1,32 @@
+{
+  "audio_cleaner": {
+    "enabled": true,
+    "last_preset": "light_processing"
+  },
+  "ui_preferences": {
+    "window_geometry": null,
+    "last_tab_index": 0
+  },
+  "emotion_presets": {
+    "presets": {
+      "standard": {
+        "name": "標準",
+        "parameters": {
+          "style": "Neutral",
+          "style_weight": 1.0,
+          "length_scale": 0.85,
+          "pitch_scale": 1.0,
+          "intonation_scale": 1.0,
+          "sdp_ratio": 0.25,
+          "noise": 0.35
+        }
+      }
+    },
+    "last_selected": "standard"
+  },
+  "character_display": {
+    "last_image_id": "52d1be20300e",
+    "last_live2d_id": "706e83eb-d88e-498f-b98c-3aabb86fda87",
+    "last_tab_index": 1
+  }
+}

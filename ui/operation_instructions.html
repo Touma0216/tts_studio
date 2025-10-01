@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: "Yu Gothic", "Meiryo", sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f0f2f5;
+            color: #333;
+            line-height: 1.6;
+            font-size: 16px; /* フォントサイズを大きく */
+            display: flex;
+            justify-content: center;
+        }
+        
+        .container {
+            max-width: 800px;
+            width: 100%;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+        }
+
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 30px;
+            font-size: 28px;
+        }
+        
+        /* セクション見出しのスタイルを直接テーブルに適用 */
+        .shortcut-table th {
+            background: #34495e; /* 黒系の背景色 */
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: bold;
+            font-size: 20px; /* フォントサイズを大きく */
+            /* 横幅を広げるための設定は必要ありません。thはデフォルトで親要素の幅を埋めます */
+        }
+        
+        .shortcut-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            background: white;
+        }
+        
+        .shortcut-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #ecf0f1;
+            font-size: 16px; /* フォントサイズを大きく */
+        }
+        
+        .shortcut-table tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        
+        .shortcut-table tr:hover {
+            background: #e3f2fd;
+            transition: background 0.3s ease;
+        }
+        
+        .key {
+            font-family: "Consolas", "Monaco", monospace;
+            font-weight: bold;
+            font-size: 18px; /* キーのフォントサイズを大きく */
+            color: #3498db;
+            white-space: nowrap;
+        }
+        
+        .key.special {
+            color: #e67e22;
+        }
+        
+        .key.new {
+            color: #e74c3c;
+            background: #fff5f5;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>キーボードショートカット一覧</h1>
+        
+        <table class="shortcut-table">
+            <tr>
+                <th colspan="2">ファイル・ウィンドウ操作</th>
+            </tr>
+            <tr>
+                <td><span class="key">Ctrl + F</span></td>
+                <td>ファイルメニューを開く</td>
+            </tr>
+            <tr>
+                <td><span class="key">Ctrl + H</span></td>
+                <td>操作説明を表示/非表示</td>
+            </tr>
+            
+            <tr>
+                <th colspan="2">編集操作</th>
+            </tr>
+            <tr>
+                <td><span class="key new">Ctrl + Z</span></td>
+                <td>前の設定に戻す（パラメータ・テキストUndo）</td>
+            </tr>
+            
+            <tr>
+                <th colspan="2">音声再生</th>
+            </tr>
+            <tr>
+                <td><span class="key">Ctrl + P</span></td>
+                <td>現在フォーカス中の行を再生</td>
+            </tr>
+            <tr>
+                <td><span class="key">Ctrl + R</span></td>
+                <td>全テキストを連続再生</td>
+            </tr>
+
+            <tr>
+                <th colspan="2">テキスト・タブ操作</th>
+            </tr>
+            <tr>
+                <td><span class="key">Ctrl + N</span></td>
+                <td>新しいテキスト行を追加</td>
+            </tr>
+            <tr>
+                <td><span class="key special">Ctrl + Tab</span></td>
+                <td>★マスタータブへ移動</td>
+            </tr>
+            <tr>
+                <td><span class="key">Ctrl + E</span></td>
+                <td>感情選択コンボボックスを開く</td>
+            </tr>
+            <tr>
+                <td><span class="key">Ctrl + 1</span> - <span class="key">9</span></td>
+                <td>指定のテキスト行にフォーカス</td>
+            </tr>
+
+            <tr>
+                <th colspan="2">ファイル保存</th>
+            </tr>
+            <tr>
+                <td><span class="key">Ctrl + S</span></td>
+                <td>現在行を個別ファイルとして保存</td>
+            </tr>
+            <tr>
+                <td><span class="key">Ctrl + Shift + S</span></td>
+                <td>全テキストを1つのファイルに連続保存</td>
+            </tr>
+        </table>
+        
+        <div style="margin-top: 30px; padding: 15px; background: #e8f5e8; border-radius: 6px; border-left: 4px solid #4caf50;">
+            <h3 style="margin-top: 0; color: #2e7d32;">💡 Undo機能について</h3>
+            <p><strong>Ctrl + Z</strong> は状況に応じて動作が変わります：</p>
+            <ul>
+                <li><strong>テキスト入力中</strong>：テキストの変更を取り消し</li>
+                <li><strong>音声パラメータタブ</strong>：感情・話速・ピッチなどの前の設定に戻す</li>
+                <li><strong>その他のタブ</strong>：動作しません</li>
+            </ul>
+            <p style="margin-bottom: 0;">※ 1回だけ前の状態に戻せます</p>
+        </div>
+    </div>
+</body>
+</html>

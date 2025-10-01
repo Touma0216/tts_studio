@@ -1,0 +1,335 @@
+{
+  "metadata": {
+    "name": "Improved Japanese Phoneme Model",
+    "version": "2.0.0",
+    "description": "Live2D標準に準拠した日本語母音リップシンクモデル",
+    "author": "TTS Studio",
+    "created_at": "2025-01-01",
+    "language": "ja",
+    "target_framework": "Live2D Cubism SDK for Web"
+  },
+  
+  "vowel_mapping": {
+    "a": {
+      "description": "あ - 開口母音、最大開口",
+      "ParamMouthOpenY": 1.0,
+      "ParamMouthForm": 0.0,
+      "ParamMouthOpenX": 0.0,
+      "ParamTongue": 0.0,
+      "intensity_modifier": 1.0,
+      "duration_modifier": 1.0
+    },
+    
+    "i": {
+      "description": "い - 閉口母音、横に広げる",
+      "ParamMouthOpenY": 0.2,
+      "ParamMouthForm": -0.8,
+      "ParamMouthOpenX": -0.6,
+      "ParamTongue": 0.3,
+      "intensity_modifier": 0.9,
+      "duration_modifier": 0.8
+    },
+    
+    "u": {
+      "description": "う - 閉口母音、すぼめる",
+      "ParamMouthOpenY": 0.25,
+      "ParamMouthForm": 0.8,
+      "ParamMouthOpenX": 0.0,
+      "ParamTongue": -0.2,
+      "intensity_modifier": 0.8,
+      "duration_modifier": 0.9
+    },
+    
+    "e": {
+      "description": "え - 半開母音、中間的な開口",
+      "ParamMouthOpenY": 0.5,
+      "ParamMouthForm": -0.2,
+      "ParamMouthOpenX": -0.1,
+      "ParamTongue": 0.1,
+      "intensity_modifier": 0.9,
+      "duration_modifier": 0.85
+    },
+    
+    "o": {
+      "description": "お - 半開母音、丸く開く",
+      "ParamMouthOpenY": 0.7,
+      "ParamMouthForm": 0.7,
+      "ParamMouthOpenX": 0.0,
+      "ParamTongue": -0.1,
+      "intensity_modifier": 0.95,
+      "duration_modifier": 0.95
+    },
+    
+    "n": {
+      "description": "ん - 鼻音、ほぼ閉口",
+      "ParamMouthOpenY": 0.1,
+      "ParamMouthForm": 0.0,
+      "ParamMouthOpenX": 0.0,
+      "ParamTongue": 0.2,
+      "intensity_modifier": 0.6,
+      "duration_modifier": 1.2
+    },
+    
+    "sil": {
+      "description": "無音 - 完全に閉口",
+      "ParamMouthOpenY": 0.0,
+      "ParamMouthForm": 0.0,
+      "ParamMouthOpenX": 0.0,
+      "ParamTongue": 0.0,
+      "intensity_modifier": 0.0,
+      "duration_modifier": 0.5
+    }
+  },
+  
+  "consonant_effects": {
+    "k": {
+      "description": "か行 - 軽い口の動き",
+      "pre_vowel_modifier": {
+        "ParamMouthOpenY": 0.05,
+        "duration": 0.05
+      }
+    },
+    
+    "s": {
+      "description": "さ行 - 歯の間から息を出す",
+      "pre_vowel_modifier": {
+        "ParamMouthOpenY": 0.03,
+        "ParamMouthForm": -0.1,
+        "duration": 0.08
+      }
+    },
+    
+    "t": {
+      "description": "た行 - 舌の動き",
+      "pre_vowel_modifier": {
+        "ParamTongue": 0.3,
+        "duration": 0.03
+      }
+    },
+    
+    "n": {
+      "description": "な行 - 鼻音の準備",
+      "pre_vowel_modifier": {
+        "ParamMouthOpenY": 0.04,
+        "duration": 0.06
+      }
+    },
+    
+    "m": {
+      "description": "ま行 - 唇を合わせる",
+      "pre_vowel_modifier": {
+        "ParamMouthOpenY": 0.0,
+        "ParamMouthForm": 0.2,
+        "duration": 0.04
+      }
+    },
+    
+    "r": {
+      "description": "ら行 - 舌の巻き",
+      "pre_vowel_modifier": {
+        "ParamTongue": -0.2,
+        "duration": 0.05
+      }
+    }
+  },
+  
+  "special_phonemes": {
+    "Q": {
+      "description": "っ - 促音、短い停止",
+      "ParamMouthOpenY": 0.0,
+      "ParamMouthForm": 0.0,
+      "ParamMouthOpenX": 0.0,
+      "ParamTongue": 0.1,
+      "duration": 0.08,
+      "intensity_modifier": 0.1
+    },
+    
+    "pau": {
+      "description": "ポーズ - 休止",
+      "ParamMouthOpenY": 0.0,
+      "ParamMouthForm": 0.0,
+      "ParamMouthOpenX": 0.0,
+      "ParamTongue": 0.0,
+      "duration": 0.3,
+      "intensity_modifier": 0.0
+    },
+    
+    "sp": {
+      "description": "ショートポーズ - 短い休止",
+      "ParamMouthOpenY": 0.0,
+      "ParamMouthForm": 0.0,
+      "ParamMouthOpenX": 0.0,
+      "ParamTongue": 0.0,
+      "duration": 0.1,
+      "intensity_modifier": 0.0
+    }
+  },
+  
+  "transition_rules": {
+    "smooth_transitions": [
+      {"from": "a", "to": "i", "duration": 0.12, "easing": "ease-in-out"},
+      {"from": "a", "to": "u", "duration": 0.15, "easing": "ease-out"},
+      {"from": "i", "to": "u", "duration": 0.18, "easing": "ease-in-out"},
+      {"from": "e", "to": "o", "duration": 0.14, "easing": "ease-in-out"},
+      {"from": "o", "to": "a", "duration": 0.10, "easing": "ease-in"},
+      {"from": "*", "to": "sil", "duration": 0.08, "easing": "ease-out"},
+      {"from": "sil", "to": "*", "duration": 0.06, "easing": "ease-in"}
+    ],
+    
+    "fast_transitions": [
+      {"from": "n", "to": "*", "duration": 0.05, "easing": "linear"},
+      {"from": "*", "to": "n", "duration": 0.06, "easing": "linear"}
+    ]
+  },
+  
+  "parameter_mapping": {
+    "standard_live2d": {
+      "description": "標準的なLive2Dパラメータ名（Live2D標準準拠）",
+      "mouth_open_vertical": "ParamMouthOpenY",
+      "mouth_form": "ParamMouthForm", 
+      "mouth_open_horizontal": "ParamMouthOpenX",
+      "tongue_position": "ParamTongue"
+    },
+    
+    "alternative_names": {
+      "mouth_open_vertical": ["ParamMouthOpenY", "PARAM_MOUTH_OPEN_Y", "MouthOpenY"],
+      "mouth_form": ["ParamMouthForm", "PARAM_MOUTH_FORM", "MouthForm"],
+      "mouth_open_horizontal": ["ParamMouthOpenX", "PARAM_MOUTH_OPEN_X", "MouthOpenX"],
+      "tongue_position": ["ParamTongue", "PARAM_TONGUE", "Tongue"]
+    }
+  },
+  
+  "quality_settings": {
+    "high_quality": {
+      "description": "高品質モード - 滑らかなアニメーション",
+      "frame_rate": 60,
+      "smoothing_factor": 0.85,
+      "interpolation_steps": 8,
+      "consonant_effects_enabled": true,
+      "transition_optimization": true,
+      "gain_multiplier": 8.0
+    },
+    
+    "balanced": {
+      "description": "バランスモード - 品質とパフォーマンスのバランス",
+      "frame_rate": 30,
+      "smoothing_factor": 0.7,
+      "interpolation_steps": 4,
+      "consonant_effects_enabled": true,
+      "transition_optimization": false,
+      "gain_multiplier": 6.0
+    },
+    
+    "performance": {
+      "description": "パフォーマンス優先モード - 軽量動作",
+      "frame_rate": 24,
+      "smoothing_factor": 0.5,
+      "interpolation_steps": 2,
+      "consonant_effects_enabled": false,
+      "transition_optimization": false,
+      "gain_multiplier": 4.0
+    }
+  },
+  
+  "emotion_modifiers": {
+    "neutral": {
+      "description": "通常の感情",
+      "intensity_multiplier": 1.0,
+      "mouth_form_offset": 0.0,
+      "duration_multiplier": 1.0
+    },
+    
+    "happy": {
+      "description": "嬉しい・楽しい感情",
+      "intensity_multiplier": 1.1,
+      "mouth_form_offset": 0.05,
+      "duration_multiplier": 0.9
+    },
+    
+    "sad": {
+      "description": "悲しい感情",
+      "intensity_multiplier": 0.8,
+      "mouth_form_offset": -0.05,
+      "duration_multiplier": 1.1
+    },
+    
+    "angry": {
+      "description": "怒った感情",
+      "intensity_multiplier": 1.0,
+      "mouth_form_offset": -0.03,
+      "duration_modifier": 0.85
+    },
+    
+    "surprised": {
+      "description": "驚いた感情",
+      "intensity_multiplier": 1.2,
+      "mouth_form_offset": 0.1,
+      "duration_multiplier": 0.8
+    }
+  },
+  
+  "calibration": {
+    "volume_levels": {
+      "whisper": {"min": 0.0, "max": 0.3, "intensity_boost": 1.5},
+      "normal": {"min": 0.3, "max": 0.7, "intensity_boost": 1.0},
+      "loud": {"min": 0.7, "max": 1.0, "intensity_boost": 0.8}
+    },
+    
+    "frequency_ranges": {
+      "low_voice": {"f1_multiplier": 0.9, "f2_multiplier": 0.9},
+      "normal_voice": {"f1_multiplier": 1.0, "f2_multiplier": 1.0}, 
+      "high_voice": {"f1_multiplier": 1.1, "f2_multiplier": 1.1}
+    }
+  },
+  
+  "advanced_features": {
+    "coarticulation": {
+      "enabled": true,
+      "description": "音素間の相互作用を考慮",
+      "influence_radius": 2,
+      "strength": 0.2
+    },
+    
+    "anticipatory_movements": {
+      "enabled": true,
+      "description": "先行する口の動きを予測",
+      "look_ahead_time": 0.08,
+      "influence_strength": 0.3
+    },
+    
+    "rhythm_adaptation": {
+      "enabled": false,
+      "description": "発話リズムに合わせた調整",
+      "tempo_sensitivity": 0.15
+    }
+  },
+
+  "presets": {
+    "natural": {
+      "description": "自然なリップシンク（推奨）",
+      "gain_multiplier": 6.0,
+      "smoothing_factor": 0.7,
+      "vowel_intensity": {
+        "a": 0.9, "i": 0.7, "u": 0.6, "e": 0.8, "o": 0.85, "n": 0.4
+      }
+    },
+    
+    "expressive": {
+      "description": "表現力重視（大げさ）",
+      "gain_multiplier": 10.0,
+      "smoothing_factor": 0.6,
+      "vowel_intensity": {
+        "a": 1.0, "i": 0.85, "u": 0.8, "e": 0.9, "o": 0.95, "n": 0.5
+      }
+    },
+    
+    "subtle": {
+      "description": "控えめなリップシンク",
+      "gain_multiplier": 3.0,
+      "smoothing_factor": 0.8,
+      "vowel_intensity": {
+        "a": 0.7, "i": 0.5, "u": 0.4, "e": 0.6, "o": 0.65, "n": 0.3
+      }
+    }
+  }
+}

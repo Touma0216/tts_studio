@@ -1,0 +1,20 @@
+{
+  "models": [
+    {
+      "id": "8272bc6739ad",
+      "name": "honoka_1000_ver2",
+      "note": "",
+      "model_path": "F:\\AI_voise\\honoka_1000_ver2\\honoka_model_e50_s6550.safetensors",
+      "config_path": "F:\\AI_voise\\honoka_1000_ver2\\config.json",
+      "style_path": "F:\\AI_voise\\honoka_1000_ver2\\style_vectors.npy"
+    },
+    {
+      "id": "ffdee7a1cc51",
+      "name": "honoka_1000",
+      "note": "",
+      "model_path": "F:\\AI_voise\\honoka_1000\\honoka_model_e50_s5000.safetensors",
+      "config_path": "F:\\AI_voise\\honoka_1000\\config.json",
+      "style_path": "F:\\AI_voise\\honoka_1000\\style_vectors.npy"
+    }
+  ]
+}
