@@ -1559,6 +1559,9 @@ window.initializeRecordingChannel = function() {
         console.warn('⚠️ QWebChannel未対応環境（開発中はこれが正常）');
     }
 };
+// グローバルにフレームキューを追加
+let frameQueue = [];
+let isProcessingQueue = false;
 
 window.startRecording = function(fps = 60) {
     try {
@@ -1575,41 +1578,34 @@ window.startRecording = function(fps = 60) {
         recordingState.isRecording = true;
         recordingState.fps = fps;
         recordingState.frameCount = 0;
+        frameQueue = [];
         
         const frameDelay = 1000 / fps;
         
-        console.log(`🎬 録画開始: ${fps}fps`);
+        console.log(`🎬 録画開始: ${fps}fps (非同期バッファ方式)`);
         
-        // フレームキャプチャループ
+        // キャプチャループ（軽量）
         recordingState.captureInterval = setInterval(() => {
-            if (!recordingState.isRecording) {
-                return;
-            }
+            if (!recordingState.isRecording) return;
             
             try {
-                // 🔥 修正：同期的にBase64取得
+                // Canvas取得のみ（Base64化は後で）
                 const canvas = app.renderer.extract.canvas(app.stage);
-                const dataURL = canvas.toDataURL('image/png');
-                
-                // Python側に送信
-                if (recordingState.backend && recordingState.backend.receiveFrame) {
-                    recordingState.backend.receiveFrame(dataURL);
-                    recordingState.frameCount++;
-                    
-                    // 100フレームごとにログ
-                    if (recordingState.frameCount % 100 === 0) {
-                        const elapsedSec = recordingState.frameCount / fps;
-                        console.log(`📹 録画中: ${recordingState.frameCount}フレーム (${elapsedSec.toFixed(1)}秒)`);
-                    }
-                } else {
-                    console.warn('⚠️ バックエンド未接続（フレーム破棄）');
-                }
+                frameQueue.push({
+                    canvas: canvas,
+                    timestamp: Date.now()
+                });
+                recordingState.frameCount++;
                 
             } catch (error) {
                 console.error('❌ フレームキャプチャエラー:', error);
             }
-            
         }, frameDelay);
+        
+        // 非同期処理ループ
+        if (!isProcessingQueue) {
+            processFrameQueue();
+        }
         
         return true;
         
@@ -1617,6 +1613,89 @@ window.startRecording = function(fps = 60) {
         console.error('❌ 録画開始エラー:', error);
         recordingState.isRecording = false;
         return false;
+    }
+};
+
+function processFrameQueue() {
+    isProcessingQueue = true;
+    
+    function processNext() {
+        if (frameQueue.length === 0) {
+            if (!recordingState.isRecording) {
+                isProcessingQueue = false;
+                console.log('✅ フレーム処理完了');
+                return;
+            }
+            // キューが空なら少し待つ
+            setTimeout(processNext, 10);
+            return;
+        }
+        
+        const frame = frameQueue.shift();
+        
+        try {
+            // Base64変換（重い処理）
+            const dataURL = frame.canvas.toDataURL('image/png');
+            
+            // Python側に送信
+            if (recordingState.backend && recordingState.backend.receiveFrame) {
+                recordingState.backend.receiveFrame(dataURL);
+                
+                // 100フレームごとにログ
+                const processed = recordingState.frameCount - frameQueue.length;
+                if (processed % 100 === 0) {
+                    console.log(`📹 処理中: キュー残=${frameQueue.length}, 処理済=${processed}`);
+                }
+            }
+            
+        } catch (error) {
+            console.error('❌ フレーム処理エラー:', error);
+        }
+        
+        // 🔥 修正：setImmediate → setTimeout
+        setTimeout(processNext, 0);  // 即座に次を処理
+    }
+    
+    processNext();
+}
+
+window.stopRecording = function() {
+    try {
+        if (!recordingState.isRecording) {
+            console.warn('⚠️ 録画されていません');
+            return null;
+        }
+        
+        console.log('🛑 録画停止開始...');
+        
+        recordingState.isRecording = false;
+        
+        if (recordingState.captureInterval) {
+            clearInterval(recordingState.captureInterval);
+            recordingState.captureInterval = null;
+        }
+        
+        // キューの残り処理を待つ
+        console.log(`⏳ キュー残=${frameQueue.length}フレームを処理中...`);
+        
+        const stats = {
+            totalFrames: recordingState.frameCount,
+            duration: recordingState.frameCount / recordingState.fps,
+            fps: recordingState.fps,
+            queueRemaining: frameQueue.length
+        };
+        
+        console.log(`⏹️ 録画停止完了:`, stats);
+        
+        return stats;
+        
+    } catch (error) {
+        console.error('❌ 録画停止エラー:', error);
+        recordingState.isRecording = false;
+        if (recordingState.captureInterval) {
+            clearInterval(recordingState.captureInterval);
+        }
+        return null;
     }
 };
 
