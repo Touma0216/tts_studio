@@ -22,6 +22,10 @@ class TabbedAudioControl(QWidget):
     # 🆕 ドラッグ制御シグナル追加
     drag_control_toggled = pyqtSignal(bool)
     drag_sensitivity_changed = pyqtSignal(float)
+    
+    # 🆕 アイドルモーションシグナル追加
+    idle_motion_toggled = pyqtSignal(str, bool)  # (motion_type, enabled)
+    idle_motion_param_changed = pyqtSignal(str, float)  # (param_name, value)
 
     # 🆕 WAV再生関連シグナル
     wav_file_loaded = pyqtSignal(str)  # ファイルパス
@@ -124,6 +128,11 @@ class TabbedAudioControl(QWidget):
         #ドラッグ制御シグナル接続（中継）
         self.modeling_control.drag_control_toggled.connect(self.drag_control_toggled)
         self.modeling_control.drag_sensitivity_changed.connect(self.drag_sensitivity_changed)
+        
+        # 🆕 アイドルモーションシグナル接続（中継）
+        self.modeling_control.idle_motion_toggled.connect(self.idle_motion_toggled)
+        self.modeling_control.idle_motion_param_changed.connect(self.idle_motion_param_changed)
+        
         self.main_tab_widget.addTab(self.modeling_control, "🎨 モデリング")
 
         layout.addWidget(self.main_tab_widget)

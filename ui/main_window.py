@@ -112,6 +112,9 @@ class TTSStudioMainWindow(QMainWindow):
         self.tabbed_audio_control.modeling_parameters_changed.connect(self.on_modeling_parameters_changed)
         self.tabbed_audio_control.drag_control_toggled.connect(self.on_drag_control_toggled)
         self.tabbed_audio_control.drag_sensitivity_changed.connect(self.on_drag_sensitivity_changed)
+        # 🆕 アイドルモーションシグナル接続
+        self.tabbed_audio_control.idle_motion_toggled.connect(self.on_idle_motion_toggled)
+        self.tabbed_audio_control.idle_motion_param_changed.connect(self.on_idle_motion_param_changed)
         # 統合されたリップシンク設定変更ハンドラー
         self.tabbed_audio_control.lip_sync_settings_changed.connect(self.on_lipsync_settings_changed)
         self.tabbed_audio_control.add_text_row("initial", 1)
@@ -912,6 +915,21 @@ class TTSStudioMainWindow(QMainWindow):
                 self.character_display.set_drag_sensitivity(sensitivity)
         except Exception as e:
             print(f"❌ ドラッグ感度変更エラー: {e}")
+    def on_idle_motion_toggled(self, motion_type: str, enabled: bool):
+            """アイドルモーションON/OFF切り替え"""
+            try:
+                if hasattr(self.character_display, 'toggle_idle_motion'):
+                    self.character_display.toggle_idle_motion(motion_type, enabled)
+            except Exception as e:
+                print(f"❌ アイドルモーション切り替えエラー ({motion_type}): {e}")
+        
+    def on_idle_motion_param_changed(self, param_name: str, value: float):
+        """アイドルモーションパラメータ変更"""
+        try:
+            if hasattr(self.character_display, 'set_idle_motion_param'):
+                self.character_display.set_idle_motion_param(param_name, value)
+        except Exception as e:
+            print(f"❌ アイドルモーションパラメータ変更エラー ({param_name}): {e}")
 
     def sync_drag_control_state(self):
         """UIとLive2Dドラッグ制御の状態を同期"""

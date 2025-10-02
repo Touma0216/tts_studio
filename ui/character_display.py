@@ -2217,3 +2217,49 @@ class CharacterDisplayWidget(QWidget):
             
         except Exception as e:
             print(f"❌ VideoBridge登録エラー: {e}")
+
+# ================================
+    # アイドルモーション制御
+    # ================================
+    
+    def toggle_idle_motion(self, motion_type: str, enabled: bool):
+        """アイドルモーションのON/OFF切り替え"""
+        if not hasattr(self, 'live2d_webview') or not self.live2d_webview.is_model_loaded:
+            print("⚠️ Live2Dモデルが読み込まれていません")
+            return
+        
+        try:
+            script = f"""
+            (function() {{
+                if (typeof window.toggleIdleMotion === 'function') {{
+                    window.toggleIdleMotion('{motion_type}', {str(enabled).lower()});
+                    return true;
+                }} else {{
+                    console.warn('⚠️ toggleIdleMotion関数が見つかりません');
+                    return false;
+                }}
+            }})()
+            """
+            self.live2d_webview.page().runJavaScript(script)
+            print(f"🌟 アイドルモーション({motion_type}): {'ON' if enabled else 'OFF'}")
+        except Exception as e:
+            print(f"❌ アイドルモーション切り替えエラー: {e}")
+    
+    def set_idle_motion_param(self, param_name: str, value: float):
+        """アイドルモーションのパラメータ設定"""
+        if not hasattr(self, 'live2d_webview') or not self.live2d_webview.is_model_loaded:
+            return
+        
+        try:
+            script = f"""
+            (function() {{
+                if (typeof window.setIdleMotionParam === 'function') {{
+                    window.setIdleMotionParam('{param_name}', {value});
+                    return true;
+                }}
+                return false;
+            }})()
+            """
+            self.live2d_webview.page().runJavaScript(script)
+        except Exception as e:
+            print(f"❌ アイドルモーションパラメータ設定エラー: {e}")

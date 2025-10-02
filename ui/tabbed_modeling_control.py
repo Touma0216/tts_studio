@@ -1,21 +1,24 @@
-# ui/tabbed_modeling_control.py（完全修正版：ドラッグ制御追加）
+# ui/tabbed_modeling_control.py（ほのか専用完全版）
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QScrollArea,
                              QGroupBox, QSlider, QLabel, QPushButton, QTabWidget,
-                             QGridLayout, QDoubleSpinBox, QMessageBox)
-
+                             QGridLayout, QDoubleSpinBox, QMessageBox, QCheckBox)
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont
 from typing import Dict, List, Any
 
 
 class TabbedModelingControl(QWidget):
-    """タブ式モデリング制御（ドラッグ制御追加版）"""
+    """零音ほのか専用モデリング制御"""
     parameter_changed = pyqtSignal(str, float)
     parameters_changed = pyqtSignal(dict)
     
-    # 🆕 ドラッグ制御用シグナル
+    # ドラッグ制御用シグナル
     drag_control_toggled = pyqtSignal(bool)
     drag_sensitivity_changed = pyqtSignal(float)
+    
+    # アイドルモーション用シグナル
+    idle_motion_toggled = pyqtSignal(str, bool)  # (motion_type, enabled)
+    idle_motion_param_changed = pyqtSignal(str, float)  # (param_name, value)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -28,18 +31,17 @@ class TabbedModelingControl(QWidget):
         
         self.init_ui()
         
-        # 初期化後、ドラッグ制御を明示的に有効化
+        # 初期化後、ドラッグ制御を有効化
         QTimer.singleShot(100, lambda: self.on_drag_toggle(True))
     
     def init_ui(self):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(10)
-
         
         # ヘッダー
         header = QHBoxLayout()
-        title = QLabel("🎨 モデリング")
+        title = QLabel("🎨 モデリング制御")
         title.setFont(QFont("", 12, QFont.Weight.Bold))
         
         self.reset_btn = QPushButton("🔄 全リセット")
@@ -62,7 +64,7 @@ class TabbedModelingControl(QWidget):
         header.addStretch()
         header.addWidget(self.reset_btn)
         
-        # サブタブ
+        # タブ
         self.tabs = QTabWidget()
         self.tabs.setStyleSheet("""
             QTabWidget::pane {
@@ -84,10 +86,12 @@ class TabbedModelingControl(QWidget):
             }
         """)
         
-        self.tabs.addTab(self.create_face_tab(), "😊 顔の制御")
-        self.tabs.addTab(self.create_body_tab(), "🧍 体の制御")
-        self.tabs.addTab(self.create_other_tab(), "✨ その他")
-        self.tabs.addTab(self.create_motion_tab(), "🎭 モーション/表情")
+        self.tabs.addTab(self.create_face_tab(), "😊 顔")
+        self.tabs.addTab(self.create_body_tab(), "🧍 体")
+        self.tabs.addTab(self.create_hair_physics_tab(), "💨 髪・物理")
+        self.tabs.addTab(self.create_emotion_tab(), "🎭 感情")
+        self.tabs.addTab(self.create_pupil_tab(), "👁️ 瞳")
+        self.tabs.addTab(self.create_motion_tab(), "🎬 モーション")
         
         main_layout.addLayout(header)
         main_layout.addWidget(self.tabs, 1)
@@ -106,7 +110,7 @@ class TabbedModelingControl(QWidget):
         content_layout = QVBoxLayout(content)
         content_layout.setSpacing(10)
         
-        # 顔の角度グループ
+        # 顔の角度
         face_params = [
             ("角度X", "ParamAngleX", -30.0, 30.0, 0.0, "左 ← → 右"),
             ("角度Y", "ParamAngleY", -30.0, 30.0, 0.0, "下 ← → 上"),
@@ -114,32 +118,28 @@ class TabbedModelingControl(QWidget):
         ]
         self.create_parameter_group(content_layout, "顔の角度", face_params)
         
-        # 目グループ
+        # 目
         eye_params = [
             ("左目 開閉", "ParamEyeLOpen", 0.0, 1.0, 1.0, "閉じ ← → 開き"),
             ("右目 開閉", "ParamEyeROpen", 0.0, 1.0, 1.0, "閉じ ← → 開き"),
-            ("左目 笑顔", "ParamEyeLSmile", 0.0, 1.0, 0.0, "通常 ← → 笑顔"),
-            ("右目 笑顔", "ParamEyeRSmile", 0.0, 1.0, 0.0, "通常 ← → 笑顔")
         ]
         self.create_parameter_group(content_layout, "目", eye_params)
         
-        # 目玉グループ
+        # 目玉
         eyeball_params = [
             ("目玉 X", "ParamEyeBallX", -1.0, 1.0, 0.0, "左 ← → 右"),
             ("目玉 Y", "ParamEyeBallY", -1.0, 1.0, 0.0, "下 ← → 上")
         ]
         self.create_parameter_group(content_layout, "目玉", eyeball_params)
         
-        # 眉グループ
+        # 眉
         brow_params = [
             ("左眉 上下", "ParamBrowLY", -1.0, 1.0, 0.0, "下 ← → 上"),
-            ("右眉 上下", "ParamBrowRY", -1.0, 1.0, 0.0, "下 ← → 上"),
-            ("左眉 角度", "ParamBrowLAngle", -1.0, 1.0, 0.0, "怒り ← → 困り"),
-            ("右眉 角度", "ParamBrowRAngle", -1.0, 1.0, 0.0, "怒り ← → 困り")
+            ("右眉 上下", "ParamBrowRY", -1.0, 1.0, 0.0, "下 ← → 上")
         ]
         self.create_parameter_group(content_layout, "眉", brow_params)
         
-        # 口グループ
+        # 口
         mouth_params = [
             ("口 開閉", "ParamMouthOpenY", 0.0, 1.0, 0.0, "閉じ ← → 開き"),
             ("口 変形", "ParamMouthForm", -1.0, 1.0, 0.0, "怒り ← → 笑顔")
@@ -165,36 +165,19 @@ class TabbedModelingControl(QWidget):
         content_layout = QVBoxLayout(content)
         content_layout.setSpacing(10)
         
-        # 体の回転
-        body_params = [
-            ("体の回転 X", "ParamBodyAngleX", -10.0, 10.0, 0.0, "左 ← → 右"),
-            ("体の回転 Y", "ParamBodyAngleY", -10.0, 10.0, 0.0, "下 ← → 上"),
-            ("体の回転 Z", "ParamBodyAngleZ", -10.0, 10.0, 0.0, "左傾き ← → 右傾き")
-        ]
-        self.create_parameter_group(content_layout, "体の回転", body_params)
-        
         # 呼吸
         breath_params = [
             ("呼吸", "ParamBreath", 0.0, 1.0, 0.0, "吐く ← → 吸う")
         ]
         self.create_parameter_group(content_layout, "呼吸", breath_params)
         
-        # 腕
-        arm_params = [
-            ("左腕 A", "ParamArmLA", -30.0, 30.0, 0.0, "閉じ ← → 広げ"),
-            ("右腕 A", "ParamArmRA", -30.0, 30.0, 0.0, "閉じ ← → 広げ"),
-            ("左腕 B", "ParamArmLB", -30.0, 30.0, 0.0, "閉じ ← → 広げ"),
-            ("右腕 B", "ParamArmRB", -30.0, 30.0, 0.0, "閉じ ← → 広げ")
-        ]
-        self.create_parameter_group(content_layout, "腕", arm_params)
-        
         content_layout.addStretch()
         scroll.setWidget(content)
         layout.addWidget(scroll, 1)
         return widget
     
-    def create_other_tab(self):
-        """その他タブ"""
+    def create_hair_physics_tab(self):
+        """髪・物理タブ"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -210,17 +193,188 @@ class TabbedModelingControl(QWidget):
         # 髪揺れ
         hair_params = [
             ("髪揺れ 前", "ParamHairFront", -1.0, 1.0, 0.0, "左 ← → 右"),
-            ("髪揺れ 横", "ParamHairSide", -1.0, 1.0, 0.0, "左 ← → 右"),
-            ("髪揺れ 後", "ParamHairBack", -1.0, 1.0, 0.0, "左 ← → 右")
+            ("髪揺れ 横", "ParamHairSide", -1.0, 1.0, 0.0, "左 ← → 右（横+後ろ+服）"),
+            ("胸揺れ 横", "ParamHairBack", -1.0, 1.0, 0.0, "左 ← → 右"),
+            ("胸揺れ 縦", "Param", -1.0, 1.0, 0.0, "下 ← → 上")
         ]
-        self.create_parameter_group(content_layout, "髪揺れ", hair_params)
+        self.create_parameter_group(content_layout, "髪・胸揺れ", hair_params)
         
-        # 全体位置
-        base_params = [
-            ("全体 左右", "ParamBaseX", -10.0, 10.0, 0.0, "左 ← → 右"),
-            ("全体 上下", "ParamBaseY", -10.0, 10.0, 0.0, "下 ← → 上")
+        # 物理設定（今後実装予定）
+        physics_group = QGroupBox("物理設定（今後実装予定）")
+        physics_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 1px solid #ccc;
+                border-radius: 6px;
+                margin-top: 10px;
+                padding-top: 8px;
+                background-color: #f9f9f9;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+                background-color: white;
+                color: #999;
+            }
+        """)
+        
+        physics_layout = QVBoxLayout(physics_group)
+        physics_info = QLabel("重力X/Y、風X/Yの制御機能は今後実装予定です")
+        physics_info.setStyleSheet("color: #999; font-size: 11px; font-style: italic;")
+        physics_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        physics_layout.addWidget(physics_info)
+        
+        content_layout.addWidget(physics_group)
+        content_layout.addStretch()
+        scroll.setWidget(content)
+        layout.addWidget(scroll, 1)
+        return widget
+    
+    def create_emotion_tab(self):
+        """感情制御タブ"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(10, 10, 10, 10)
+        
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: none; background: white; }")
+        
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setSpacing(10)
+        
+        # 説明
+        info_label = QLabel("💡 感情パラメータを個別に調整して複合表情を作成できます")
+        info_label.setStyleSheet("""
+            color: #5ba8f2;
+            background-color: #e3f2fd;
+            padding: 10px;
+            border-radius: 6px;
+            font-weight: bold;
+        """)
+        info_label.setWordWrap(True)
+        content_layout.addWidget(info_label)
+        
+        # 感情パラメータ
+        emotion_params = [
+            ("喜び", "Param1", 0.0, 1.0, 0.0, "なし ← → 最大"),
+            ("驚き", "Param2", 0.0, 1.0, 0.0, "なし ← → 最大"),
+            ("恐怖", "Param3", 0.0, 1.0, 0.0, "なし ← → 最大"),
+            ("悲しみ", "Param4", 0.0, 1.0, 0.0, "なし ← → 最大")
         ]
-        self.create_parameter_group(content_layout, "全体位置", base_params)
+        self.create_parameter_group(content_layout, "感情パラメータ（個別制御）", emotion_params)
+        
+        # 表情プリセット
+        preset_group = QGroupBox("表情プリセット（ワンクリック）")
+        preset_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #4a90e2;
+                border-radius: 8px;
+                margin-top: 10px;
+                padding-top: 15px;
+                background-color: white;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 15px;
+                padding: 0 8px;
+                background-color: white;
+                color: #4a90e2;
+            }
+        """)
+        
+        preset_layout = QVBoxLayout(preset_group)
+        
+        # デフォルト表情ボタン
+        default_btn = QPushButton("😐 デフォルト表情")
+        default_btn.setMinimumHeight(45)
+        default_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #e8f4f8, stop:1 #d0e8f0);
+                border: 2px solid #4a90e2;
+                border-radius: 6px;
+                font-size: 13px;
+                font-weight: bold;
+                color: #2c5898;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #d0e8f0, stop:1 #b8dce8);
+            }
+        """)
+        default_btn.clicked.connect(self.reset_expression)
+        preset_layout.addWidget(default_btn)
+        
+        # Scene1-4の表情ボタン
+        expression_buttons_layout = QGridLayout()
+        expression_buttons_layout.setSpacing(10)
+        
+        expression_names = [
+            ("Scene1", "😄 喜び"),
+            ("Scene2", "😲 驚き"),
+            ("Scene3", "😨 恐怖"),
+            ("Scene4", "😢 悲しみ")
+        ]
+        
+        for i, (scene_id, label) in enumerate(expression_names):
+            btn = QPushButton(label)
+            btn.setMinimumHeight(50)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #fff, stop:1 #f0f0f0);
+                    border: 2px solid #ccc;
+                    border-radius: 8px;
+                    font-size: 12px;
+                    font-weight: bold;
+                    color: #333;
+                }
+                QPushButton:hover {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #fffacd, stop:1 #ffd700);
+                    border-color: #ffa500;
+                }
+            """)
+            btn.clicked.connect(lambda checked, sid=scene_id: self.set_expression(sid))
+            
+            row = i // 2
+            col = i % 2
+            expression_buttons_layout.addWidget(btn, row, col)
+        
+        preset_layout.addLayout(expression_buttons_layout)
+        
+        content_layout.addWidget(preset_group)
+        content_layout.addStretch()
+        scroll.setWidget(content)
+        layout.addWidget(scroll, 1)
+        return widget
+    
+    def create_pupil_tab(self):
+        """瞳の制御タブ"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(10, 10, 10, 10)
+        
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: none; background: white; }")
+        
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setSpacing(10)
+        
+        # 瞳パラメータ
+        pupil_params = [
+            ("右目 瞳孔", "Param5", 0.0, 1.0, 0.0, "小 ← → 大"),
+            ("右目 ハイライト", "Param6", 0.0, 1.0, 0.0, "暗 ← → 明"),
+            ("左目 瞳孔", "Param7", 0.0, 1.0, 0.0, "小 ← → 大"),
+            ("左目 ハイライト", "Param8", 0.0, 1.0, 0.0, "暗 ← → 明")
+        ]
+        self.create_parameter_group(content_layout, "瞳の制御", pupil_params)
         
         content_layout.addStretch()
         scroll.setWidget(content)
@@ -228,13 +382,13 @@ class TabbedModelingControl(QWidget):
         return widget
     
     def create_motion_tab(self):
-        """モーション/表情タブ（ドラッグ制御追加版）"""
+        """モーションタブ"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(15)
         
-        # 🆕 ドラッグ制御セクション
+        # ドラッグ制御セクション
         drag_group = QGroupBox("🎯 ドラッグ制御")
         drag_group.setStyleSheet("""
             QGroupBox {
@@ -256,10 +410,10 @@ class TabbedModelingControl(QWidget):
         
         drag_layout = QVBoxLayout(drag_group)
         
-        # ON/OFFトグルボタン（初期状態：ON）
+        # ON/OFFトグル
         self.drag_toggle_btn = QPushButton("🎮 ドラッグ制御 ON")
         self.drag_toggle_btn.setCheckable(True)
-        self.drag_toggle_btn.setChecked(True)  # 初期状態をONに
+        self.drag_toggle_btn.setChecked(True)
         self.drag_toggle_btn.setMinimumHeight(50)
         self.drag_toggle_btn.setStyleSheet("""
             QPushButton {
@@ -277,9 +431,6 @@ class TabbedModelingControl(QWidget):
                 border-color: #7b1fa2;
                 color: white;
             }
-            QPushButton:hover {
-                border-color: #9c27b0;
-            }
         """)
         self.drag_toggle_btn.toggled.connect(self.on_drag_toggle)
         drag_layout.addWidget(self.drag_toggle_btn)
@@ -292,8 +443,8 @@ class TabbedModelingControl(QWidget):
         
         self.drag_sensitivity_slider = QSlider(Qt.Orientation.Horizontal)
         self.drag_sensitivity_slider.setRange(10, 100)
-        self.drag_sensitivity_slider.setValue(30)  # デフォルト0.3
-        self.drag_sensitivity_slider.setEnabled(True)  # 初期状態で有効
+        self.drag_sensitivity_slider.setValue(30)
+        self.drag_sensitivity_slider.setEnabled(True)
         self.drag_sensitivity_slider.setStyleSheet("""
             QSlider::groove:horizontal {
                 border: 1px solid #bbb;
@@ -330,10 +481,10 @@ class TabbedModelingControl(QWidget):
         sensitivity_layout.addWidget(self.drag_sensitivity_value)
         drag_layout.addLayout(sensitivity_layout)
         
-        # リセットボタン（初期状態：有効）
+        # リセットボタン
         self.drag_reset_btn = QPushButton("↺ 角度リセット")
         self.drag_reset_btn.setMinimumHeight(40)
-        self.drag_reset_btn.setEnabled(True)  # 初期状態で有効
+        self.drag_reset_btn.setEnabled(True)
         self.drag_reset_btn.setStyleSheet("""
             QPushButton {
                 background-color: #f0f0f0;
@@ -355,12 +506,12 @@ class TabbedModelingControl(QWidget):
         self.drag_reset_btn.clicked.connect(self.on_drag_reset)
         drag_layout.addWidget(self.drag_reset_btn)
         
-        # 表情セクション
-        expression_group = QGroupBox("😊 表情切り替え")
-        expression_group.setStyleSheet("""
+        # アイドルモーションセクション
+        idle_group = QGroupBox("🌟 アイドルモーション")
+        idle_group.setStyleSheet("""
             QGroupBox {
                 font-weight: bold;
-                border: 2px solid #4a90e2;
+                border: 2px solid #ff9800;
                 border-radius: 8px;
                 margin-top: 10px;
                 padding-top: 15px;
@@ -371,93 +522,78 @@ class TabbedModelingControl(QWidget):
                 left: 15px;
                 padding: 0 8px;
                 background-color: white;
-                color: #4a90e2;
+                color: #ff9800;
             }
         """)
         
-        expression_layout = QVBoxLayout(expression_group)
+        idle_layout = QVBoxLayout(idle_group)
         
-        # デフォルト表情ボタン
-        default_btn = QPushButton("😐 デフォルト表情")
-        default_btn.setMinimumHeight(45)
-        default_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #e8f4f8, stop:1 #d0e8f0);
-                border: 2px solid #4a90e2;
-                border-radius: 6px;
-                font-size: 13px;
-                font-weight: bold;
-                color: #2c5898;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #d0e8f0, stop:1 #b8dce8);
-            }
-            QPushButton:pressed { background: #a0c8d8; }
-        """)
-        default_btn.clicked.connect(self.reset_expression)
-        expression_layout.addWidget(default_btn)
+        # 瞬き
+        self.blink_checkbox = QCheckBox("👁️ 瞬き")
+        self.blink_checkbox.setStyleSheet("font-size: 13px; font-weight: bold;")
+        self.blink_checkbox.toggled.connect(lambda checked: self.idle_motion_toggled.emit("blink", checked))
+        idle_layout.addWidget(self.blink_checkbox)
         
-        # Scene1-4の表情ボタン
-        expression_buttons_layout = QGridLayout()
-        expression_buttons_layout.setSpacing(10)
+        blink_param_layout = QHBoxLayout()
+        blink_param_layout.addWidget(QLabel("  周期:"))
+        self.blink_period_slider = QSlider(Qt.Orientation.Horizontal)
+        self.blink_period_slider.setRange(10, 100)
+        self.blink_period_slider.setValue(30)
+        self.blink_period_slider.valueChanged.connect(
+            lambda v: self.idle_motion_param_changed.emit("blink_period", v / 10.0)
+        )
+        blink_param_layout.addWidget(self.blink_period_slider)
+        self.blink_period_label = QLabel("3.0秒")
+        blink_param_layout.addWidget(self.blink_period_label)
+        idle_layout.addLayout(blink_param_layout)
         
-        expression_names = [
-            ("Scene1", "笑顔"),
-            ("Scene2", "驚き"),
-            ("Scene3", "怖がり"),
-            ("Scene4", "悲しみ")
-        ]
+        # 視線揺れ
+        self.gaze_checkbox = QCheckBox("👀 視線揺れ")
+        self.gaze_checkbox.setStyleSheet("font-size: 13px; font-weight: bold;")
+        self.gaze_checkbox.toggled.connect(lambda checked: self.idle_motion_toggled.emit("gaze", checked))
+        idle_layout.addWidget(self.gaze_checkbox)
         
-        for i, (scene_id, label) in enumerate(expression_names):
-            btn = QPushButton(label)
-            btn.setMinimumHeight(50)
-            btn.setStyleSheet("""
-                QPushButton {
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #fff, stop:1 #f0f0f0);
-                    border: 2px solid #ccc;
-                    border-radius: 8px;
-                    font-size: 12px;
-                    font-weight: bold;
-                    color: #333;
-                }
-                QPushButton:hover {
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #fffacd, stop:1 #ffd700);
-                    border-color: #ffa500;
-                }
-                QPushButton:pressed { background: #ffc700; }
-            """)
-            btn.clicked.connect(lambda checked, sid=scene_id: self.set_expression(sid))
-            
-            row = i // 2
-            col = i % 2
-            expression_buttons_layout.addWidget(btn, row, col)
+        gaze_param_layout = QHBoxLayout()
+        gaze_param_layout.addWidget(QLabel("  範囲:"))
+        self.gaze_range_slider = QSlider(Qt.Orientation.Horizontal)
+        self.gaze_range_slider.setRange(10, 100)
+        self.gaze_range_slider.setValue(50)
+        self.gaze_range_slider.valueChanged.connect(
+            lambda v: self.idle_motion_param_changed.emit("gaze_range", v / 100.0)
+        )
+        gaze_param_layout.addWidget(self.gaze_range_slider)
+        self.gaze_range_label = QLabel("0.50")
+        gaze_param_layout.addWidget(self.gaze_range_label)
+        idle_layout.addLayout(gaze_param_layout)
         
-        expression_layout.addLayout(expression_buttons_layout)
+        # 風揺れ
+        self.wind_checkbox = QCheckBox("💨 風揺れ")
+        self.wind_checkbox.setStyleSheet("font-size: 13px; font-weight: bold;")
+        self.wind_checkbox.toggled.connect(lambda checked: self.idle_motion_toggled.emit("wind", checked))
+        idle_layout.addWidget(self.wind_checkbox)
         
-        # モーションセクション（未実装）
-        motion_group = QGroupBox("🎭 モーション再生")
-        motion_group.setStyleSheet(expression_group.styleSheet())
-        motion_layout = QVBoxLayout(motion_group)
-        
-        motion_info = QLabel("モーション機能は今後実装予定です")
-        motion_info.setStyleSheet("color: #999; font-size: 11px; font-style: italic;")
-        motion_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        motion_layout.addWidget(motion_info)
+        wind_param_layout = QHBoxLayout()
+        wind_param_layout.addWidget(QLabel("  強さ:"))
+        self.wind_strength_slider = QSlider(Qt.Orientation.Horizontal)
+        self.wind_strength_slider.setRange(10, 100)
+        self.wind_strength_slider.setValue(50)
+        self.wind_strength_slider.valueChanged.connect(
+            lambda v: self.idle_motion_param_changed.emit("wind_strength", v / 100.0)
+        )
+        wind_param_layout.addWidget(self.wind_strength_slider)
+        self.wind_strength_label = QLabel("0.50")
+        wind_param_layout.addWidget(self.wind_strength_label)
+        idle_layout.addLayout(wind_param_layout)
         
         # レイアウト組み立て
         layout.addWidget(drag_group)
-        layout.addWidget(expression_group)
-        layout.addWidget(motion_group)
+        layout.addWidget(idle_group)
         layout.addStretch()
         
         return widget
-
+    
     # ================================
-    # 🆕 ドラッグ制御ハンドラー
+    # ドラッグ制御ハンドラー
     # ================================
     
     def on_drag_toggle(self, checked: bool):
@@ -472,7 +608,6 @@ class TabbedModelingControl(QWidget):
             self.drag_reset_btn.setEnabled(False)
         
         self.drag_control_toggled.emit(checked)
-        print(f"🎯 ドラッグ制御: {'ON' if checked else 'OFF'}")
     
     def on_sensitivity_changed(self, value: int):
         """感度変更"""
@@ -484,7 +619,6 @@ class TabbedModelingControl(QWidget):
     
     def on_drag_reset(self):
         """ドラッグ角度リセット"""
-        # 親ウィジェットを辿ってCharacterDisplayWidgetを探す
         parent = self.parent()
         while parent and not hasattr(parent, 'character_display'):
             parent = parent.parent()
@@ -493,33 +627,17 @@ class TabbedModelingControl(QWidget):
             char_display = parent.character_display
             if hasattr(char_display, 'reset_drag_angles'):
                 char_display.reset_drag_angles()
-                print("↺ ドラッグ角度リセット完了")
             else:
                 print("⚠️ reset_drag_angles メソッドが見つかりません")
         else:
             print("⚠️ CharacterDisplayWidgetが見つかりません")
-
+    
     # ================================
-    # 状態取得ヘルパー
+    # 表情関連
     # ================================
-
-    def is_drag_enabled(self) -> bool:
-        """現在のドラッグ制御のON/OFF状態を返す"""
-        return self.drag_toggle_btn.isChecked()
-
-    def get_drag_sensitivity(self) -> float:
-        """現在のドラッグ感度（0.1〜1.0）を返す"""
-        return self.drag_sensitivity_slider.value() / 100.0
-
-
-    # ================================
-    # 既存のメソッド
-    # ================================
-
+    
     def set_expression(self, expression_name: str):
         """表情を設定"""
-        print(f"🔍 set_expression('{expression_name}') が呼ばれました")
-        
         parent = self.parent()
         while parent and not hasattr(parent, 'character_display'):
             parent = parent.parent()
@@ -533,11 +651,9 @@ class TabbedModelingControl(QWidget):
                 QMessageBox.warning(self, "エラー", "Live2Dモデルが読み込まれていません")
         else:
             print("⚠️ CharacterDisplayWidgetが見つかりません")
-
+    
     def reset_expression(self):
         """表情をデフォルトに戻す"""
-        print("🔍 reset_expression() が呼ばれました")
-        
         parent = self.parent()
         while parent and not hasattr(parent, 'character_display'):
             parent = parent.parent()
@@ -547,12 +663,15 @@ class TabbedModelingControl(QWidget):
             if hasattr(char_display, 'live2d_webview') and char_display.live2d_webview.is_model_loaded:
                 script = "window.resetExpression();"
                 char_display.live2d_webview.page().runJavaScript(script)
-                print("✅ 表情リセットJS送信完了")
+                print("✅ 表情リセット")
             else:
-                print("❌ モデル未読み込み")
                 QMessageBox.warning(self, "エラー", "Live2Dモデルが読み込まれていません")
         else:
             print("⚠️ CharacterDisplayWidgetが見つかりません")
+    
+    # ================================
+    # パラメータグループ作成
+    # ================================
     
     def create_parameter_group(self, parent_layout: QVBoxLayout, group_name: str, 
                                params: List[tuple]):
@@ -659,6 +778,10 @@ class TabbedModelingControl(QWidget):
         
         parent_layout.addWidget(group)
     
+    # ================================
+    # パラメータ変更ハンドラー
+    # ================================
+    
     def on_slider_changed(self, param_id: str, value: int):
         if self.is_loading:
             return
@@ -731,3 +854,15 @@ class TabbedModelingControl(QWidget):
         self.is_loading = False
         
         print(f"✅ モデリング：{len(parameters)}個のパラメータ反映完了")
+    
+    # ================================
+    # 状態取得ヘルパー
+    # ================================
+    
+    def is_drag_enabled(self) -> bool:
+        """現在のドラッグ制御のON/OFF状態を返す"""
+        return self.drag_toggle_btn.isChecked()
+
+    def get_drag_sensitivity(self) -> float:
+        """現在のドラッグ感度（0.1〜1.0）を返す"""
+        return self.drag_sensitivity_slider.value() / 100.0
