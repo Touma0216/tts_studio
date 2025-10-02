@@ -22,7 +22,8 @@ class TTSEngine:
         self.model = None
         self.is_loaded = False
         self.model_info = {}
-        
+        self._use_autocast = torch.cuda.is_available()
+
         # core/tts_engine.py の default_params を修正
         self.default_params = {
             'style': 'Neutral',
@@ -364,6 +365,10 @@ class TTSEngine:
             finally:
                 sys.stdout = old_stdout
                 sys.stderr = old_stderr
+
+            self._inference_device = device
+            self._use_autocast = device == "cuda"
+
             
             self.model_info = {
                 'model_path': model_path,
@@ -495,11 +500,27 @@ class TTSEngine:
                 
                 # 推論実行
                 kwargs = self._build_infer_kwargs(text, synth_params)
-                sr, raw_audio = self.model.infer(**kwargs)
-                
+
+                sr = raw_audio = None
+                autocast_enabled = torch.cuda.is_available() and getattr(self, "_use_autocast", False)
+
+                if autocast_enabled:
+                    try:
+                        with torch.cuda.amp.autocast():
+                            sr, raw_audio = self.model.infer(**kwargs)
+                    except (AssertionError, RuntimeError, FloatingPointError) as amp_error:
+                        logging.getLogger(__name__).warning(
+                            "AMP inference failed, retrying without autocast: %s", amp_error
+                        )
+                        self._use_autocast = False
+                        sr, raw_audio = self.model.infer(**kwargs)
+                else:
+                    sr, raw_audio = self.model.infer(**kwargs)            
             finally:
                 sys.stdout = old_stdout
                 sys.stderr = old_stderr
+            if isinstance(raw_audio, torch.Tensor):
+                raw_audio = raw_audio.detach().cpu().float().numpy()
             
             if raw_audio is None or len(raw_audio) == 0:
                 raise RuntimeError("音声データが生成されませんでした")
