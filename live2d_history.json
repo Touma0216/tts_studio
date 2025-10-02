@@ -5,7 +5,7 @@
       "model_folder_path": "F:\\零音ほのか　データ\\honoka_live2d_accessory",
       "name": "honoka_live2d_accessory",
       "created_at": "2025-09-28T13:15:56.677296",
-      "last_used": "2025-10-02T19:13:37.603379",
+      "last_used": "2025-10-02T19:23:09.113483",
       "ui_settings": {
         "scale": 1.0,
         "position_x": 0.0,
@@ -14,18 +14,18 @@
         "auto_eye_blink": true,
         "lip_sync_gain": 1.0,
         "background_visible": true,
-        "zoom_percent": 500,
-        "h_position": 47,
-        "v_position": 96,
+        "zoom_percent": 270,
+        "h_position": 51,
+        "v_position": 97,
         "minimap_visible": false,
         "background_settings": {
           "mode": "chroma",
-          "color": "#00ff6a",
+          "color": "#0000ff",
           "alpha": 1.0,
           "previewAlpha": 1.0
         }
       }
     }
   ],
-  "last_updated": "2025-10-02T19:13:37.603379"
+  "last_updated": "2025-10-02T19:23:09.113483"
 }

@@ -866,8 +866,12 @@ class CharacterDisplayWidget(QWidget):
                 'previewAlpha': kwargs.get('previewAlpha', 0.0)
             })
         elif mode == 'chroma':
+            color = kwargs.get(
+                'color',
+                self.live2d_background_settings.get('color', '#00ff00')
+            )
             new_settings.update({
-                'color': color_code,
+                'color': color,
                 'alpha': kwargs.get('alpha', 1.0),
                 'previewAlpha': kwargs.get('previewAlpha', 1.0)
             })
