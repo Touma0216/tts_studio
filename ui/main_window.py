@@ -15,7 +15,7 @@ from .keyboard_shortcuts import KeyboardShortcutManager
 from .sliding_menu import SlidingMenuWidget
 from .help_dialog import HelpDialog
 from .character_display import CharacterDisplayWidget
-from .tts_worker import TTSWorker
+from .tts_worker import TTSWorker, SequentialTTSWorker
 from core.tts_engine import TTSEngine
 from core.model_manager import ModelManager
 from core.audio_processor import AudioProcessor
@@ -25,6 +25,7 @@ from core.lip_sync_engine import LipSyncEngine, LipSyncData, VowelFrame
 
 class TTSStudioMainWindow(QMainWindow):
     tts_synthesis_requested = pyqtSignal(str, dict, bool)
+    sequential_synthesis_requested = pyqtSignal(object, object)
     def __init__(self, live2d_url=None, live2d_server_manager=None):
         super().__init__()
         self.live2d_url = live2d_url
@@ -38,10 +39,14 @@ class TTSStudioMainWindow(QMainWindow):
         # リップシンクエンジン追加
         self.lip_sync_engine = LipSyncEngine()
         self.setup_tts_worker()
+        self.setup_sequential_worker()
+
         
         self.last_generated_audio = None
         self.last_sample_rate = None
         self._tts_busy = False
+        self._sequential_busy = False
+
         
         self.init_ui()
         self.help_dialog = HelpDialog(self)
@@ -209,6 +214,21 @@ class TTSStudioMainWindow(QMainWindow):
         self.tts_synthesis_requested.connect(self.tts_worker.synthesize)
         self.tts_thread.finished.connect(self.tts_worker.deleteLater)
         self.tts_thread.start()
+
+    def setup_sequential_worker(self):
+        """連続再生用のバックグラウンドワーカー初期化"""
+        self.sequential_thread = QThread(self)
+        self.sequential_worker = SequentialTTSWorker(
+            self.tts_engine,
+            self.lip_sync_engine,
+            self.audio_processor,
+            self.audio_effects_processor
+        )
+        self.sequential_worker.moveToThread(self.sequential_thread)
+        self.sequential_worker.sequence_finished.connect(self.on_sequential_synthesis_finished)
+        self.sequential_synthesis_requested.connect(self.sequential_worker.synthesize_sequence)
+        self.sequential_thread.finished.connect(self.sequential_worker.deleteLater)
+        self.sequential_thread.start()
 
     def on_lipsync_settings_changed(self, settings):
         """リップシンク設定変更時の処理 - 完全修正版"""
@@ -711,6 +731,37 @@ class TTSStudioMainWindow(QMainWindow):
                 
                 self.send_lipsync_to_live2d(lipsync_data)
                 print(f"🎭 リップシンク実行: {len(lipsync_data.vowel_frames)}フレーム")
+
+        except Exception as e:
+            QMessageBox.critical(self, "エラー", f"音声再生処理に失敗しました: {str(e)}")
+
+    def on_sequential_synthesis_finished(self, sample_rate, audio, lipsync_data, error_message):
+        """連続再生用ワーカーからの結果を処理"""
+        self._sequential_busy = False
+        self.sequential_play_btn.setEnabled(True)
+
+        if error_message:
+            print(error_message)
+            QMessageBox.critical(self, "エラー", "連続再生の音声合成に失敗しました。\n詳細はコンソールを確認してください。")
+            return
+
+        if audio is None or sample_rate is None:
+            print("⚠️ 連続再生の音声データがありません。")
+            return
+
+        try:
+            self.last_generated_audio, self.last_sample_rate = audio, sample_rate
+
+            import sounddevice as sd
+            sd.play(audio, sample_rate, blocking=False)
+
+            if (lipsync_data and
+                self.tabbed_audio_control.is_lip_sync_enabled() and
+                hasattr(self.character_display, 'live2d_webview') and
+                self.character_display.live2d_webview.is_model_loaded):
+
+                self.send_lipsync_to_live2d(lipsync_data)
+                print(f"🎭 リップシンク実行 (連続再生): {len(lipsync_data.vowel_frames)}フレーム")
             
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"音声再生処理に失敗しました: {str(e)}")
@@ -800,18 +851,31 @@ class TTSStudioMainWindow(QMainWindow):
         return final_audio, sample_rate, combined_lipsync
 
     def play_sequential(self):
-        if not self.tts_engine.is_loaded: return
+        if not self.tts_engine.is_loaded:
+            return
+
+        if self._sequential_busy:
+            print("⏳ 連続再生処理中です。完了までお待ちください。")
+            return
+
+        texts_data = self.multi_text.get_all_texts_and_parameters()
+        if not texts_data:
+            QMessageBox.information(self, "情報", "処理するテキストがありません。")
+            return
+
+        options = {
+            'enable_lipsync': self.tabbed_audio_control.is_lip_sync_enabled(),
+            'apply_cleaner': self.tabbed_audio_control.is_cleaner_enabled(),
+            'cleaner_settings': self.tabbed_audio_control.get_cleaner_settings() if self.tabbed_audio_control.is_cleaner_enabled() else {},
+            'apply_effects': self.tabbed_audio_control.is_effects_enabled(),
+            'effects_settings': self.tabbed_audio_control.get_effects_settings() if self.tabbed_audio_control.is_effects_enabled() else {},
+            'trim_threshold': 0.01,
+        }
+
+        self._sequential_busy = True        
         self.sequential_play_btn.setEnabled(False)
-        final_audio, sr, lipsync_data = self._synthesize_and_process_all()
-        self.sequential_play_btn.setEnabled(True)
-        if final_audio is not None and sr is not None:
-            import sounddevice as sd
-            sd.play(final_audio, sr, blocking=False)
-            if (lipsync_data and
-                self.tabbed_audio_control.is_lip_sync_enabled() and
-                hasattr(self.character_display, 'live2d_webview') and
-                self.character_display.live2d_webview.is_model_loaded):
-                self.send_lipsync_to_live2d(lipsync_data)
+        self.sequential_synthesis_requested.emit(texts_data, options)
+
             
     def save_individual(self):
         folder_path = QFileDialog.getExistingDirectory(self, "個別保存フォルダを選択")
@@ -876,6 +940,9 @@ class TTSStudioMainWindow(QMainWindow):
                 self.tts_thread.quit()
                 self.tts_thread.wait(5000)
                 self.character_display.live2d_manager.save_history()
+            if hasattr(self, 'sequential_thread') and self.sequential_thread.isRunning():
+                self.sequential_thread.quit()
+                self.sequential_thread.wait(5000)
         except Exception as e:
             print(f"終了処理中にエラー: {e}")
         event.accept()
