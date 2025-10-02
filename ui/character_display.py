@@ -4,7 +4,7 @@ import base64
 import mimetypes
 from pathlib import Path
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-                             QFileDialog, QMessageBox,
+                             QFileDialog, QMessageBox, QLineEdit,
                              QScrollArea, QSlider, QDialog, QTabWidget, QMenu)
 from PyQt6.QtCore import Qt, QRect, QPoint, QTimer, QUrl, pyqtSignal, QObject, pyqtSlot
 from PyQt6.QtGui import QFont, QPixmap, QPainter, QPen, QColor
@@ -684,6 +684,37 @@ class CharacterDisplayWidget(QWidget):
         header_layout.addWidget(self.live2d_background_btn)
         self._create_live2d_background_menu()
         self.update_live2d_background_button()
+
+        # クロマキー色入力
+        chroma_layout = QHBoxLayout()
+        chroma_layout.setContentsMargins(0, 0, 0, 0)
+        chroma_layout.setSpacing(6)
+
+        chroma_label = QLabel("クロマキー色 (#RRGGBB)")
+        chroma_label.setStyleSheet("color: #555; padding-left: 2px;")
+        chroma_layout.addWidget(chroma_label)
+
+        self.chroma_color_input = QLineEdit()
+        self.chroma_color_input.setPlaceholderText("#00ff00")
+        self.chroma_color_input.setMaxLength(7)
+        self.chroma_color_input.setText('#00ff00')
+        self.chroma_color_input.setToolTip("クロマキー背景に使用するカラーコードを入力 (#RRGGBB)")
+        chroma_layout.addWidget(self.chroma_color_input, 1)
+
+        chroma_apply_btn = QPushButton("適用")
+        chroma_apply_btn.setToolTip("入力したカラーコードでクロマキー背景を適用")
+        chroma_apply_btn.setStyleSheet(
+            "QPushButton { background-color: #f8f9fa; border: 1px solid #ccc; border-radius: 4px; "
+            "font-size: 11px; padding: 4px 10px; } "
+            "QPushButton:hover:enabled { background-color: #e9ecef; } "
+            "QPushButton:disabled { color: #ccc; }"
+        )
+        chroma_apply_btn.clicked.connect(self.apply_chroma_color_from_input)
+        chroma_layout.addWidget(chroma_apply_btn)
+
+        layout.addLayout(chroma_layout)
+        if self.live2d_background_settings.get('mode') == 'chroma':
+            self._update_chroma_color_input(self.live2d_background_settings.get('color'))
         
         # タブウィジェット
         self.mode_tab_widget = QTabWidget()
@@ -741,10 +772,17 @@ class CharacterDisplayWidget(QWidget):
             )
         )
 
-        chroma_action = self.live2d_background_menu.addAction("クロマキー（グリーン）")
-        chroma_action.triggered.connect(
+        chroma_green_action = self.live2d_background_menu.addAction("クロマキー（グリーン）")
+        chroma_green_action.triggered.connect(
             lambda checked=False: self.set_live2d_background_mode(
-                'chroma', color='#00ff6a', alpha=1.0, previewAlpha=1.0
+                'chroma', color='#00ff00', alpha=1.0, previewAlpha=1.0
+            )
+        )
+
+        chroma_blue_action = self.live2d_background_menu.addAction("クロマキー（ブルー）")
+        chroma_blue_action.triggered.connect(
+            lambda checked=False: self.set_live2d_background_mode(
+                'chroma', color='#0000ff', alpha=1.0, previewAlpha=1.0
             )
         )
 
@@ -785,7 +823,8 @@ class CharacterDisplayWidget(QWidget):
         elif mode == 'transparent':
             tooltip = "Live2D表示の背景を完全透明に切り替え"
         elif mode == 'chroma':
-            tooltip = "Live2D表示の背景をクロマキー用のグリーンに切り替え"
+            color = self.live2d_background_settings.get('color', '#00ff00')
+            tooltip = f"Live2D表示の背景をクロマキー用の色 ({color.upper()}) に切り替え"
         elif mode == 'default':
             tooltip = "Live2D表示の背景を標準のグラデーションに切り替え"
         else:
@@ -828,7 +867,7 @@ class CharacterDisplayWidget(QWidget):
             })
         elif mode == 'chroma':
             new_settings.update({
-                'color': kwargs.get('color', '#00ff6a'),
+                'color': color_code,
                 'alpha': kwargs.get('alpha', 1.0),
                 'previewAlpha': kwargs.get('previewAlpha', 1.0)
             })
@@ -855,8 +894,48 @@ class CharacterDisplayWidget(QWidget):
         self._background_retry_attempts = 0
         self.update_live2d_background_button()
         self.apply_live2d_background(notify_user=True)
+        if mode == 'chroma':
+            self._update_chroma_color_input(new_settings.get('color'))
         if self.current_live2d_id:
             self.save_live2d_ui_settings()
+
+    def apply_chroma_color_from_input(self):
+        if not hasattr(self, 'chroma_color_input'):
+            return
+
+        color_text = (self.chroma_color_input.text() or '').strip()
+        normalized = self._normalize_color_code(color_text)
+
+        if not normalized:
+            QMessageBox.warning(self, "カラーコードの形式", "#RRGGBB形式のカラーコードを入力してください。")
+            return
+
+        self.set_live2d_background_mode('chroma', color=normalized, alpha=1.0, previewAlpha=1.0)
+
+    def _normalize_color_code(self, color_text: str) -> Optional[str]:
+        if not color_text:
+            return None
+
+        if not color_text.startswith('#'):
+            color_text = f'#{color_text}'
+
+        if len(color_text) != 7:
+            return None
+
+        hex_part = color_text[1:]
+        try:
+            int(hex_part, 16)
+        except ValueError:
+            return None
+
+        return f'#{hex_part.lower()}'
+
+    def _update_chroma_color_input(self, color: Optional[str]):
+        if not hasattr(self, 'chroma_color_input') or color is None:
+            return
+        self.chroma_color_input.blockSignals(True)
+        self.chroma_color_input.setText(color.lower())
+        self.chroma_color_input.blockSignals(False)
 
     def _load_background_image_data(self, image_path: str):
         if not image_path:
@@ -1745,6 +1824,8 @@ class CharacterDisplayWidget(QWidget):
         self._background_image_warning_shown = False
         self._background_retry_attempts = 0
         self.update_live2d_background_button()
+        if self.live2d_background_settings.get('mode') == 'chroma':
+            self._update_chroma_color_input(self.live2d_background_settings.get('color'))
         QTimer.singleShot(0, lambda: self.apply_live2d_background())
 
     def save_live2d_ui_settings(self):
