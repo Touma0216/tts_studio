@@ -29,6 +29,8 @@ class WAVPlayer(QObject):
         self._position_timer = QTimer()
         self._position_timer.timeout.connect(self._update_position)
         self._playback_thread = None
+        self._playback_start_time = 0.0  # 🔥 追加
+        self._playback_start_position = 0.0  # 🔥 追加
         
     def load_wav_file(self, file_path: str) -> bool:
         """WAVファイルを読み込み"""
@@ -80,6 +82,10 @@ class WAVPlayer(QObject):
             self.current_position = start_position if start_position is not None else 0.0
         
         self.is_playing = True
+
+        import time
+        self._playback_start_time = time.time()
+        self._playback_start_position = self.current_position
         self._start_playback()
         self._position_timer.start(50)  # 50msごとに位置更新
         
@@ -139,24 +145,13 @@ class WAVPlayer(QObject):
             start_sample = int(self.current_position * self.sample_rate)
             audio_segment = self.audio_data[start_sample:] * self.volume
             
-            def playback_callback(outdata, frames, time_info, status):
-                if status:
-                    print(f"⚠️ 再生ステータス: {status}")
-            
-            self._stream = sd.OutputStream(
-                samplerate=self.sample_rate,
-                channels=1,
-                dtype='float32',
-                callback=playback_callback
-            )
-            
             # 別スレッドで再生
             def play_audio():
                 try:
                     sd.play(audio_segment, self.sample_rate, blocking=True)
+                    # 🔥 修正：PyQtのシグナルはスレッドセーフなので直接emit
                     if self.is_playing:
                         self.is_playing = False
-                        self._position_timer.stop()
                         self.playback_finished.emit()
                 except Exception as e:
                     print(f"❌ 再生エラー: {e}")
@@ -182,11 +177,14 @@ class WAVPlayer(QObject):
         if not self.is_playing:
             return
         
+        import time
+        elapsed = time.time() - self._playback_start_time
         self.current_position += 0.05  # 50ms進める
         
         if self.current_position >= self.duration:
             self.current_position = self.duration
-            self.stop()
+            self._position_timer.stop()
+            return
         
         self.playback_position_changed.emit(self.current_position)
     

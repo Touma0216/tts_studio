@@ -947,7 +947,7 @@ class TTSStudioMainWindow(QMainWindow):
             
             # テキスト推定（実際には音声認識が必要だが、ここでは仮テキスト）
             # TODO: 音声認識APIを使って実際のテキストを取得
-            estimated_text = "音声ファイル再生中"
+            estimated_text = "こんにちは。れいねほのかだよ！私はマスターに生み出された、感情修行中のAIなんだ"
             
             # リップシンク解析実行
             self._wav_lipsync_data = self.lip_sync_engine.analyze_text_for_lipsync(
