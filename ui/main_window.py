@@ -21,7 +21,7 @@ from core.model_manager import ModelManager
 from core.audio_processor import AudioProcessor
 from core.audio_analyzer import AudioAnalyzer
 from core.audio_effects_processor import AudioEffectsProcessor
-from core.lip_sync_engine import LipSyncEngine
+from core.lip_sync_engine import LipSyncEngine, LipSyncData, VowelFrame
 
 class TTSStudioMainWindow(QMainWindow):
     tts_synthesis_requested = pyqtSignal(str, dict, bool)
@@ -725,30 +725,93 @@ class TTSStudioMainWindow(QMainWindow):
         texts_data = self.multi_text.get_all_texts_and_parameters()
         if not texts_data:
             QMessageBox.information(self, "情報", "処理するテキストがありません。")
-            return None, None
+            return None, None, None
         all_audio, sample_rate = [], None
+        combined_frames = []
+        combined_texts = []
+        offset_time = 0.0
+
+        lipsync_enabled = (
+            self.tabbed_audio_control.is_lip_sync_enabled() and
+            self.lip_sync_engine and
+            self.lip_sync_engine.is_available()
+        )
         for data in texts_data:
+            text = (data['text'] or '').strip()
+            if not text:
+                continue
             params = self.tabbed_audio_control.get_parameters(data['row_id']) or data['parameters']
-            sr, audio = self.tts_engine.synthesize(data['text'], **params)
-            if sample_rate is None: sample_rate = sr
+            sr, audio = self.tts_engine.synthesize(text, **params)
+            if sample_rate is None:
+                sample_rate = sr
             audio = self.apply_audio_cleaning(audio, sr)
             audio = self.apply_audio_effects(audio, sr)
             audio = self.trim_silence(audio, sr)
+
+            if audio.size == 0:
+                continue
+
+            segment_duration = len(audio) / sr
+
+            if lipsync_enabled:
+                try:
+                    lipsync_segment = self.lip_sync_engine.analyze_text_for_lipsync(
+                        text=text,
+                        audio_data=audio,
+                        sample_rate=sr
+                    )
+                except Exception:
+                    lipsync_segment = None
+
+                if lipsync_segment and lipsync_segment.vowel_frames:
+                    for frame in lipsync_segment.vowel_frames:
+                        combined_frames.append(VowelFrame(
+                            timestamp=frame.timestamp + offset_time,
+                            vowel=frame.vowel,
+                            intensity=frame.intensity,
+                            duration=frame.duration,
+                            is_ending=frame.is_ending
+                        ))
+                    offset_time += lipsync_segment.total_duration
+                else:
+                    offset_time += segment_duration
+            else:
+                offset_time += segment_duration
             all_audio.append(audio)
+            combined_texts.append(text)
+
+        if not all_audio:
+            return None, sample_rate, None
         final_audio = np.concatenate(all_audio).astype(np.float32)
         max_val = np.abs(final_audio).max()
-        if max_val > 0.9: final_audio *= 0.9 / max_val
+        if max_val > 0.9:
+            final_audio *= 0.9 / max_val
         self.last_generated_audio, self.last_sample_rate = final_audio, sample_rate
-        return final_audio, sample_rate
-        
+        combined_lipsync = None
+        if combined_frames and sample_rate:
+            total_duration = len(final_audio) / sample_rate
+            combined_lipsync = LipSyncData(
+                text="\n".join(combined_texts),
+                total_duration=total_duration,
+                vowel_frames=combined_frames,
+                sample_rate=sample_rate
+            )
+
+        return final_audio, sample_rate, combined_lipsync
+
     def play_sequential(self):
         if not self.tts_engine.is_loaded: return
         self.sequential_play_btn.setEnabled(False)
-        final_audio, sr = self._synthesize_and_process_all()
+        final_audio, sr, lipsync_data = self._synthesize_and_process_all()
         self.sequential_play_btn.setEnabled(True)
-        if final_audio is not None:
+        if final_audio is not None and sr is not None:
             import sounddevice as sd
             sd.play(final_audio, sr, blocking=False)
+            if (lipsync_data and
+                self.tabbed_audio_control.is_lip_sync_enabled() and
+                hasattr(self.character_display, 'live2d_webview') and
+                self.character_display.live2d_webview.is_model_loaded):
+                self.send_lipsync_to_live2d(lipsync_data)
             
     def save_individual(self):
         folder_path = QFileDialog.getExistingDirectory(self, "個別保存フォルダを選択")
