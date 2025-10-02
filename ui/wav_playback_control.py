@@ -21,6 +21,7 @@ class WAVPlaybackControl(QWidget):
     # 🆕 文字起こし関連シグナル
     transcription_text_edited = pyqtSignal(str)  # テキスト編集
     re_analyze_requested = pyqtSignal(str)  # 再解析リクエスト
+    save_transcription_requested = pyqtSignal()  # 🆕 保存リクエスト
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -33,6 +34,7 @@ class WAVPlaybackControl(QWidget):
         self.duration = 0.0
         self.current_position = 0.0
         self.transcribed_text = ""  # 🆕
+        self.transcription_segments = []  # 🆕 タイムスタンプ付きセグメント
         
         self.init_ui()
     
@@ -380,8 +382,9 @@ class WAVPlaybackControl(QWidget):
         """)
         self.transcription_text_edit.textChanged.connect(self.on_transcription_text_changed)
         
-        # 再解析ボタン
-        reanalyze_layout = QHBoxLayout()
+        # 再解析＆保存ボタン
+        button_layout = QHBoxLayout()
+        
         self.reanalyze_btn = QPushButton("🔄 再解析してリップシンク更新")
         self.reanalyze_btn.setEnabled(False)
         self.reanalyze_btn.setStyleSheet("""
@@ -407,14 +410,41 @@ class WAVPlaybackControl(QWidget):
         """)
         self.reanalyze_btn.clicked.connect(self.on_reanalyze_clicked)
         
-        reanalyze_layout.addWidget(self.reanalyze_btn)
-        reanalyze_layout.addStretch()
+        # 🆕 保存ボタン
+        self.save_transcription_btn = QPushButton("💾 タイムスタンプ付きで保存")
+        self.save_transcription_btn.setEnabled(False)
+        self.save_transcription_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover:enabled {
+                background-color: #218838;
+            }
+            QPushButton:pressed:enabled {
+                background-color: #1e7e34;
+            }
+            QPushButton:disabled {
+                background-color: #d0d0d0;
+                color: #888;
+            }
+        """)
+        self.save_transcription_btn.clicked.connect(self.on_save_transcription_clicked)
+        
+        button_layout.addWidget(self.reanalyze_btn)
+        button_layout.addWidget(self.save_transcription_btn)  # 🆕
+        button_layout.addStretch()
         
         transcription_layout.addLayout(status_layout)
         transcription_layout.addWidget(self.transcription_progress)
         transcription_layout.addWidget(text_label)
         transcription_layout.addWidget(self.transcription_text_edit)
-        transcription_layout.addLayout(reanalyze_layout)
+        transcription_layout.addLayout(button_layout)  # 🆕 reanalyze_layout → button_layout
         transcription_group.setLayout(transcription_layout)
         
         # レイアウト組み立て
@@ -443,15 +473,23 @@ class WAVPlaybackControl(QWidget):
             self.transcription_progress.setRange(0, 100)
             self.transcription_progress.setValue(100 if "完了" in status else 0)
     
-    def set_transcription_text(self, text: str):
-        """文字起こし結果をセット"""
+    def set_transcription_text(self, text: str, segments: list = None):
+        """文字起こし結果をセット
+        
+        Args:
+            text: 全文テキスト
+            segments: タイムスタンプ付きセグメントリスト（オプション）
+        """
         self.transcribed_text = text
+        self.transcription_segments = segments or []  # 🆕
+        
         self.transcription_text_edit.blockSignals(True)
         self.transcription_text_edit.setPlainText(text)
         self.transcription_text_edit.blockSignals(False)
         
-        # 再解析ボタンを有効化
+        # ボタンを有効化
         self.reanalyze_btn.setEnabled(True)
+        self.save_transcription_btn.setEnabled(len(self.transcription_segments) > 0)  # 🆕
     
     def get_transcription_text(self) -> str:
         """現在の文字起こしテキストを取得"""
@@ -472,6 +510,15 @@ class WAVPlaybackControl(QWidget):
         
         self.re_analyze_requested.emit(edited_text)
         print(f"🔄 再解析リクエスト: {edited_text[:50]}...")
+    
+    def on_save_transcription_clicked(self):
+        """💾 保存ボタンクリック"""
+        if not self.transcription_segments:
+            QMessageBox.warning(self, "警告", "保存するデータがありません")
+            return
+        
+        self.save_transcription_requested.emit()
+        print("💾 文字起こし保存リクエスト")
     
     # ========================================
     # 既存メソッド（元のまま）

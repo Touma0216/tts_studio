@@ -553,6 +553,7 @@ class TTSStudioMainWindow(QMainWindow):
             # 🆕 文字起こし関連シグナル接続
             wav_control = self.tabbed_audio_control.get_wav_playback_control()
             wav_control.re_analyze_requested.connect(self.on_wav_reanalyze_requested)
+            wav_control.save_transcription_requested.connect(self.on_save_transcription_requested)  # 🆕 追加
             
             print("✅ WAV再生機能統合完了")
             
@@ -960,6 +961,9 @@ class TTSStudioMainWindow(QMainWindow):
     # 📍 場所: 新規メソッド（on_wav_file_loaded の下に追加）
     # ========================================
 
+    # 📍 ファイル: ui/main_window.py
+    # 📍 場所: _transcribe_and_generate_lipsync() メソッドを修正
+
     def _transcribe_and_generate_lipsync(self, file_path: str, wav_control):
         """Whisper文字起こし + リップシンク生成"""
         try:
@@ -967,14 +971,17 @@ class TTSStudioMainWindow(QMainWindow):
             wav_control.set_transcription_status("🎤 音声認識処理中...", is_processing=True)
             QApplication.processEvents()
             
-            # 🔥 Whisperで文字起こし実行
-            success, transcribed_text = self.whisper_transcriber.transcribe_wav(file_path, language="ja")
+            # Whisperで文字起こし実行
+            success, transcribed_text, segments = self.whisper_transcriber.transcribe_wav(  # 🆕 segments追加
+                file_path, 
+                language="ja"
+            )
             
             if success:
                 print(f"✅ 文字起こし成功: {transcribed_text[:50]}...")
                 
-                # UIにテキスト表示
-                wav_control.set_transcription_text(transcribed_text)
+                # UIにテキスト表示（セグメント付き）
+                wav_control.set_transcription_text(transcribed_text, segments)  # 🆕 segments追加
                 wav_control.set_transcription_status("✅ 文字起こし完了", is_processing=False)
                 
                 # リップシンクデータ生成
@@ -982,7 +989,7 @@ class TTSStudioMainWindow(QMainWindow):
                 
             else:
                 # エラー時
-                error_msg = transcribed_text  # エラーメッセージが返される
+                error_msg = transcribed_text
                 print(f"❌ 文字起こし失敗: {error_msg}")
                 wav_control.set_transcription_status(f"❌ エラー: {error_msg[:30]}...", is_processing=False)
                 
@@ -1060,6 +1067,50 @@ class TTSStudioMainWindow(QMainWindow):
         except Exception as e:
             print(f"❌ WAV再解析エラー: {e}")
             wav_control.set_transcription_status("❌ 再解析エラー", is_processing=False)
+
+    # 📍 ファイル: ui/main_window.py
+    # 📍 場所: 新規メソッド追加（on_wav_reanalyze_requested の下）
+
+    def on_save_transcription_requested(self):
+        """💾 文字起こし保存リクエスト"""
+        try:
+            wav_control = self.tabbed_audio_control.get_wav_playback_control()
+            
+            # セグメントデータを取得
+            segments = wav_control.transcription_segments
+            if not segments:
+                QMessageBox.warning(self, "エラー", "保存するデータがありません")
+                return
+            
+            # 保存先を選択
+            current_file = wav_control.get_current_file_path()
+            default_name = Path(current_file).stem + "_transcription.txt" if current_file else "transcription.txt"
+            
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "文字起こしを保存",
+                default_name,
+                "テキストファイル (*.txt)"
+            )
+            
+            if not file_path:
+                return
+            
+            # ファイルに保存
+            success = self.whisper_transcriber.save_transcription_to_file(
+                segments,
+                file_path,
+                include_timestamps=True
+            )
+            
+            if success:
+                QMessageBox.information(self, "完了", f"文字起こしを保存しました:\n{file_path}")
+            else:
+                QMessageBox.critical(self, "エラー", "ファイル保存に失敗しました")
+            
+        except Exception as e:
+            print(f"❌ 文字起こし保存エラー: {e}")
+            QMessageBox.critical(self, "エラー", f"保存エラー:\n{str(e)}")
     
     def on_wav_playback_started(self, start_position: float):
         """WAV再生開始"""
