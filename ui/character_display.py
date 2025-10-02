@@ -710,12 +710,12 @@ class CharacterDisplayWidget(QWidget):
         chroma_apply_btn.setToolTip("入力したカラーコードでクロマキー背景を適用")
         chroma_apply_btn.setStyleSheet(
             "QPushButton { background-color: #f8f9fa; border: 1px solid #ccc; border-radius: 4px; "
-            "font-size: 11px; padding: 4px 10px; } "
+            "font-size: 11px; padding: 4px 6px; } "
             "QPushButton:hover:enabled { background-color: #e9ecef; } "
             "QPushButton:disabled { color: #ccc; }"
         )
         chroma_apply_btn.clicked.connect(self.apply_chroma_color_from_input)
-        chroma_apply_btn.setMinimumWidth(70)
+        chroma_apply_btn.setFixedWidth(60)
 
         if self.live2d_background_settings.get('mode') == 'chroma':
             self._update_chroma_color_input(self.live2d_background_settings.get('color'))
