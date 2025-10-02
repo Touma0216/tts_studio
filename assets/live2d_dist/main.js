@@ -1560,11 +1560,6 @@ window.initializeRecordingChannel = function() {
     }
 };
 
-/**
- * 録画開始
- * @param {number} fps - フレームレート（デフォルト60）
- * @returns {boolean} 成功時true
- */
 window.startRecording = function(fps = 60) {
     try {
         if (recordingState.isRecording) {
@@ -1572,9 +1567,8 @@ window.startRecording = function(fps = 60) {
             return false;
         }
         
-        const canvas = document.getElementById('live2d-canvas');
-        if (!canvas) {
-            console.error('❌ Canvasが見つかりません');
+        if (!app || !app.renderer) {
+            console.error('❌ Pixi.js未初期化');
             return false;
         }
         
@@ -1593,7 +1587,8 @@ window.startRecording = function(fps = 60) {
             }
             
             try {
-                // CanvasからDataURL取得（PNG形式、透過あり）
+                // 🔥 修正：同期的にBase64取得
+                const canvas = app.renderer.extract.canvas(app.stage);
                 const dataURL = canvas.toDataURL('image/png');
                 
                 // Python側に送信
@@ -1624,6 +1619,7 @@ window.startRecording = function(fps = 60) {
         return false;
     }
 };
+
 /**
  * 録画停止
  * @returns {Object} 録画統計情報

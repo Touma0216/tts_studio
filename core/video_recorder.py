@@ -12,14 +12,14 @@ class VideoRecorder:
     """
     
     def __init__(self, output_path: str, width: int = 1920, height: int = 1080, 
-                 fps: int = 60, use_nvenc: bool = True):
+                fps: int = 60, use_nvenc: bool = True):
         """
         Args:
             output_path: 出力ファイルパス（拡張子なし）
             width: 動画幅
             height: 動画高さ
             fps: フレームレート
-            use_nvenc: True=NVENC録画、False=ProRes直接
+            use_nvenc: True=ffvhuff録画、False=ProRes直接（名前はそのまま）
         """
         self.output_path = Path(output_path)
         self.width = width
@@ -27,8 +27,8 @@ class VideoRecorder:
         self.fps = fps
         self.use_nvenc = use_nvenc
         
-        # 録画用の一時ファイル
-        self.temp_file = self.output_path.with_suffix('.mkv') if use_nvenc else None
+        # 録画用の一時ファイル（🔥 修正：.avi に変更）
+        self.temp_file = self.output_path.with_suffix('.avi') if use_nvenc else None
         
         # FFmpegプロセス
         self.process: Optional[subprocess.Popen] = None
@@ -45,44 +45,46 @@ class VideoRecorder:
         print(f"🎬 FFmpeg command: {' '.join(command)}")
         
         try:
+            # 🔥 修正：FFmpegログファイルを作成
+            stderr_log_path = self.output_path.with_suffix('.ffmpeg.log')
+            self.stderr_file = open(stderr_log_path, 'w', encoding='utf-8')
+            
             self.process = subprocess.Popen(
                 command,
                 stdin=subprocess.PIPE,
-                stdout=subprocess.DEVNULL,  # ← 修正：stdout破棄
-                stderr=subprocess.DEVNULL,  # ← 修正：stderr破棄（バッファ詰まり防止）
+                stdout=subprocess.PIPE,  # 🔥 修正：破棄しない
+                stderr=self.stderr_file,  # 🔥 修正：ログファイルに出力
                 bufsize=10**8  # 100MBバッファ
             )
             
             self.start_time = time.time()
             print(f"✅ 録画開始: {self.output_path}")
+            print(f"📝 FFmpegログ: {stderr_log_path}")
             
         except FileNotFoundError:
             print("❌ FFmpegが見つかりません。PATHに追加してください。")
+            if hasattr(self, 'stderr_file'):
+                self.stderr_file.close()
             raise
         except Exception as e:
             print(f"❌ 録画開始エラー: {e}")
-            raise
+            if hasattr(self, 'stderr_file'):
+                self.stderr_file.close()
             raise
     
     def _build_nvenc_command(self) -> list:
-        """NVENC録画用コマンド生成"""
+        """ffvhuff録画用コマンド生成（透過対応・可逆圧縮）"""
         return [
             'ffmpeg',
             '-y',
-            '-hwaccel', 'cuda',
             '-f', 'rawvideo',
             '-vcodec', 'rawvideo',
             '-s', f'{self.width}x{self.height}',
             '-pix_fmt', 'rgba',
             '-r', str(self.fps),
             '-i', '-',
-            '-c:v', 'hevc_nvenc',
-            '-pix_fmt', 'yuva420p',
-            '-preset', 'p4',
-            '-tune', 'hq',
-            '-rc', 'vbr',
-            '-cq', '23',
-            '-b:v', '30M',
+            '-c:v', 'ffvhuff',      # 🔥 透過対応・可逆圧縮コーデック
+            '-pix_fmt', 'rgba',      # 🔥 透過保持
             str(self.temp_file)
         ]
     
@@ -113,6 +115,10 @@ class VideoRecorder:
         """
         if self.process is None:
             raise RuntimeError("録画が開始されていません")
+        
+        if self.process.stdin is None or self.process.stdin.closed:
+            print(f"⚠️ FFmpegのstdinが閉じられています（フレーム#{self.frame_count}）")  # 🔥 追加
+            return  # 🔥 追加：エラーじゃなくて警告だけ
         
         if self.process.stdin is None or self.process.stdin.closed:
             raise RuntimeError("FFmpegのstdinが閉じられています")
@@ -151,18 +157,17 @@ class VideoRecorder:
             
             # FFmpegに書き込み
             bytes_written = self.process.stdin.write(frame_bytes)
-            self.process.stdin.flush()  # ← 追加：即座にフラッシュ
+            self.process.stdin.flush()
             
-            if self.frame_count == 0:
-                print(f"🔍 FFmpegへ書き込み完了: {bytes_written} bytes")
+            # 🔥 追加：毎フレームログ（問題特定用）
+            if self.frame_count % 10 == 0:  # 10フレームごと
+                print(f"✅ フレーム#{self.frame_count}: {bytes_written} bytes書き込み")
             
             self.frame_count += 1
             
-            # 100フレームごとに進捗表示
-            if self.frame_count % 100 == 0:
-                elapsed_sec = self.frame_count / self.fps
-                print(f"📹 録画中: {self.frame_count}フレーム ({elapsed_sec:.1f}秒)")
-                
+        except BrokenPipeError:  # 🔥 追加：パイプが壊れた場合
+            print(f"💥 BrokenPipeError at frame #{self.frame_count}: FFmpegプロセスが予期せず終了")
+            return
         except Exception as e:
             print(f"❌ フレーム書き込みエラー (frame #{self.frame_count}): {e}")
             import traceback
@@ -171,6 +176,9 @@ class VideoRecorder:
     
     def stop(self):
         """録画停止"""
+        import traceback
+        print("📹 stop()が呼ばれました")
+        print("".join(traceback.format_stack()))
         if self.process:
             try:
                 print("📹 FFmpegパイプをクローズ中...")
@@ -206,33 +214,65 @@ class VideoRecorder:
                 print(f"❌ 録画停止エラー: {e}")
                 import traceback
                 traceback.print_exc()
-    
+            finally:
+                # 🔥 追加：ログファイルを閉じる
+                if hasattr(self, 'stderr_file'):
+                    self.stderr_file.close()
+                    print("✅ FFmpegログファイルを閉じました")
+                    
+                    # 🔥 追加：ログの中身を表示
+                    stderr_log_path = self.output_path.with_suffix('.ffmpeg.log')
+                    if stderr_log_path.exists():
+                        print("\n" + "="*50)
+                        print("📋 FFmpegログの内容:")
+                        print("="*50)
+                        with open(stderr_log_path, 'r', encoding='utf-8') as f:
+                            log_content = f.read()
+                            print(log_content)
+                        print("="*50 + "\n")
+        
     def _convert_to_prores(self):
-        """NVENC録画をProRes 4444に変換"""
+        """ffvhuff録画をProRes 4444に変換（修正版：gbrap対応）"""
         output = self.output_path.with_suffix('.mov')
         
         command = [
             'ffmpeg',
             '-y',
-            '-hwaccel', 'cuda',
             '-i', str(self.temp_file),
             '-c:v', 'prores_ks',
             '-profile:v', '4444',
             '-pix_fmt', 'yuva444p10le',
+            '-alpha_bits', '16',  # 🔥 追加：アルファチャンネルビット深度
             '-vendor', 'ap10',
             str(output)
         ]
         
         print(f"🔄 変換コマンド: {' '.join(command)}")
         
+        # 🔥 追加：変換ログも保存
+        convert_log_path = self.output_path.with_suffix('.convert.log')
+        convert_log_file = open(convert_log_path, 'w', encoding='utf-8')
+        
         try:
             # 変換実行（最大5分）
             process = subprocess.run(
                 command, 
-                capture_output=True, 
+                stdout=subprocess.PIPE,  # 🔥 修正
+                stderr=convert_log_file,  # 🔥 ログ保存
                 text=True, 
                 timeout=300
             )
+            
+            convert_log_file.close()
+            
+            # 🔥 追加：変換ログを表示
+            if convert_log_path.exists():
+                print("\n" + "="*50)
+                print("📋 ProRes変換ログ:")
+                print("="*50)
+                with open(convert_log_path, 'r', encoding='utf-8') as f:
+                    print(f.read())
+                print("="*50 + "\n")
             
             if process.returncode == 0:
                 # 変換成功：ファイルサイズ確認
@@ -247,11 +287,12 @@ class VideoRecorder:
                     print(f"❌ 変換後のファイルが見つかりません: {output}")
             else:
                 print(f"❌ 変換失敗（終了コード: {process.returncode}）")
-                print(f"stderr: {process.stderr}")
                 
         except subprocess.TimeoutExpired:
             print("❌ 変換タイムアウト（5分経過）")
+            convert_log_file.close()
         except Exception as e:
             print(f"❌ 変換エラー: {e}")
+            convert_log_file.close()
             import traceback
             traceback.print_exc()
