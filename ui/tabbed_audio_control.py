@@ -34,6 +34,10 @@ class TabbedAudioControl(QWidget):
     wav_playback_stopped = pyqtSignal()
     wav_position_changed = pyqtSignal(float)  # 再生位置
     wav_volume_changed = pyqtSignal(float)  # 音量
+
+    # 🆕 物理演算シグナル
+    physics_toggled = pyqtSignal(bool)
+    physics_weight_changed = pyqtSignal(float)
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -132,6 +136,10 @@ class TabbedAudioControl(QWidget):
         # 🆕 アイドルモーションシグナル接続（中継）
         self.modeling_control.idle_motion_toggled.connect(self.idle_motion_toggled)
         self.modeling_control.idle_motion_param_changed.connect(self.idle_motion_param_changed)
+
+        # 🆕 物理演算シグナル接続（中継）
+        self.modeling_control.physics_toggled.connect(self.physics_toggled)
+        self.modeling_control.physics_weight_changed.connect(self.physics_weight_changed)
         
         self.main_tab_widget.addTab(self.modeling_control, "🎨 モデリング")
 

@@ -57,6 +57,10 @@ class TTSStudioMainWindow(QMainWindow):
         # リップシンク統合設定
         self.setup_lipsync_integration()
 
+        # 🆕 物理演算シグナル接続
+        self.tabbed_audio_control.physics_toggled.connect(self.on_physics_toggled)
+        self.tabbed_audio_control.physics_weight_changed.connect(self.on_physics_weight_changed)
+
         self.setup_wav_playback_integration()
         
         self.sliding_menu = SlidingMenuWidget(self)
@@ -930,6 +934,26 @@ class TTSStudioMainWindow(QMainWindow):
                 self.character_display.set_idle_motion_param(param_name, value)
         except Exception as e:
             print(f"❌ アイドルモーションパラメータ変更エラー ({param_name}): {e}")
+
+    # ================================
+    # 物理演算制御
+    # ================================
+    
+    def on_physics_toggled(self, enabled: bool):
+        """物理演算ON/OFF切り替え"""
+        try:
+            if hasattr(self.character_display, 'toggle_physics'):
+                self.character_display.toggle_physics(enabled)
+        except Exception as e:
+            print(f"❌ 物理演算切り替えエラー: {e}")
+    
+    def on_physics_weight_changed(self, weight: float):
+        """物理演算強度変更"""
+        try:
+            if hasattr(self.character_display, 'set_physics_weight'):
+                self.character_display.set_physics_weight(weight)
+        except Exception as e:
+            print(f"❌ 物理演算強度変更エラー: {e}")
 
     def sync_drag_control_state(self):
         """UIとLive2Dドラッグ制御の状態を同期"""

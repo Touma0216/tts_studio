@@ -2263,3 +2263,49 @@ class CharacterDisplayWidget(QWidget):
             self.live2d_webview.page().runJavaScript(script)
         except Exception as e:
             print(f"❌ アイドルモーションパラメータ設定エラー: {e}")
+
+    # ================================
+    # 物理演算制御
+    # ================================
+    
+    def toggle_physics(self, enabled: bool):
+        """物理演算のON/OFF切り替え"""
+        if not hasattr(self, 'live2d_webview') or not self.live2d_webview.is_model_loaded:
+            print("⚠️ Live2Dモデルが読み込まれていません")
+            return
+        
+        try:
+            script = f"""
+            (function() {{
+                if (typeof window.togglePhysics === 'function') {{
+                    window.togglePhysics({str(enabled).lower()});
+                    return true;
+                }} else {{
+                    console.error('❌ togglePhysics関数が見つかりません');
+                    return false;
+                }}
+            }})()
+            """
+            self.live2d_webview.page().runJavaScript(script)
+            print(f"💨 物理演算: {'ON' if enabled else 'OFF'}")
+        except Exception as e:
+            print(f"❌ 物理演算切り替えエラー: {e}")
+    
+    def set_physics_weight(self, weight: float):
+        """物理演算の強度設定（0.0-1.0）"""
+        if not hasattr(self, 'live2d_webview') or not self.live2d_webview.is_model_loaded:
+            return
+        
+        try:
+            script = f"""
+            (function() {{
+                if (typeof window.setPhysicsWeight === 'function') {{
+                    window.setPhysicsWeight({weight});
+                    return true;
+                }}
+                return false;
+            }})()
+            """
+            self.live2d_webview.page().runJavaScript(script)
+        except Exception as e:
+            print(f"❌ 物理演算強度設定エラー: {e}")

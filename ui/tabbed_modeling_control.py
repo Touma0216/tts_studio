@@ -1,4 +1,4 @@
-# ui/tabbed_modeling_control.py（ほのか専用完全版）
+# ui/tabbed_modeling_control.py（ほのか専用・物理演算対応版）
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QScrollArea,
                              QGroupBox, QSlider, QLabel, QPushButton, QTabWidget,
                              QGridLayout, QDoubleSpinBox, QMessageBox, QCheckBox)
@@ -8,7 +8,7 @@ from typing import Dict, List, Any
 
 
 class TabbedModelingControl(QWidget):
-    """零音ほのか専用モデリング制御"""
+    """零音ほのか専用モデリング制御（物理演算対応版）"""
     parameter_changed = pyqtSignal(str, float)
     parameters_changed = pyqtSignal(dict)
     
@@ -17,13 +17,19 @@ class TabbedModelingControl(QWidget):
     drag_sensitivity_changed = pyqtSignal(float)
     
     # アイドルモーション用シグナル
-    idle_motion_toggled = pyqtSignal(str, bool)  # (motion_type, enabled)
-    idle_motion_param_changed = pyqtSignal(str, float)  # (param_name, value)
+    idle_motion_toggled = pyqtSignal(str, bool)
+    idle_motion_param_changed = pyqtSignal(str, float)
+    
+    # 🆕 物理演算用シグナル
+    physics_toggled = pyqtSignal(bool)
+    physics_weight_changed = pyqtSignal(float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parameter_sliders = {}
+        self.physics_sliders = {}  # 🆕 物理演算制御用スライダー
         self.is_loading = False
+        self.physics_enabled = True  # 🆕 物理演算の状態
         
         self.update_timer = QTimer()
         self.update_timer.setSingleShot(True)
@@ -88,9 +94,7 @@ class TabbedModelingControl(QWidget):
         
         self.tabs.addTab(self.create_face_tab(), "😊 顔")
         self.tabs.addTab(self.create_body_tab(), "🧍 体")
-        self.tabs.addTab(self.create_hair_physics_tab(), "💨 髪・物理")
         self.tabs.addTab(self.create_emotion_tab(), "🎭 感情")
-        self.tabs.addTab(self.create_pupil_tab(), "👁️ 瞳")
         self.tabs.addTab(self.create_motion_tab(), "🎬 モーション")
         
         main_layout.addLayout(header)
@@ -176,63 +180,8 @@ class TabbedModelingControl(QWidget):
         layout.addWidget(scroll, 1)
         return widget
     
-    def create_hair_physics_tab(self):
-        """髪・物理タブ"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(10, 10, 10, 10)
-        
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea { border: none; background: white; }")
-        
-        content = QWidget()
-        content_layout = QVBoxLayout(content)
-        content_layout.setSpacing(10)
-        
-        # 髪揺れ
-        hair_params = [
-            ("髪揺れ 前", "ParamHairFront", -1.0, 1.0, 0.0, "左 ← → 右"),
-            ("髪揺れ 横", "ParamHairSide", -1.0, 1.0, 0.0, "左 ← → 右（横+後ろ+服）"),
-            ("胸揺れ 横", "ParamHairBack", -1.0, 1.0, 0.0, "左 ← → 右"),
-            ("胸揺れ 縦", "Param", -1.0, 1.0, 0.0, "下 ← → 上")
-        ]
-        self.create_parameter_group(content_layout, "髪・胸揺れ", hair_params)
-        
-        # 物理設定（今後実装予定）
-        physics_group = QGroupBox("物理設定（今後実装予定）")
-        physics_group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                border: 1px solid #ccc;
-                border-radius: 6px;
-                margin-top: 10px;
-                padding-top: 8px;
-                background-color: #f9f9f9;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-                background-color: white;
-                color: #999;
-            }
-        """)
-        
-        physics_layout = QVBoxLayout(physics_group)
-        physics_info = QLabel("重力X/Y、風X/Yの制御機能は今後実装予定です")
-        physics_info.setStyleSheet("color: #999; font-size: 11px; font-style: italic;")
-        physics_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        physics_layout.addWidget(physics_info)
-        
-        content_layout.addWidget(physics_group)
-        content_layout.addStretch()
-        scroll.setWidget(content)
-        layout.addWidget(scroll, 1)
-        return widget
-    
     def create_emotion_tab(self):
-        """感情制御タブ"""
+        """感情制御タブ（スライダー削除版）"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -246,7 +195,7 @@ class TabbedModelingControl(QWidget):
         content_layout.setSpacing(10)
         
         # 説明
-        info_label = QLabel("💡 感情パラメータを個別に調整して複合表情を作成できます")
+        info_label = QLabel("💡 表情プリセットボタンで感情表現を切り替えできます")
         info_label.setStyleSheet("""
             color: #5ba8f2;
             background-color: #e3f2fd;
@@ -257,17 +206,8 @@ class TabbedModelingControl(QWidget):
         info_label.setWordWrap(True)
         content_layout.addWidget(info_label)
         
-        # 感情パラメータ
-        emotion_params = [
-            ("喜び", "Param1", 0.0, 1.0, 0.0, "なし ← → 最大"),
-            ("驚き", "Param2", 0.0, 1.0, 0.0, "なし ← → 最大"),
-            ("恐怖", "Param3", 0.0, 1.0, 0.0, "なし ← → 最大"),
-            ("悲しみ", "Param4", 0.0, 1.0, 0.0, "なし ← → 最大")
-        ]
-        self.create_parameter_group(content_layout, "感情パラメータ（個別制御）", emotion_params)
-        
         # 表情プリセット
-        preset_group = QGroupBox("表情プリセット（ワンクリック）")
+        preset_group = QGroupBox("表情プリセット")
         preset_group.setStyleSheet("""
             QGroupBox {
                 font-weight: bold;
@@ -353,11 +293,12 @@ class TabbedModelingControl(QWidget):
         layout.addWidget(scroll, 1)
         return widget
     
-    def create_pupil_tab(self):
-        """瞳の制御タブ"""
+    def create_motion_tab(self):
+        """モーションタブ（物理演算対応版）"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(15)
         
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -365,28 +306,149 @@ class TabbedModelingControl(QWidget):
         
         content = QWidget()
         content_layout = QVBoxLayout(content)
-        content_layout.setSpacing(10)
+        content_layout.setSpacing(15)
         
-        # 瞳パラメータ
-        pupil_params = [
+        # 🆕 物理演算制御セクション
+        physics_group = QGroupBox("💨 物理演算制御")
+        physics_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #4caf50;
+                border-radius: 8px;
+                margin-top: 10px;
+                padding-top: 15px;
+                background-color: white;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 15px;
+                padding: 0 8px;
+                background-color: white;
+                color: #4caf50;
+            }
+        """)
+        
+        physics_layout = QVBoxLayout(physics_group)
+        
+        # 物理演算ON/OFFトグル
+        self.physics_toggle_btn = QPushButton("💨 物理演算 ON")
+        self.physics_toggle_btn.setCheckable(True)
+        self.physics_toggle_btn.setChecked(True)
+        self.physics_toggle_btn.setMinimumHeight(50)
+        self.physics_toggle_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #f0f0f0, stop:1 #d0d0d0);
+                border: 2px solid #999;
+                border-radius: 8px;
+                font-size: 14px;
+                font-weight: bold;
+                color: #666;
+            }
+            QPushButton:checked {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #81c784, stop:1 #4caf50);
+                border-color: #388e3c;
+                color: white;
+            }
+        """)
+        self.physics_toggle_btn.toggled.connect(self.on_physics_toggle)
+        physics_layout.addWidget(self.physics_toggle_btn)
+        
+        # 物理演算強度スライダー
+        physics_weight_layout = QHBoxLayout()
+        physics_weight_label = QLabel("強度:")
+        physics_weight_label.setFont(QFont("", 11, QFont.Weight.Bold))
+        physics_weight_label.setMinimumWidth(60)
+        
+        self.physics_weight_slider = QSlider(Qt.Orientation.Horizontal)
+        self.physics_weight_slider.setRange(0, 100)
+        self.physics_weight_slider.setValue(100)
+        self.physics_weight_slider.setEnabled(True)
+        self.physics_weight_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                border: 1px solid #bbb;
+                background: white;
+                height: 6px;
+                border-radius: 3px;
+            }
+            QSlider::sub-page:horizontal {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #81c784, stop:1 #4caf50);
+                border: 1px solid #777;
+                height: 6px;
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #eee, stop:1 #ccc);
+                border: 1px solid #777;
+                width: 18px;
+                margin-top: -6px;
+                margin-bottom: -6px;
+                border-radius: 9px;
+            }
+        """)
+        self.physics_weight_slider.valueChanged.connect(self.on_physics_weight_changed)
+        
+        self.physics_weight_value = QLabel("1.00")
+        self.physics_weight_value.setFont(QFont("", 11, QFont.Weight.Bold))
+        self.physics_weight_value.setMinimumWidth(50)
+        self.physics_weight_value.setStyleSheet("color: #4caf50;")
+        
+        physics_weight_layout.addWidget(physics_weight_label)
+        physics_weight_layout.addWidget(self.physics_weight_slider)
+        physics_weight_layout.addWidget(self.physics_weight_value)
+        physics_layout.addLayout(physics_weight_layout)
+        
+        # 説明
+        physics_info = QLabel("💡 物理演算ONで自然な揺れ、OFFで手動制御が可能になります")
+        physics_info.setStyleSheet("color: #666; font-size: 10px; font-style: italic;")
+        physics_info.setWordWrap(True)
+        physics_layout.addWidget(physics_info)
+        
+        content_layout.addWidget(physics_group)
+        
+        # 🆕 物理演算OFF時のみ表示される手動制御スライダー
+        self.manual_physics_group = QGroupBox("🎮 手動制御（物理演算OFF時）")
+        self.manual_physics_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #ff9800;
+                border-radius: 8px;
+                margin-top: 10px;
+                padding-top: 15px;
+                background-color: white;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 15px;
+                padding: 0 8px;
+                background-color: white;
+                color: #ff9800;
+            }
+        """)
+        
+        manual_layout = QVBoxLayout(self.manual_physics_group)
+        
+        # 髪・胸揺れの手動制御
+        manual_params = [
+            ("髪揺れ 前", "ParamHairFront", -1.0, 1.0, 0.0, "左 ← → 右"),
+            ("髪揺れ 横", "ParamHairSide", -1.0, 1.0, 0.0, "左 ← → 右"),
+            ("胸揺れ 横", "ParamHairBack", -1.0, 1.0, 0.0, "左 ← → 右"),
+            ("胸揺れ 縦", "Param", -1.0, 1.0, 0.0, "下 ← → 上"),
             ("右目 瞳孔", "Param5", 0.0, 1.0, 0.0, "小 ← → 大"),
             ("右目 ハイライト", "Param6", 0.0, 1.0, 0.0, "暗 ← → 明"),
             ("左目 瞳孔", "Param7", 0.0, 1.0, 0.0, "小 ← → 大"),
             ("左目 ハイライト", "Param8", 0.0, 1.0, 0.0, "暗 ← → 明")
         ]
-        self.create_parameter_group(content_layout, "瞳の制御", pupil_params)
         
-        content_layout.addStretch()
-        scroll.setWidget(content)
-        layout.addWidget(scroll, 1)
-        return widget
-    
-    def create_motion_tab(self):
-        """モーションタブ"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(15)
+        self.create_physics_parameter_group(manual_layout, manual_params)
+        
+        # 初期状態では非表示
+        self.manual_physics_group.hide()
+        
+        content_layout.addWidget(self.manual_physics_group)
         
         # ドラッグ制御セクション
         drag_group = QGroupBox("🎯 ドラッグ制御")
@@ -506,6 +568,8 @@ class TabbedModelingControl(QWidget):
         self.drag_reset_btn.clicked.connect(self.on_drag_reset)
         drag_layout.addWidget(self.drag_reset_btn)
         
+        content_layout.addWidget(drag_group)
+        
         # アイドルモーションセクション
         idle_group = QGroupBox("🌟 アイドルモーション")
         idle_group.setStyleSheet("""
@@ -585,12 +649,135 @@ class TabbedModelingControl(QWidget):
         wind_param_layout.addWidget(self.wind_strength_label)
         idle_layout.addLayout(wind_param_layout)
         
-        # レイアウト組み立て
-        layout.addWidget(drag_group)
-        layout.addWidget(idle_group)
-        layout.addStretch()
+        content_layout.addWidget(idle_group)
+        content_layout.addStretch()
+        
+        scroll.setWidget(content)
+        layout.addWidget(scroll, 1)
         
         return widget
+    
+    # ================================
+    # 🆕 物理演算制御ハンドラー
+    # ================================
+    
+    def on_physics_toggle(self, checked: bool):
+        """物理演算ON/OFF切り替え"""
+        self.physics_enabled = checked
+        
+        if checked:
+            self.physics_toggle_btn.setText("💨 物理演算 ON")
+            self.physics_weight_slider.setEnabled(True)
+            self.manual_physics_group.hide()
+        else:
+            self.physics_toggle_btn.setText("💨 物理演算 OFF")
+            self.physics_weight_slider.setEnabled(False)
+            self.manual_physics_group.show()
+        
+        self.physics_toggled.emit(checked)
+        print(f"💨 物理演算: {'ON' if checked else 'OFF'}")
+    
+    def on_physics_weight_changed(self, value: int):
+        """物理演算強度変更"""
+        weight = value / 100.0
+        self.physics_weight_value.setText(f"{weight:.2f}")
+        
+        if self.physics_enabled:
+            self.physics_weight_changed.emit(weight)
+    
+    # ================================
+    # 物理演算用パラメータグループ作成
+    # ================================
+    
+    def create_physics_parameter_group(self, parent_layout: QVBoxLayout, params: List[tuple]):
+        """物理演算制御用パラメータグループを作成"""
+        grid = QGridLayout()
+        grid.setSpacing(8)
+        
+        slider_style = """
+            QSlider::groove:horizontal {
+                border: 1px solid #bbb;
+                background: white;
+                height: 6px;
+                border-radius: 3px;
+            }
+            QSlider::sub-page:horizontal {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #ffb74d, stop:1 #ff9800);
+                border: 1px solid #777;
+                height: 6px;
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #eee, stop:1 #ccc);
+                border: 1px solid #777;
+                width: 18px;
+                margin-top: -6px;
+                margin-bottom: -6px;
+                border-radius: 9px;
+            }
+        """
+        
+        for i, (name, param_id, min_val, max_val, default, desc) in enumerate(params):
+            # 名前
+            label = QLabel(name + ":")
+            label.setFont(QFont("", 10, QFont.Weight.Bold))
+            label.setMinimumWidth(100)
+            
+            # スライダー
+            slider = QSlider(Qt.Orientation.Horizontal)
+            slider.setRange(int(min_val * 100), int(max_val * 100))
+            slider.setValue(int(default * 100))
+            slider.setStyleSheet(slider_style)
+            
+            # 数値
+            spinbox = QDoubleSpinBox()
+            spinbox.setRange(min_val, max_val)
+            spinbox.setSingleStep(0.01)
+            spinbox.setValue(default)
+            spinbox.setDecimals(2)
+            spinbox.setFixedWidth(70)
+            
+            # 説明
+            desc_label = QLabel(desc)
+            desc_label.setStyleSheet("color: #666; font-size: 9pt;")
+            
+            # 保存
+            self.physics_sliders[param_id] = (slider, spinbox, default)
+            
+            # シグナル
+            slider.valueChanged.connect(lambda v, pid=param_id: self.on_physics_slider_changed(pid, v))
+            spinbox.valueChanged.connect(lambda v, pid=param_id: self.on_physics_spinbox_changed(pid, v))
+            
+            # 配置
+            grid.addWidget(label, i, 0)
+            grid.addWidget(slider, i, 1)
+            grid.addWidget(spinbox, i, 2)
+            grid.addWidget(desc_label, i, 3)
+        
+        parent_layout.addLayout(grid)
+    
+    def on_physics_slider_changed(self, param_id: str, value: int):
+        """物理演算スライダー変更"""
+        if self.is_loading or self.physics_enabled:
+            return
+        val = value / 100.0
+        slider, spinbox, _ = self.physics_sliders[param_id]
+        spinbox.blockSignals(True)
+        spinbox.setValue(val)
+        spinbox.blockSignals(False)
+        self.parameter_changed.emit(param_id, val)
+    
+    def on_physics_spinbox_changed(self, param_id: str, value: float):
+        """物理演算スピンボックス変更"""
+        if self.is_loading or self.physics_enabled:
+            return
+        slider, spinbox, _ = self.physics_sliders[param_id]
+        slider.blockSignals(True)
+        slider.setValue(int(value * 100))
+        slider.blockSignals(False)
+        self.parameter_changed.emit(param_id, value)
     
     # ================================
     # ドラッグ制御ハンドラー
@@ -822,6 +1009,10 @@ class TabbedModelingControl(QWidget):
         self.is_loading = True
         for param_id in self.parameter_sliders:
             self.reset_param(param_id)
+        for param_id in self.physics_sliders:
+            slider, spinbox, default = self.physics_sliders[param_id]
+            slider.setValue(int(default * 100))
+            spinbox.setValue(default)
         self.is_loading = False
         self.emit_all_parameters()
     
@@ -829,13 +1020,20 @@ class TabbedModelingControl(QWidget):
         self.parameters_changed.emit(self.get_all_parameters())
     
     def get_all_parameters(self) -> Dict[str, float]:
-        return {pid: spinbox.value() for pid, (_, spinbox, _) in self.parameter_sliders.items()}
+        params = {pid: spinbox.value() for pid, (_, spinbox, _) in self.parameter_sliders.items()}
+        if not self.physics_enabled:
+            params.update({pid: spinbox.value() for pid, (_, spinbox, _) in self.physics_sliders.items()})
+        return params
     
     def load_parameters(self, parameters: Dict[str, float]):
         self.is_loading = True
         for pid, val in parameters.items():
             if pid in self.parameter_sliders:
                 slider, spinbox, _ = self.parameter_sliders[pid]
+                slider.setValue(int(val * 100))
+                spinbox.setValue(val)
+            elif pid in self.physics_sliders:
+                slider, spinbox, _ = self.physics_sliders[pid]
                 slider.setValue(int(val * 100))
                 spinbox.setValue(val)
         self.is_loading = False
@@ -849,6 +1047,11 @@ class TabbedModelingControl(QWidget):
             if pid in self.parameter_sliders:
                 val = param.get('currentValue', param['defaultValue'])
                 slider, spinbox, _ = self.parameter_sliders[pid]
+                slider.setValue(int(val * 100))
+                spinbox.setValue(val)
+            elif pid in self.physics_sliders:
+                val = param.get('currentValue', param['defaultValue'])
+                slider, spinbox, _ = self.physics_sliders[pid]
                 slider.setValue(int(val * 100))
                 spinbox.setValue(val)
         self.is_loading = False

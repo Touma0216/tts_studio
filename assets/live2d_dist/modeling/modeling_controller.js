@@ -476,3 +476,77 @@ window.setIdleMotionParam = function(paramName, value) {
 };
 
 console.log('✅ アイドルモーション機能を追加しました');
+
+// =============================================================================
+// 物理演算制御機能
+// =============================================================================
+
+/**
+ * 物理演算のON/OFF切り替え
+ * @param {boolean} enabled - true: ON, false: OFF
+ */
+window.togglePhysics = function(enabled) {
+    try {
+        if (!window.currentModel) {
+            console.warn('⚠️ モデル未読み込み：物理演算切り替えスキップ');
+            return false;
+        }
+        
+        const model = window.currentModel;
+        
+        // pixi-live2d-displayのphysics制御
+        if (model.internalModel && model.internalModel.physicsRig) {
+            model.internalModel.physicsRig.enabled = enabled;
+            console.log(`💨 物理演算: ${enabled ? 'ON' : 'OFF'}`);
+            return true;
+        } else {
+            console.warn('⚠️ 物理演算リグが見つかりません');
+            return false;
+        }
+    } catch (error) {
+        console.error('❌ 物理演算切り替えエラー:', error);
+        return false;
+    }
+};
+
+/**
+ * 物理演算の強度設定
+ * @param {number} weight - 強度（0.0-1.0）
+ */
+window.setPhysicsWeight = function(weight) {
+    try {
+        if (!window.currentModel) {
+            console.warn('⚠️ モデル未読み込み：物理演算強度設定スキップ');
+            return false;
+        }
+        
+        const model = window.currentModel;
+        
+        // 物理演算の重み調整
+        if (model.internalModel && model.internalModel.physicsRig) {
+            // 物理演算の各パラメータに重みを適用
+            const physicsRig = model.internalModel.physicsRig;
+            
+            // 強度を反映（実装はLive2Dのバージョンに依存）
+            if (physicsRig.settings) {
+                // 物理演算設定に重みを適用
+                physicsRig.settings.forEach(setting => {
+                    if (setting.normalization) {
+                        setting.normalization.weight = weight;
+                    }
+                });
+            }
+            
+            console.log(`💨 物理演算強度: ${weight.toFixed(2)}`);
+            return true;
+        } else {
+            console.warn('⚠️ 物理演算リグが見つかりません');
+            return false;
+        }
+    } catch (error) {
+        console.error('❌ 物理演算強度設定エラー:', error);
+        return false;
+    }
+};
+
+console.log('✅ 物理演算制御機能を追加しました');
