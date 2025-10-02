@@ -8,10 +8,9 @@ from .tabbed_emotion_control import TabbedEmotionControl
 from .audio_cleaner_control import AudioCleanerControl
 from .audio_effects_control import AudioEffectsControl
 from .tabbed_lip_sync_control import TabbedLipSyncControl
-from .tabbed_video_export_control import TabbedVideoExportControl  # 追加
 
 class TabbedAudioControl(QWidget):
-    """音声パラメータ・クリーナー・エフェクト・リップシンク・モデリング・動画書き出しタブ統合ウィジェット"""
+    """音声パラメータ・クリーナー・エフェクト・リップシンクタブ統合ウィジェット"""
     
     parameters_changed = pyqtSignal(str, dict)
     cleaner_settings_changed = pyqtSignal(dict)
@@ -19,9 +18,9 @@ class TabbedAudioControl(QWidget):
     lip_sync_settings_changed = pyqtSignal(dict)
     modeling_parameter_changed = pyqtSignal(str, float)
     modeling_parameters_changed = pyqtSignal(dict)
+    # 🆕 ドラッグ制御シグナル追加
     drag_control_toggled = pyqtSignal(bool)
     drag_sensitivity_changed = pyqtSignal(float)
-    video_export_settings_changed = pyqtSignal(dict)  # 追加
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -33,7 +32,7 @@ class TabbedAudioControl(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(5)
         
-        # メインタブウィジェット
+        # メインタブウィジェット（音声パラメータ vs 音声クリーナー vs 音声エフェクト vs リップシンク）
         self.main_tab_widget = QTabWidget()
         self.main_tab_widget.setStyleSheet("""
             QTabWidget::pane {
@@ -103,14 +102,10 @@ class TabbedAudioControl(QWidget):
         self.modeling_control = TabbedModelingControl()
         self.modeling_control.parameter_changed.connect(self.on_modeling_parameter_changed)
         self.modeling_control.parameters_changed.connect(self.on_modeling_parameters_changed)
+        # 🆕 ドラッグ制御シグナル接続（中継）
         self.modeling_control.drag_control_toggled.connect(self.drag_control_toggled)
         self.modeling_control.drag_sensitivity_changed.connect(self.drag_sensitivity_changed)
         self.main_tab_widget.addTab(self.modeling_control, "🎨 モデリング")
-        
-        # 6. 動画書き出しタブ（追加）
-        self.video_export_control = TabbedVideoExportControl()
-        self.video_export_control.export_settings_changed.connect(self.on_video_export_settings_changed)
-        self.main_tab_widget.addTab(self.video_export_control, "🎬 動画書き出し")
 
         layout.addWidget(self.main_tab_widget)
     
@@ -133,14 +128,12 @@ class TabbedAudioControl(QWidget):
         if current_index == 0:  # 音声パラメータタブ
             return self.emotion_control.undo_current_tab_parameters()
         elif current_index == 1:  # 音声クリーナータブ
+            # クリーナータブにはUndo機能なし
             return False
         elif current_index == 2:  # 音声エフェクトタブ
             return self.effects_control.undo_effects_parameters()
         elif current_index == 3:  # リップシンクタブ
-            return False
-        elif current_index == 4:  # モデリングタブ
-            return False
-        elif current_index == 5:  # 動画書き出しタブ
+            # リップシンクタブにはUndo機能なし（今後の拡張で追加可能）
             return False
         
         return False
@@ -150,9 +143,11 @@ class TabbedAudioControl(QWidget):
         current_index = self.main_tab_widget.currentIndex()
         
         if current_index == 0:  # 音声パラメータタブ
+            # 現在のタブウィジェット取得
             current_widget = self.emotion_control.tab_widget.currentWidget()
             if current_widget and hasattr(current_widget, 'history'):
                 if current_widget.history.has_redo_available():
+                    # Redo実行
                     current_widget.history.set_undoing_flag(True)
                     next_state = current_widget.history.get_next_state()
                     if next_state:
@@ -162,7 +157,10 @@ class TabbedAudioControl(QWidget):
                     current_widget.history.set_undoing_flag(False)
                     return True
             return False
+        elif current_index == 1:  # 音声クリーナータブ
+            return False
         elif current_index == 2:  # 音声エフェクトタブ
+            # エフェクト制御でRedo実行
             if hasattr(self.effects_control, 'history') and self.effects_control.history.has_redo_available():
                 self.effects_control.history.set_undoing_flag(True)
                 next_state = self.effects_control.history.get_next_state()
@@ -172,6 +170,9 @@ class TabbedAudioControl(QWidget):
                 self.effects_control.history.set_undoing_flag(False)
                 return True
             return False
+        elif current_index == 3:  # リップシンクタブ
+            # リップシンクタブにはRedo機能なし（今後の拡張で追加可能）
+            return False
         
         return False
     
@@ -179,10 +180,14 @@ class TabbedAudioControl(QWidget):
         """現在のタブでUndoが可能かどうか"""
         current_index = self.main_tab_widget.currentIndex()
         
-        if current_index == 0:
+        if current_index == 0:  # 音声パラメータタブ
             return self.emotion_control.has_current_tab_undo_available()
-        elif current_index == 2:
+        elif current_index == 1:  # 音声クリーナータブ
+            return False
+        elif current_index == 2:  # 音声エフェクトタブ
             return self.effects_control.has_undo_available()
+        elif current_index == 3:  # リップシンクタブ
+            return False
         
         return False
     
@@ -190,14 +195,18 @@ class TabbedAudioControl(QWidget):
         """現在のタブでRedoが可能かどうか（新機能）"""
         current_index = self.main_tab_widget.currentIndex()
         
-        if current_index == 0:
+        if current_index == 0:  # 音声パラメータタブ
             current_widget = self.emotion_control.tab_widget.currentWidget()
             if current_widget and hasattr(current_widget, 'history'):
                 return current_widget.history.has_redo_available()
             return False
-        elif current_index == 2:
+        elif current_index == 1:  # 音声クリーナータブ
+            return False
+        elif current_index == 2:  # 音声エフェクトタブ
             if hasattr(self.effects_control, 'history'):
                 return self.effects_control.history.has_redo_available()
+            return False
+        elif current_index == 3:  # リップシンクタブ
             return False
         
         return False
@@ -228,6 +237,7 @@ class TabbedAudioControl(QWidget):
     
     def set_current_row(self, row_id):
         """指定行のタブをアクティブに"""
+        # 音声パラメータタブを選択してから行を設定
         self.main_tab_widget.setCurrentIndex(0)
         self.emotion_control.set_current_row(row_id)
     
@@ -261,6 +271,7 @@ class TabbedAudioControl(QWidget):
     
     def load_effects_preset(self, preset_name):
         """エフェクトプリセットを読み込み"""
+        # エフェクトタブにはプリセット機能がないので、将来の拡張用
         return False
     
     # ================================
@@ -323,15 +334,3 @@ class TabbedAudioControl(QWidget):
     def set_modeling_tab_active(self):
         """モデリングタブをアクティブに設定"""
         self.main_tab_widget.setCurrentIndex(4)
-    
-    # ================================
-    # 動画書き出し関連（追加）
-    # ================================
-    
-    def on_video_export_settings_changed(self, settings):
-        """動画書き出し設定変更時"""
-        self.video_export_settings_changed.emit(settings)
-    
-    def set_video_export_tab_active(self):
-        """動画書き出しタブをアクティブに設定"""
-        self.main_tab_widget.setCurrentIndex(5)

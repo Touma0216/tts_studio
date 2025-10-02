@@ -15,17 +15,16 @@ from .keyboard_shortcuts import KeyboardShortcutManager
 from .sliding_menu import SlidingMenuWidget
 from .help_dialog import HelpDialog
 from .character_display import CharacterDisplayWidget
-from .tts_worker import TTSWorker, SequentialTTSWorker
+from .tts_worker import TTSWorker
 from core.tts_engine import TTSEngine
 from core.model_manager import ModelManager
 from core.audio_processor import AudioProcessor
 from core.audio_analyzer import AudioAnalyzer
 from core.audio_effects_processor import AudioEffectsProcessor
-from core.lip_sync_engine import LipSyncEngine, LipSyncData, VowelFrame
+from core.lip_sync_engine import LipSyncEngine
 
 class TTSStudioMainWindow(QMainWindow):
     tts_synthesis_requested = pyqtSignal(str, dict, bool)
-    sequential_synthesis_requested = pyqtSignal(object, object)
     def __init__(self, live2d_url=None, live2d_server_manager=None):
         super().__init__()
         self.live2d_url = live2d_url
@@ -39,14 +38,10 @@ class TTSStudioMainWindow(QMainWindow):
         # リップシンクエンジン追加
         self.lip_sync_engine = LipSyncEngine()
         self.setup_tts_worker()
-        self.setup_sequential_worker()
-
         
         self.last_generated_audio = None
         self.last_sample_rate = None
         self._tts_busy = False
-        self._sequential_busy = False
-
         
         self.init_ui()
         self.help_dialog = HelpDialog(self)
@@ -99,6 +94,9 @@ class TTSStudioMainWindow(QMainWindow):
         
         # 統合されたタブコントロール
         self.tabbed_audio_control = TabbedAudioControl()
+        self.tabbed_audio_control.parameters_changed.connect(self.on_parameters_changed)
+        self.tabbed_audio_control.cleaner_settings_changed.connect(self.on_cleaner_settings_changed)
+        self.tabbed_audio_control.effects_settings_changed.connect(self.on_effects_settings_changed)
         self.tabbed_audio_control.lip_sync_settings_changed.connect(self.on_lipsync_settings_changed)
         # 🆕 モデリングシグナル接続
         self.tabbed_audio_control.modeling_parameter_changed.connect(self.on_modeling_parameter_changed)
@@ -108,9 +106,6 @@ class TTSStudioMainWindow(QMainWindow):
         # 統合されたリップシンク設定変更ハンドラー
         self.tabbed_audio_control.lip_sync_settings_changed.connect(self.on_lipsync_settings_changed)
         self.tabbed_audio_control.add_text_row("initial", 1)
-
-        if hasattr(self.tabbed_audio_control, 'video_export_control'):
-            self.character_display_to_set_later = True  # フラグ設定
 
         self.vertical_splitter.addWidget(self.multi_text)
         self.vertical_splitter.addWidget(self.tabbed_audio_control)
@@ -161,11 +156,6 @@ class TTSStudioMainWindow(QMainWindow):
             live2d_server_manager=self.live2d_server_manager,
             parent=self
         )
-
-        if hasattr(self, 'character_display_to_set_later') and self.character_display_to_set_later:
-            if hasattr(self.tabbed_audio_control, 'video_export_control'):
-                self.tabbed_audio_control.video_export_control.set_character_display(self.character_display)
-                print("✅ 動画書き出し機能: CharacterDisplay統合完了")
         self.main_splitter.addWidget(left_widget)
         self.main_splitter.addWidget(self.character_display)
         self.main_splitter.setSizes([700, 300])
@@ -219,21 +209,6 @@ class TTSStudioMainWindow(QMainWindow):
         self.tts_synthesis_requested.connect(self.tts_worker.synthesize)
         self.tts_thread.finished.connect(self.tts_worker.deleteLater)
         self.tts_thread.start()
-
-    def setup_sequential_worker(self):
-        """連続再生用のバックグラウンドワーカー初期化"""
-        self.sequential_thread = QThread(self)
-        self.sequential_worker = SequentialTTSWorker(
-            self.tts_engine,
-            self.lip_sync_engine,
-            self.audio_processor,
-            self.audio_effects_processor
-        )
-        self.sequential_worker.moveToThread(self.sequential_thread)
-        self.sequential_worker.sequence_finished.connect(self.on_sequential_synthesis_finished)
-        self.sequential_synthesis_requested.connect(self.sequential_worker.synthesize_sequence)
-        self.sequential_thread.finished.connect(self.sequential_worker.deleteLater)
-        self.sequential_thread.start()
 
     def on_lipsync_settings_changed(self, settings):
         """リップシンク設定変更時の処理 - 完全修正版"""
@@ -736,37 +711,6 @@ class TTSStudioMainWindow(QMainWindow):
                 
                 self.send_lipsync_to_live2d(lipsync_data)
                 print(f"🎭 リップシンク実行: {len(lipsync_data.vowel_frames)}フレーム")
-
-        except Exception as e:
-            QMessageBox.critical(self, "エラー", f"音声再生処理に失敗しました: {str(e)}")
-
-    def on_sequential_synthesis_finished(self, sample_rate, audio, lipsync_data, error_message):
-        """連続再生用ワーカーからの結果を処理"""
-        self._sequential_busy = False
-        self.sequential_play_btn.setEnabled(True)
-
-        if error_message:
-            print(error_message)
-            QMessageBox.critical(self, "エラー", "連続再生の音声合成に失敗しました。\n詳細はコンソールを確認してください。")
-            return
-
-        if audio is None or sample_rate is None:
-            print("⚠️ 連続再生の音声データがありません。")
-            return
-
-        try:
-            self.last_generated_audio, self.last_sample_rate = audio, sample_rate
-
-            import sounddevice as sd
-            sd.play(audio, sample_rate, blocking=False)
-
-            if (lipsync_data and
-                self.tabbed_audio_control.is_lip_sync_enabled() and
-                hasattr(self.character_display, 'live2d_webview') and
-                self.character_display.live2d_webview.is_model_loaded):
-
-                self.send_lipsync_to_live2d(lipsync_data)
-                print(f"🎭 リップシンク実行 (連続再生): {len(lipsync_data.vowel_frames)}フレーム")
             
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"音声再生処理に失敗しました: {str(e)}")
@@ -781,106 +725,30 @@ class TTSStudioMainWindow(QMainWindow):
         texts_data = self.multi_text.get_all_texts_and_parameters()
         if not texts_data:
             QMessageBox.information(self, "情報", "処理するテキストがありません。")
-            return None, None, None
+            return None, None
         all_audio, sample_rate = [], None
-        combined_frames = []
-        combined_texts = []
-        offset_time = 0.0
-
-        lipsync_enabled = (
-            self.tabbed_audio_control.is_lip_sync_enabled() and
-            self.lip_sync_engine and
-            self.lip_sync_engine.is_available()
-        )
         for data in texts_data:
-            text = (data['text'] or '').strip()
-            if not text:
-                continue
             params = self.tabbed_audio_control.get_parameters(data['row_id']) or data['parameters']
-            sr, audio = self.tts_engine.synthesize(text, **params)
-            if sample_rate is None:
-                sample_rate = sr
+            sr, audio = self.tts_engine.synthesize(data['text'], **params)
+            if sample_rate is None: sample_rate = sr
             audio = self.apply_audio_cleaning(audio, sr)
             audio = self.apply_audio_effects(audio, sr)
             audio = self.trim_silence(audio, sr)
-
-            if audio.size == 0:
-                continue
-
-            segment_duration = len(audio) / sr
-
-            if lipsync_enabled:
-                try:
-                    lipsync_segment = self.lip_sync_engine.analyze_text_for_lipsync(
-                        text=text,
-                        audio_data=audio,
-                        sample_rate=sr
-                    )
-                except Exception:
-                    lipsync_segment = None
-
-                if lipsync_segment and lipsync_segment.vowel_frames:
-                    for frame in lipsync_segment.vowel_frames:
-                        combined_frames.append(VowelFrame(
-                            timestamp=frame.timestamp + offset_time,
-                            vowel=frame.vowel,
-                            intensity=frame.intensity,
-                            duration=frame.duration,
-                            is_ending=frame.is_ending
-                        ))
-                    offset_time += lipsync_segment.total_duration
-                else:
-                    offset_time += segment_duration
-            else:
-                offset_time += segment_duration
             all_audio.append(audio)
-            combined_texts.append(text)
-
-        if not all_audio:
-            return None, sample_rate, None
         final_audio = np.concatenate(all_audio).astype(np.float32)
         max_val = np.abs(final_audio).max()
-        if max_val > 0.9:
-            final_audio *= 0.9 / max_val
+        if max_val > 0.9: final_audio *= 0.9 / max_val
         self.last_generated_audio, self.last_sample_rate = final_audio, sample_rate
-        combined_lipsync = None
-        if combined_frames and sample_rate:
-            total_duration = len(final_audio) / sample_rate
-            combined_lipsync = LipSyncData(
-                text="\n".join(combined_texts),
-                total_duration=total_duration,
-                vowel_frames=combined_frames,
-                sample_rate=sample_rate
-            )
-
-        return final_audio, sample_rate, combined_lipsync
-
+        return final_audio, sample_rate
+        
     def play_sequential(self):
-        if not self.tts_engine.is_loaded:
-            return
-
-        if self._sequential_busy:
-            print("⏳ 連続再生処理中です。完了までお待ちください。")
-            return
-
-        texts_data = self.multi_text.get_all_texts_and_parameters()
-        if not texts_data:
-            QMessageBox.information(self, "情報", "処理するテキストがありません。")
-            return
-
-        options = {
-            'enable_lipsync': self.tabbed_audio_control.is_lip_sync_enabled(),
-            'apply_cleaner': self.tabbed_audio_control.is_cleaner_enabled(),
-            'cleaner_settings': self.tabbed_audio_control.get_cleaner_settings() if self.tabbed_audio_control.is_cleaner_enabled() else {},
-            'apply_effects': self.tabbed_audio_control.is_effects_enabled(),
-            'effects_settings': self.tabbed_audio_control.get_effects_settings() if self.tabbed_audio_control.is_effects_enabled() else {},
-            'trim_threshold': 0.01,
-        }
-
-        self._sequential_busy = True        
+        if not self.tts_engine.is_loaded: return
         self.sequential_play_btn.setEnabled(False)
-        self.sequential_synthesis_requested.emit(texts_data, options)
-
+        final_audio, sr = self._synthesize_and_process_all()
+        self.sequential_play_btn.setEnabled(True)
+        if final_audio is not None:
+            import sounddevice as sd
+            sd.play(final_audio, sr, blocking=False)
             
     def save_individual(self):
         folder_path = QFileDialog.getExistingDirectory(self, "個別保存フォルダを選択")
@@ -918,6 +786,10 @@ class TTSStudioMainWindow(QMainWindow):
         
     def on_row_numbers_updated(self, row_mapping):
         self.tabbed_audio_control.update_tab_numbers(row_mapping)
+        
+    def on_parameters_changed(self, row_id, parameters): pass
+    def on_cleaner_settings_changed(self, cleaner_settings): pass
+    def on_effects_settings_changed(self, effects_settings): pass
     
     def update_emotion_ui_after_model_load(self):
         if not self.tts_engine.is_loaded: return
@@ -941,9 +813,6 @@ class TTSStudioMainWindow(QMainWindow):
                 self.tts_thread.quit()
                 self.tts_thread.wait(5000)
                 self.character_display.live2d_manager.save_history()
-            if hasattr(self, 'sequential_thread') and self.sequential_thread.isRunning():
-                self.sequential_thread.quit()
-                self.sequential_thread.wait(5000)
         except Exception as e:
             print(f"終了処理中にエラー: {e}")
         event.accept()
