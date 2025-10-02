@@ -38,6 +38,7 @@ tts_studio/
 │   ├── lip_sync_engine.py            # メインリップシンクエンジン
 │   ├── phoneme_analyzer.py           # 音素解析・最適化エンジン
 │   ├── wav_player.py                 # WAV再生エンジン
+│   ├── whisper_transcriber.py        # 文字起こしエンジン
 │   └── audio_realtime_processor.py   # リアルタイム音声処理
 └── ui/                               # ユーザーインターフェース
     ├── __init__.py                   # パッケージ初期化
