@@ -8,6 +8,7 @@ from .tabbed_emotion_control import TabbedEmotionControl
 from .audio_cleaner_control import AudioCleanerControl
 from .audio_effects_control import AudioEffectsControl
 from .tabbed_lip_sync_control import TabbedLipSyncControl
+from .tabbed_video_export_control import TabbedVideoExportControl
 
 class TabbedAudioControl(QWidget):
     """音声パラメータ・クリーナー・エフェクト・リップシンクタブ統合ウィジェット"""
@@ -106,6 +107,11 @@ class TabbedAudioControl(QWidget):
         self.modeling_control.drag_control_toggled.connect(self.drag_control_toggled)
         self.modeling_control.drag_sensitivity_changed.connect(self.drag_sensitivity_changed)
         self.main_tab_widget.addTab(self.modeling_control, "🎨 モデリング")
+
+        # 🆕 6. 動画書き出しタブ
+        self.video_export_control = TabbedVideoExportControl()
+        self.video_export_control.export_settings_changed.connect(self.on_video_export_settings_changed)
+        self.main_tab_widget.addTab(self.video_export_control, "🎬 動画書き出し")
 
         layout.addWidget(self.main_tab_widget)
     
@@ -334,3 +340,15 @@ class TabbedAudioControl(QWidget):
     def set_modeling_tab_active(self):
         """モデリングタブをアクティブに設定"""
         self.main_tab_widget.setCurrentIndex(4)
+
+    # ================================
+    # 動画書き出し関連
+    # ================================
+    
+    def on_video_export_settings_changed(self, settings):
+        """動画書き出し設定変更時（今は何もしない）"""
+        pass
+    
+    def set_video_export_tab_active(self):
+        """動画書き出しタブをアクティブに設定"""
+        self.main_tab_widget.setCurrentIndex(5)

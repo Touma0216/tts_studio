@@ -99,9 +99,6 @@ class TTSStudioMainWindow(QMainWindow):
         
         # 統合されたタブコントロール
         self.tabbed_audio_control = TabbedAudioControl()
-        self.tabbed_audio_control.parameters_changed.connect(self.on_parameters_changed)
-        self.tabbed_audio_control.cleaner_settings_changed.connect(self.on_cleaner_settings_changed)
-        self.tabbed_audio_control.effects_settings_changed.connect(self.on_effects_settings_changed)
         self.tabbed_audio_control.lip_sync_settings_changed.connect(self.on_lipsync_settings_changed)
         # 🆕 モデリングシグナル接続
         self.tabbed_audio_control.modeling_parameter_changed.connect(self.on_modeling_parameter_changed)
@@ -913,10 +910,6 @@ class TTSStudioMainWindow(QMainWindow):
         
     def on_row_numbers_updated(self, row_mapping):
         self.tabbed_audio_control.update_tab_numbers(row_mapping)
-        
-    def on_parameters_changed(self, row_id, parameters): pass
-    def on_cleaner_settings_changed(self, cleaner_settings): pass
-    def on_effects_settings_changed(self, effects_settings): pass
     
     def update_emotion_ui_after_model_load(self):
         if not self.tts_engine.is_loaded: return
