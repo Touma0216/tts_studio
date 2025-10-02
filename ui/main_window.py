@@ -167,6 +167,8 @@ class TTSStudioMainWindow(QMainWindow):
         )
         self.main_splitter.addWidget(left_widget)
         self.main_splitter.addWidget(self.character_display)
+        self.main_splitter.setSizes([420, 780])
+        left_widget.setMinimumWidth(360)
         self.main_splitter.setSizes([700, 300])
         left_widget.setMinimumWidth(500)
         self.character_display.setMinimumWidth(200)
@@ -494,17 +496,20 @@ class TTSStudioMainWindow(QMainWindow):
         if hasattr(self, 'main_splitter'):
             sizes = self.main_splitter.sizes()
             total_width = sum(sizes)
-            max_right_width = total_width * 0.3
-            min_left_width = total_width * 0.7
+            if total_width <= 0:
+                return
+
+            min_left_width = int(total_width * 0.35)
+            max_right_width = total_width - min_left_width
             if len(sizes) >= 2:
                 left_width, right_width = sizes[0], sizes[1]
-                if right_width > max_right_width:
-                    new_right_width = int(max_right_width)
-                    new_left_width = total_width - new_right_width
-                    self.main_splitter.setSizes([new_left_width, new_right_width])
-                elif left_width < min_left_width:
-                    new_left_width = int(min_left_width)
+                if left_width < min_left_width:
+                    new_left_width = min_left_width
                     new_right_width = total_width - new_left_width
+                    self.main_splitter.setSizes([new_left_width, new_right_width])
+                elif right_width > max_right_width:
+                    new_right_width = max_right_width
+                    new_left_width = total_width - new_right_width
                     self.main_splitter.setSizes([new_left_width, new_right_width])
                     
     def resizeEvent(self, event):

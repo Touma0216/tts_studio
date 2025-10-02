@@ -662,14 +662,28 @@ class CharacterDisplayWidget(QWidget):
         self.setStyleSheet("QWidget { background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 4px; }")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(8)
+        layout.setSpacing(6)
         
         # ヘッダー
         header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(8)
         header_label = QLabel("キャラクター表示")
         header_label.setFont(QFont("", 12, QFont.Weight.Bold))
         header_label.setStyleSheet("color: #333; border: none; padding: 5px;")
         header_layout.addWidget(header_label)
+        self.toggle_minimap_btn = QPushButton("🗺️ ミニマップ")
+        self.toggle_minimap_btn.setToolTip("ミニマップの表示/非表示")
+        self.toggle_minimap_btn.setEnabled(False)
+        self.toggle_minimap_btn.setCheckable(True)
+        self.toggle_minimap_btn.setStyleSheet(
+            "QPushButton { background-color: #f8f9fa; border: 1px solid #ccc; border-radius: 4px; "
+            "font-size: 11px; padding: 4px 8px; } "
+            "QPushButton:hover:enabled { background-color: #e9ecef; } "
+            "QPushButton:checked { background-color: #e0e6ef; border-color: #007bff; } "
+            "QPushButton:disabled { color: #ccc; }"
+        )
+        header_layout.addWidget(self.toggle_minimap_btn)
         header_layout.addStretch()
         # 背景切り替えボタン
         self.live2d_background_btn = QPushButton("🎨 背景:標準")
@@ -681,26 +695,17 @@ class CharacterDisplayWidget(QWidget):
             "QPushButton:disabled { color: #ccc; }"
         )
         self.live2d_background_btn.clicked.connect(self.show_live2d_background_menu)
-        header_layout.addWidget(self.live2d_background_btn)
         self._create_live2d_background_menu()
         self.update_live2d_background_button()
-
-        # クロマキー色入力
-        chroma_layout = QHBoxLayout()
-        chroma_layout.setContentsMargins(0, 0, 0, 0)
-        chroma_layout.setSpacing(6)
-
-        chroma_label = QLabel("クロマキー色 (#RRGGBB)")
-        chroma_label.setStyleSheet("color: #555; padding-left: 2px;")
-        chroma_layout.addWidget(chroma_label)
 
         self.chroma_color_input = QLineEdit()
         self.chroma_color_input.setPlaceholderText("#00ff00")
         self.chroma_color_input.setMaxLength(7)
         self.chroma_color_input.setText('#00ff00')
         self.chroma_color_input.setToolTip("クロマキー背景に使用するカラーコードを入力 (#RRGGBB)")
-        chroma_layout.addWidget(self.chroma_color_input, 1)
-
+        self.chroma_color_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.chroma_color_input.setClearButtonEnabled(True)
+        self.chroma_color_input.setFixedWidth(90)
         chroma_apply_btn = QPushButton("適用")
         chroma_apply_btn.setToolTip("入力したカラーコードでクロマキー背景を適用")
         chroma_apply_btn.setStyleSheet(
@@ -710,11 +715,13 @@ class CharacterDisplayWidget(QWidget):
             "QPushButton:disabled { color: #ccc; }"
         )
         chroma_apply_btn.clicked.connect(self.apply_chroma_color_from_input)
-        chroma_layout.addWidget(chroma_apply_btn)
+        chroma_apply_btn.setMinimumWidth(70)
 
-        layout.addLayout(chroma_layout)
         if self.live2d_background_settings.get('mode') == 'chroma':
             self._update_chroma_color_input(self.live2d_background_settings.get('color'))
+        header_layout.addWidget(self.live2d_background_btn)
+        header_layout.addWidget(self.chroma_color_input)
+        header_layout.addWidget(chroma_apply_btn)
         
         # タブウィジェット
         self.mode_tab_widget = QTabWidget()
@@ -725,15 +732,7 @@ class CharacterDisplayWidget(QWidget):
             QTabBar::tab:selected { background: #fff; border-bottom-color: #fff; }
             QTabBar::tab:hover { background: #f8f9fa; }
         """)
-        
-        # ミニマップボタン
-        self.toggle_minimap_btn = QPushButton("🗺️ ミニマップ")
-        self.toggle_minimap_btn.setToolTip("ミニマップの表示/非表示")
-        self.toggle_minimap_btn.setEnabled(False)
-        self.toggle_minimap_btn.setCheckable(True)
-        self.toggle_minimap_btn.setStyleSheet("QPushButton { background-color: #f8f9fa; border: 1px solid #ccc; border-radius: 4px; font-size: 11px; padding: 4px 8px; } QPushButton:hover:enabled { background-color: #e9ecef; } QPushButton:checked { background-color: #e0e6ef; border-color: #007bff; } QPushButton:disabled { color: #ccc; }")
-        header_layout.addWidget(self.toggle_minimap_btn)
-        
+
         # タブ作成
         self.image_tab = QWidget()
         self.setup_image_tab()
