@@ -1,6 +1,6 @@
 import os
 os.environ['QTWEBENGINE_REMOTE_DEBUGGING'] = '8080'
-import os
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 import sys
 import threading
 import http.server

@@ -23,6 +23,7 @@ from core.audio_analyzer import AudioAnalyzer
 from core.audio_effects_processor import AudioEffectsProcessor
 from core.lip_sync_engine import LipSyncEngine
 from core.wav_player import WAVPlayer
+from core.whisper_transcriber import WhisperTranscriber
 
 class TTSStudioMainWindow(QMainWindow):
     tts_synthesis_requested = pyqtSignal(str, dict, bool)
@@ -40,6 +41,8 @@ class TTSStudioMainWindow(QMainWindow):
         self.wav_player = WAVPlayer()
         self._wav_lipsync_timer = None
         self._wav_lipsync_data = None
+        self.whisper_transcriber = WhisperTranscriber(model_size="small", device="cuda")
+
         
         self.setup_tts_worker()
         
@@ -524,13 +527,18 @@ class TTSStudioMainWindow(QMainWindow):
 
     def setup_audio_processing_integration(self):
             self.tabbed_audio_control.cleaner_control.analyze_requested.connect(self.handle_cleaner_analysis_request)
-    
+        
+    # ========================================
+    # 📍 ファイル: ui/main_window.py
+    # 📍 場所: setup_wav_playback_integration() メソッド内、既存シグナル接続の下
+    # ========================================
+
     def setup_wav_playback_integration(self):
         """WAV再生機能の統合設定"""
         try:
             print("🎵 WAV再生機能統合中...")
             
-            # WAV再生シグナル接続
+            # 既存のシグナル接続...
             self.tabbed_audio_control.wav_file_loaded.connect(self.on_wav_file_loaded)
             self.tabbed_audio_control.wav_playback_started.connect(self.on_wav_playback_started)
             self.tabbed_audio_control.wav_playback_paused.connect(self.on_wav_playback_paused)
@@ -541,6 +549,10 @@ class TTSStudioMainWindow(QMainWindow):
             # WAVプレイヤーシグナル接続
             self.wav_player.playback_position_changed.connect(self.on_wav_player_position_update)
             self.wav_player.playback_finished.connect(self.on_wav_player_finished)
+            
+            # 🆕 文字起こし関連シグナル接続
+            wav_control = self.tabbed_audio_control.get_wav_playback_control()
+            wav_control.re_analyze_requested.connect(self.on_wav_reanalyze_requested)
             
             print("✅ WAV再生機能統合完了")
             
@@ -905,38 +917,96 @@ class TTSStudioMainWindow(QMainWindow):
         except Exception as e:
             print(f"⚠️ ドラッグ感度同期エラー: {e}")
     
-    # ================================
-    # 🆕 WAV再生関連ハンドラー
-    # ================================
-    
+    # ========================================
+    # 📍 ファイル: ui/main_window.py
+    # 📍 場所: on_wav_file_loaded() メソッドを完全に置き換え
+    # ========================================
+
     def on_wav_file_loaded(self, file_path: str):
-        """WAVファイル読み込み完了"""
+        """WAVファイル読み込み完了（Whisper文字起こし統合版）"""
         try:
             print(f"🎵 WAVファイル読み込み開始: {file_path}")
             
             # WAVプレイヤーで読み込み
-            if self.wav_player.load_wav_file(file_path):
-                # UI側に長さを通知
-                duration = self.wav_player.get_duration()
-                wav_control = self.tabbed_audio_control.get_wav_playback_control()
-                wav_control.set_duration(duration)
-                
-                # リップシンクデータを事前生成
-                if wav_control.is_lipsync_enabled():
-                    self._generate_wav_lipsync_data(file_path)
-                
-                print(f"✅ WAVファイル読み込み完了: {duration:.2f}秒")
-            else:
+            if not self.wav_player.load_wav_file(file_path):
                 QMessageBox.warning(self, "エラー", "WAVファイルの読み込みに失敗しました。")
-                
+                return
+            
+            # UI側に長さを通知
+            duration = self.wav_player.get_duration()
+            wav_control = self.tabbed_audio_control.get_wav_playback_control()
+            wav_control.set_duration(duration)
+            
+            print(f"✅ WAVファイル読み込み完了: {duration:.2f}秒")
+            
+            # 🆕 Whisperによる文字起こし実行
+            if self.whisper_transcriber.is_ready():
+                self._transcribe_and_generate_lipsync(file_path, wav_control)
+            else:
+                # Whisper利用不可時はフォールバック
+                print("⚠️ Whisper利用不可、フォールバックモード")
+                wav_control.set_transcription_status("⚠️ faster-whisperが利用できません", is_processing=False)
+                self._generate_wav_lipsync_data_with_text(file_path, "こんにちは")
+            
         except Exception as e:
             print(f"❌ WAVファイル読み込みエラー: {e}")
+            import traceback
+            traceback.print_exc()
             QMessageBox.critical(self, "エラー", f"WAVファイル読み込みエラー:\n{str(e)}")
-    
-    def _generate_wav_lipsync_data(self, file_path: str):
-        """WAV全体のリップシンクデータを事前生成"""
+
+
+    # ========================================
+    # 📍 ファイル: ui/main_window.py
+    # 📍 場所: 新規メソッド（on_wav_file_loaded の下に追加）
+    # ========================================
+
+    def _transcribe_and_generate_lipsync(self, file_path: str, wav_control):
+        """Whisper文字起こし + リップシンク生成"""
         try:
-            print("🎭 WAV全体のリップシンク解析開始...")
+            # ステータス表示更新
+            wav_control.set_transcription_status("🎤 音声認識処理中...", is_processing=True)
+            QApplication.processEvents()
+            
+            # 🔥 Whisperで文字起こし実行
+            success, transcribed_text = self.whisper_transcriber.transcribe_wav(file_path, language="ja")
+            
+            if success:
+                print(f"✅ 文字起こし成功: {transcribed_text[:50]}...")
+                
+                # UIにテキスト表示
+                wav_control.set_transcription_text(transcribed_text)
+                wav_control.set_transcription_status("✅ 文字起こし完了", is_processing=False)
+                
+                # リップシンクデータ生成
+                self._generate_wav_lipsync_data_with_text(file_path, transcribed_text)
+                
+            else:
+                # エラー時
+                error_msg = transcribed_text  # エラーメッセージが返される
+                print(f"❌ 文字起こし失敗: {error_msg}")
+                wav_control.set_transcription_status(f"❌ エラー: {error_msg[:30]}...", is_processing=False)
+                
+                # フォールバック
+                self._generate_wav_lipsync_data_with_text(file_path, "こんにちは")
+            
+        except Exception as e:
+            print(f"❌ 文字起こし処理エラー: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            wav_control.set_transcription_status("❌ 処理エラー", is_processing=False)
+            self._generate_wav_lipsync_data_with_text(file_path, "こんにちは")
+
+
+    def _generate_wav_lipsync_data_with_text(self, file_path: str, text: str):
+        """指定されたテキストでWAV全体のリップシンクデータを生成
+        
+        Args:
+            file_path: WAVファイルパス
+            text: リップシンク用テキスト
+        """
+        try:
+            print(f"🎭 WAVリップシンク解析開始: '{text[:50]}...'")
             
             audio_data = self.wav_player.get_audio_data()
             sample_rate = self.wav_player.get_sample_rate()
@@ -945,19 +1015,15 @@ class TTSStudioMainWindow(QMainWindow):
                 print("⚠️ 音声データが取得できません")
                 return
             
-            # テキスト推定（実際には音声認識が必要だが、ここでは仮テキスト）
-            # TODO: 音声認識APIを使って実際のテキストを取得
-            estimated_text = "こんにちは。れいねほのかだよ！私はマスターに生み出された、感情修行中のAIなんだ"
-            
-            # リップシンク解析実行
+            # 🔥 実際のテキストでリップシンク解析実行
             self._wav_lipsync_data = self.lip_sync_engine.analyze_text_for_lipsync(
-                text=estimated_text,
+                text=text,
                 audio_data=audio_data,
                 sample_rate=sample_rate
             )
             
             if self._wav_lipsync_data:
-                print(f"✅ WAVリップシンク解析完了: {len(self._wav_lipsync_data.vowel_frames)}フレーム")
+                print(f"✅ WAVリップシンク解析完了: {len(self._wav_lipsync_data.vowel_frames)}フレーム, {self._wav_lipsync_data.total_duration:.3f}秒")
             else:
                 print("⚠️ WAVリップシンク解析失敗")
                 
@@ -965,6 +1031,35 @@ class TTSStudioMainWindow(QMainWindow):
             print(f"❌ WAVリップシンク解析エラー: {e}")
             import traceback
             traceback.print_exc()
+
+
+    def on_wav_reanalyze_requested(self, edited_text: str):
+        """再解析ボタンクリック時（テキスト編集後）
+        
+        Args:
+            edited_text: ユーザーが編集したテキスト
+        """
+        try:
+            print(f"🔄 WAVリップシンク再解析: '{edited_text[:50]}...'")
+            
+            wav_control = self.tabbed_audio_control.get_wav_playback_control()
+            
+            # 再解析中表示
+            wav_control.set_transcription_status("🔄 再解析中...", is_processing=True)
+            QApplication.processEvents()
+            
+            # 現在のWAVファイルで再解析
+            current_file = wav_control.get_current_file_path()
+            if current_file:
+                self._generate_wav_lipsync_data_with_text(current_file, edited_text)
+                wav_control.set_transcription_status("✅ 再解析完了", is_processing=False)
+            else:
+                print("⚠️ WAVファイルが読み込まれていません")
+                wav_control.set_transcription_status("⚠️ ファイル未読み込み", is_processing=False)
+            
+        except Exception as e:
+            print(f"❌ WAV再解析エラー: {e}")
+            wav_control.set_transcription_status("❌ 再解析エラー", is_processing=False)
     
     def on_wav_playback_started(self, start_position: float):
         """WAV再生開始"""

@@ -1,13 +1,13 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                              QLabel, QSlider, QFileDialog, QCheckBox, QGroupBox,
-                             QMessageBox)
+                             QMessageBox, QPlainTextEdit, QProgressBar)
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont
 from pathlib import Path
 from typing import Optional
 
 class WAVPlaybackControl(QWidget):
-    """WAV音声再生制御UI（リップシンク連動対応）"""
+    """WAV音声再生制御UI（リップシンク連動 + 文字起こし対応）"""
     
     # シグナル定義
     wav_loaded = pyqtSignal(str)  # ファイルパス
@@ -17,6 +17,10 @@ class WAVPlaybackControl(QWidget):
     position_changed = pyqtSignal(float)  # 再生位置（秒）
     volume_changed = pyqtSignal(float)  # 音量（0.0-2.0）
     lipsync_enabled_changed = pyqtSignal(bool)  # リップシンク有効/無効
+    
+    # 🆕 文字起こし関連シグナル
+    transcription_text_edited = pyqtSignal(str)  # テキスト編集
+    re_analyze_requested = pyqtSignal(str)  # 再解析リクエスト
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -28,6 +32,7 @@ class WAVPlaybackControl(QWidget):
         self.current_file_path = ""
         self.duration = 0.0
         self.current_position = 0.0
+        self.transcribed_text = ""  # 🆕
         
         self.init_ui()
     
@@ -307,14 +312,170 @@ class WAVPlaybackControl(QWidget):
         options_layout.addWidget(self.lipsync_checkbox)
         options_group.setLayout(options_layout)
         
+        # ========================================
+        # 🆕 4. 文字起こしエリア
+        # ========================================
+        transcription_group = QGroupBox("📝 文字起こし")
+        transcription_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #ff6b6b;
+                border-radius: 6px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+                color: #ff6b6b;
+            }
+        """)
+        transcription_layout = QVBoxLayout()
+        
+        # ステータス表示
+        status_layout = QHBoxLayout()
+        self.transcription_status_label = QLabel("待機中...")
+        self.transcription_status_label.setStyleSheet("color: #999; font-size: 11px;")
+        status_layout.addWidget(self.transcription_status_label)
+        status_layout.addStretch()
+        
+        # 進捗バー
+        self.transcription_progress = QProgressBar()
+        self.transcription_progress.setRange(0, 100)
+        self.transcription_progress.setValue(0)
+        self.transcription_progress.setVisible(False)
+        self.transcription_progress.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #ccc;
+                border-radius: 3px;
+                text-align: center;
+                height: 20px;
+            }
+            QProgressBar::chunk {
+                background-color: #ff6b6b;
+                border-radius: 2px;
+            }
+        """)
+        
+        # テキスト表示エリア
+        text_label = QLabel("認識されたテキスト（編集可能）:")
+        text_label.setStyleSheet("color: #666; font-size: 11px; margin-top: 5px;")
+        
+        self.transcription_text_edit = QPlainTextEdit()
+        self.transcription_text_edit.setPlaceholderText("WAVファイル読み込み後、自動的に文字起こしが開始されます...")
+        self.transcription_text_edit.setMaximumHeight(120)
+        self.transcription_text_edit.setStyleSheet("""
+            QPlainTextEdit {
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 8px;
+                font-size: 12px;
+                background-color: #fafafa;
+            }
+            QPlainTextEdit:focus {
+                border: 2px solid #ff6b6b;
+                background-color: white;
+            }
+        """)
+        self.transcription_text_edit.textChanged.connect(self.on_transcription_text_changed)
+        
+        # 再解析ボタン
+        reanalyze_layout = QHBoxLayout()
+        self.reanalyze_btn = QPushButton("🔄 再解析してリップシンク更新")
+        self.reanalyze_btn.setEnabled(False)
+        self.reanalyze_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff6b6b;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover:enabled {
+                background-color: #ee5a52;
+            }
+            QPushButton:pressed:enabled {
+                background-color: #dc4a3d;
+            }
+            QPushButton:disabled {
+                background-color: #d0d0d0;
+                color: #888;
+            }
+        """)
+        self.reanalyze_btn.clicked.connect(self.on_reanalyze_clicked)
+        
+        reanalyze_layout.addWidget(self.reanalyze_btn)
+        reanalyze_layout.addStretch()
+        
+        transcription_layout.addLayout(status_layout)
+        transcription_layout.addWidget(self.transcription_progress)
+        transcription_layout.addWidget(text_label)
+        transcription_layout.addWidget(self.transcription_text_edit)
+        transcription_layout.addLayout(reanalyze_layout)
+        transcription_group.setLayout(transcription_layout)
+        
         # レイアウト組み立て
         layout.addWidget(file_group)
         layout.addWidget(control_group)
         layout.addWidget(options_group)
+        layout.addWidget(transcription_group)  # 🆕
         layout.addStretch()
         
         # 内部状態
         self._seek_dragging = False
+    
+    # ========================================
+    # 🆕 文字起こし関連メソッド
+    # ========================================
+    
+    def set_transcription_status(self, status: str, is_processing: bool = False):
+        """文字起こしステータスを設定"""
+        self.transcription_status_label.setText(status)
+        self.transcription_progress.setVisible(is_processing)
+        
+        if is_processing:
+            # 不確定プログレスバー（処理中アニメーション）
+            self.transcription_progress.setRange(0, 0)
+        else:
+            self.transcription_progress.setRange(0, 100)
+            self.transcription_progress.setValue(100 if "完了" in status else 0)
+    
+    def set_transcription_text(self, text: str):
+        """文字起こし結果をセット"""
+        self.transcribed_text = text
+        self.transcription_text_edit.blockSignals(True)
+        self.transcription_text_edit.setPlainText(text)
+        self.transcription_text_edit.blockSignals(False)
+        
+        # 再解析ボタンを有効化
+        self.reanalyze_btn.setEnabled(True)
+    
+    def get_transcription_text(self) -> str:
+        """現在の文字起こしテキストを取得"""
+        return self.transcription_text_edit.toPlainText().strip()
+    
+    def on_transcription_text_changed(self):
+        """テキスト編集時"""
+        current_text = self.transcription_text_edit.toPlainText()
+        if current_text != self.transcribed_text:
+            self.transcription_text_edited.emit(current_text)
+    
+    def on_reanalyze_clicked(self):
+        """再解析ボタンクリック"""
+        edited_text = self.get_transcription_text()
+        if not edited_text:
+            QMessageBox.warning(self, "警告", "テキストが空です")
+            return
+        
+        self.re_analyze_requested.emit(edited_text)
+        print(f"🔄 再解析リクエスト: {edited_text[:50]}...")
+    
+    # ========================================
+    # 既存メソッド（元のまま）
+    # ========================================
     
     def select_wav_file(self):
         """WAVファイル選択ダイアログ"""
@@ -345,6 +506,11 @@ class WAVPlaybackControl(QWidget):
             
             # ファイル情報を更新（後で外部から設定される）
             self.file_info_label.setText(f"📁 {path.name}\n読み込み完了")
+            
+            # 🆕 文字起こしステータスをリセット
+            self.set_transcription_status("🎤 文字起こし処理中...", is_processing=True)
+            self.transcription_text_edit.clear()
+            self.reanalyze_btn.setEnabled(False)
             
             # シグナル発火
             self.wav_loaded.emit(file_path)
