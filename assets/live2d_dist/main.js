@@ -1564,53 +1564,99 @@ let frameQueue = [];
 let isProcessingQueue = false;
 
 window.startRecording = function(fps = 60) {
+    console.log('🎬 [JS] startRecording関数が呼ばれました');
+    
     try {
         if (recordingState.isRecording) {
-            console.warn('⚠️ 既に録画中です');
+            console.warn('⚠️ [JS] 既に録画中です');
             return false;
         }
         
         if (!app || !app.renderer) {
-            console.error('❌ Pixi.js未初期化');
+            console.error('❌ [JS] Pixi.js未初期化');
             return false;
         }
+        
+        // テストキャプチャで解像度確認
+        console.log('📐 [JS] テストキャプチャ開始...');
+        const testCanvas = app.renderer.extract.canvas(app.stage);
+        const actualWidth = testCanvas.width;
+        const actualHeight = testCanvas.height;
+        console.log(`✅ [JS] 実際の録画解像度: ${actualWidth}x${actualHeight}px`);
         
         recordingState.isRecording = true;
         recordingState.fps = fps;
         recordingState.frameCount = 0;
-        frameQueue = [];
+        
+        // 🔥 追加：解像度を保存
+        recordingState.actualWidth = actualWidth;
+        recordingState.actualHeight = actualHeight;
         
         const frameDelay = 1000 / fps;
+        let lastFrameTime = performance.now();
         
-        console.log(`🎬 録画開始: ${fps}fps (非同期バッファ方式)`);
+        console.log(`🎬 [JS] 録画ループ開始: ${fps}fps, 間隔=${frameDelay.toFixed(1)}ms`);
         
-        // キャプチャループ（軽量）
+        // 🔥 修正：JPEG使用で高速化（透過不要な場合）
+        const useJPEG = true;  // trueにするとJPEG（超高速だが透過なし）
+        
+        // キャプチャループ
         recordingState.captureInterval = setInterval(() => {
-            if (!recordingState.isRecording) return;
+            if (!recordingState.isRecording) {
+                console.log('⏹️ [JS] 録画停止検知、ループ終了');
+                return;
+            }
             
             try {
-                // Canvas取得のみ（Base64化は後で）
+                const now = performance.now();
+                const startTime = now;
+                
+                // Canvas取得
                 const canvas = app.renderer.extract.canvas(app.stage);
-                frameQueue.push({
-                    canvas: canvas,
-                    timestamp: Date.now()
-                });
-                recordingState.frameCount++;
+                const extractTime = performance.now() - startTime;
+                
+                // 🔥 PNG変換（またはJPEG）
+                const dataURL = useJPEG 
+                    ? canvas.toDataURL('image/jpeg', 0.95)
+                    : canvas.toDataURL('image/png');
+                
+                const encodeTime = performance.now() - startTime - extractTime;
+                
+                // Python側に送信
+                if (recordingState.backend && recordingState.backend.receiveFrame) {
+                    recordingState.backend.receiveFrame(dataURL);
+                    recordingState.frameCount++;
+                    
+                    // 10フレームごとにパフォーマンスログ
+                    if (recordingState.frameCount % 10 === 0) {
+                        const totalTime = performance.now() - startTime;
+                        const timeSinceLastFrame = now - lastFrameTime;
+                        const actualFPS = 1000 / timeSinceLastFrame;
+                        
+                        console.log(
+                            `📹 [JS] フレーム#${recordingState.frameCount} | ` +
+                            `実測FPS: ${actualFPS.toFixed(1)} | ` +
+                            `抽出: ${extractTime.toFixed(1)}ms | ` +
+                            `変換: ${encodeTime.toFixed(1)}ms | ` +
+                            `合計: ${totalTime.toFixed(1)}ms`
+                        );
+                    }
+                } else {
+                    console.error('❌ [JS] recordingState.backend未設定');
+                }
+                
+                lastFrameTime = now;
                 
             } catch (error) {
-                console.error('❌ フレームキャプチャエラー:', error);
+                console.error('❌ [JS] フレームキャプチャエラー:', error);
             }
         }, frameDelay);
         
-        // 非同期処理ループ
-        if (!isProcessingQueue) {
-            processFrameQueue();
-        }
-        
+        console.log('✅ [JS] 録画開始成功');
         return true;
         
     } catch (error) {
-        console.error('❌ 録画開始エラー:', error);
+        console.error('❌ [JS] 録画開始エラー:', error);
         recordingState.isRecording = false;
         return false;
     }
@@ -1660,45 +1706,51 @@ function processFrameQueue() {
 }
 
 window.stopRecording = function() {
+    console.log('⏹️ [JS] stopRecording関数が呼ばれました');
+    
     try {
         if (!recordingState.isRecording) {
-            console.warn('⚠️ 録画されていません');
+            console.warn('⚠️ [JS] 録画されていません');
             return null;
         }
         
-        console.log('🛑 録画停止開始...');
+        console.log('🛑 [JS] 録画停止処理開始...');
         
         recordingState.isRecording = false;
         
         if (recordingState.captureInterval) {
             clearInterval(recordingState.captureInterval);
             recordingState.captureInterval = null;
+            console.log('✅ [JS] キャプチャループ停止');
         }
-        
-        // キューの残り処理を待つ
-        console.log(`⏳ キュー残=${frameQueue.length}フレームを処理中...`);
         
         const stats = {
             totalFrames: recordingState.frameCount,
             duration: recordingState.frameCount / recordingState.fps,
-            fps: recordingState.fps,
-            queueRemaining: frameQueue.length
+            fps: recordingState.fps
         };
         
-        console.log(`⏹️ 録画停止完了:`, stats);
+        console.log(`⏹️ [JS] 録画停止完了:`, stats);
+        console.log(`   総フレーム数: ${stats.totalFrames}`);
+        console.log(`   録画時間: ${stats.duration.toFixed(2)}秒`);
+        console.log(`   設定FPS: ${stats.fps}`);
+        
+        // カウントリセット
+        recordingState.frameCount = 0;
         
         return stats;
         
     } catch (error) {
-        console.error('❌ 録画停止エラー:', error);
+        console.error('❌ [JS] 録画停止エラー:', error);
+        // エラー時も強制的に停止
         recordingState.isRecording = false;
         if (recordingState.captureInterval) {
             clearInterval(recordingState.captureInterval);
+            recordingState.captureInterval = null;
         }
         return null;
     }
 };
-
 /**
  * 録画停止
  * @returns {Object} 録画統計情報

@@ -449,22 +449,23 @@ class TabbedVideoExportControl(QWidget):
             self.folder_label.setText(folder)
     
     def on_start_recording(self):
-        """録画開始"""
-        # Live2Dモデルが読み込まれているか確認
+        """録画開始（シンプル版）"""
         if not self.character_display or not self.character_display.live2d_webview.is_model_loaded:
             QMessageBox.warning(self, "エラー", "Live2Dモデルが読み込まれていません")
-            self.recording_tab.stop_recording_ui()  # UIを元に戻す
+            self.recording_tab.stop_recording_ui()
             return
+        
+        print("🎬 [Python] on_start_recording開始")
+        
+        # 🔥 修正：固定解像度でまず動かす
+        width, height = 2174, 2174  # Live2Dの実サイズ
+        fps = 60
         
         # 一時ファイル名生成
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         temp_output = self.temp_dir / f"recording_{timestamp}"
         
-        # 解像度とFPS（固定値使用）
-        width, height = 1920, 1080
-        fps = 60
-        
-        # VideoRecorder初期化（NVENC使用）
+        # VideoRecorder初期化
         try:
             self.video_recorder = VideoRecorder(
                 output_path=str(temp_output),
@@ -474,18 +475,115 @@ class TabbedVideoExportControl(QWidget):
                 use_nvenc=True
             )
             self.video_recorder.start()
+            self.is_recording = True
             
-            # JavaScript側の録画開始
-            script = f"window.startRecording({fps})"
+            # 解像度ラベル更新
+            self.resolution_label.setText(f"{width}x{height}px (Live2D実サイズ)")
+            
+            # JavaScript側の録画開始（シンプル版）
+            script = f"""
+            (function() {{
+                console.log('🎬 [JS] Python→JS録画開始');
+                if (typeof window.startRecording === 'function') {{
+                    return window.startRecording({fps});
+                }}
+                return false;
+            }})()
+            """
+            
             self.character_display.live2d_webview.page().runJavaScript(script)
             
-            self.is_recording = True
-            print(f"🎬 録画開始: {width}x{height} @ {fps}fps")
+            print(f"🎬 [Python] VideoRecorder開始完了: {width}x{height} @ {fps}fps")
             
         except Exception as e:
+            print(f"❌ [Python] 録画開始エラー: {e}")
+            import traceback
+            traceback.print_exc()
+            
             QMessageBox.critical(self, "エラー", f"録画開始エラー:\n{str(e)}")
             self.video_recorder = None
-            self.recording_tab.stop_recording_ui()  # UIを元に戻す
+            self.is_recording = False
+            self.recording_tab.stop_recording_ui()
+    def on_js_recording_started(js_result):
+        print(f"🔍 [Python] JavaScript録画開始結果: {js_result}")
+        
+        if not js_result:
+            QMessageBox.critical(self, "エラー", "JavaScript側の録画開始に失敗しました")
+            self.recording_tab.stop_recording_ui()
+            return
+        
+        # 🔥 修正：JavaScript変数から直接取得
+        size_script = """
+        (function() {
+            // 録画開始時に取得した解像度をそのまま返す
+            if (window.recordingState && window.recordingState.actualWidth) {
+                return {
+                    width: window.recordingState.actualWidth,
+                    height: window.recordingState.actualHeight
+                };
+            }
+            
+            // フォールバック：再取得
+            if (window.app && window.app.renderer) {
+                try {
+                    const testCanvas = window.app.renderer.extract.canvas(window.app.stage);
+                    return {
+                        width: testCanvas.width,
+                        height: testCanvas.height
+                    };
+                } catch(e) {
+                    console.error('解像度取得エラー:', e);
+                    return null;
+                }
+            }
+            return null;
+        })()
+        """
+        
+        def on_resolution_received(size_info):
+            print(f"🔍 [Python] 解像度取得結果: {size_info}")
+            
+            if not size_info or not isinstance(size_info, dict):
+                print(f"⚠️ 解像度取得失敗、デフォルト値を使用: 2174x2174")
+                width, height = 2174, 2174  # 🔥 修正：実際のサイズに変更
+            else:
+                width = size_info.get('width', 2174)
+                height = size_info.get('height', 2174)
+                print(f"✅ 実際の解像度: {width}x{height}px")
+            
+            # 一時ファイル名生成
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            temp_output = self.temp_dir / f"recording_{timestamp}"
+            
+            # VideoRecorder初期化
+            try:
+                self.video_recorder = VideoRecorder(
+                    output_path=str(temp_output),
+                    width=width,
+                    height=height,
+                    fps=fps,
+                    use_nvenc=True
+                )
+                self.video_recorder.start()
+                self.is_recording = True
+                
+                # 解像度ラベル更新
+                self.resolution_label.setText(f"{width}x{height}px (Live2D実サイズ)")
+                
+                print(f"🎬 [Python] VideoRecorder開始完了: {width}x{height} @ {fps}fps")
+                
+            except Exception as e:
+                QMessageBox.critical(self, "エラー", f"録画開始エラー:\n{str(e)}")
+                self.video_recorder = None
+                self.is_recording = False
+                self.recording_tab.stop_recording_ui()
+                
+                # JavaScript側も停止
+                stop_script = "if (typeof window.stopRecording === 'function') window.stopRecording()"
+                self.character_display.live2d_webview.page().runJavaScript(stop_script)
+        
+        # 解像度取得実行
+        self.character_display.live2d_webview.page().runJavaScript(size_script, on_resolution_received)
     
     def on_stop_recording(self):
         """録画停止"""

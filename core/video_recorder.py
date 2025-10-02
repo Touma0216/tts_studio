@@ -71,9 +71,9 @@ class VideoRecorder:
             if hasattr(self, 'stderr_file'):
                 self.stderr_file.close()
             raise
-    
+        
     def _build_nvenc_command(self) -> list:
-        """ffvhuff録画用コマンド生成（透過対応・可逆圧縮）"""
+        """非圧縮録画用コマンド生成（最速・透過対応）"""
         return [
             'ffmpeg',
             '-y',
@@ -83,11 +83,12 @@ class VideoRecorder:
             '-pix_fmt', 'rgba',
             '-r', str(self.fps),
             '-i', '-',
-            '-c:v', 'ffvhuff',      # 🔥 透過対応・可逆圧縮コーデック
-            '-pix_fmt', 'rgba',      # 🔥 透過保持
-            str(self.temp_file)
+            '-c:v', 'rawvideo',     # 非圧縮
+            '-pix_fmt', 'rgba',
+            '-f', 'avi',            # 🔥 追加：AVIコンテナ指定
+            str(self.temp_file.with_suffix('.avi'))  # 🔥 .aviに戻す
         ]
-    
+
     def _build_prores_command(self) -> list:
         """ProRes直接書き出し用コマンド生成"""
         output = self.output_path.with_suffix('.mov')
@@ -111,34 +112,40 @@ class VideoRecorder:
         """
         DataURL形式のフレームを書き込み
         Args:
-            dataURL: "data:image/png;base64,..."形式
+            dataURL: "data:image/png;base64,..."形式 または "data:image/jpeg;base64,..."形式
         """
         if self.process is None:
             raise RuntimeError("録画が開始されていません")
         
         if self.process.stdin is None or self.process.stdin.closed:
-            print(f"⚠️ FFmpegのstdinが閉じられています（フレーム#{self.frame_count}）")  # 🔥 追加
-            return  # 🔥 追加：エラーじゃなくて警告だけ
-        
-        if self.process.stdin is None or self.process.stdin.closed:
-            raise RuntimeError("FFmpegのstdinが閉じられています")
+            print(f"⚠️ FFmpegのstdinが閉じられています（フレーム#{self.frame_count}）")
+            return
         
         try:
             # Base64デコード
             if ',' not in dataURL:
                 raise ValueError("無効なDataURL形式")
             
-            image_data = base64.b64decode(dataURL.split(',')[1])
+            # 🔥 追加：JPEG/PNG自動判定
+            header, encoded = dataURL.split(',', 1)
+            is_jpeg = 'jpeg' in header.lower()
+            
+            image_data = base64.b64decode(encoded)
             
             # 最初のフレームのみサイズ確認
             if self.frame_count == 0:
-                print(f"🔍 最初のフレーム: Base64サイズ={len(dataURL)} bytes, デコード後={len(image_data)} bytes")
+                print(f"🔍 最初のフレーム: {'JPEG' if is_jpeg else 'PNG'}, Base64サイズ={len(dataURL)} bytes, デコード後={len(image_data)} bytes")
             
             # PIL Imageに変換
             image = Image.open(BytesIO(image_data))
             
-            # RGBA形式確保
-            if image.mode != 'RGBA':
+            # 🔥 JPEG→RGBA変換（透過を黒背景で補完）
+            if image.mode == 'RGB':
+                # RGBをRGBAに変換（アルファ=255で不透明）
+                rgba_image = Image.new('RGBA', image.size, (0, 0, 0, 255))
+                rgba_image.paste(image, (0, 0))
+                image = rgba_image
+            elif image.mode != 'RGBA':
                 image = image.convert('RGBA')
             
             # サイズ確認・リサイズ
@@ -165,7 +172,7 @@ class VideoRecorder:
             
             self.frame_count += 1
             
-        except BrokenPipeError:  # 🔥 追加：パイプが壊れた場合
+        except BrokenPipeError:
             print(f"💥 BrokenPipeError at frame #{self.frame_count}: FFmpegプロセスが予期せず終了")
             return
         except Exception as e:
@@ -230,42 +237,42 @@ class VideoRecorder:
                             log_content = f.read()
                             print(log_content)
                         print("="*50 + "\n")
-        
+            
     def _convert_to_prores(self):
-        """ffvhuff録画をProRes 4444に変換（修正版：gbrap対応）"""
+        """非圧縮録画をProRes 4444に変換"""
         output = self.output_path.with_suffix('.mov')
         
         command = [
             'ffmpeg',
             '-y',
-            '-i', str(self.temp_file),
+            '-i', str(self.temp_file),  # 🔥 元に戻す
             '-c:v', 'prores_ks',
             '-profile:v', '4444',
             '-pix_fmt', 'yuva444p10le',
-            '-alpha_bits', '16',  # 🔥 追加：アルファチャンネルビット深度
+            '-alpha_bits', '16',
             '-vendor', 'ap10',
             str(output)
         ]
         
+            
         print(f"🔄 変換コマンド: {' '.join(command)}")
         
-        # 🔥 追加：変換ログも保存
+        # 変換ログも保存
         convert_log_path = self.output_path.with_suffix('.convert.log')
         convert_log_file = open(convert_log_path, 'w', encoding='utf-8')
         
         try:
-            # 変換実行（最大5分）
             process = subprocess.run(
                 command, 
-                stdout=subprocess.PIPE,  # 🔥 修正
-                stderr=convert_log_file,  # 🔥 ログ保存
+                stdout=subprocess.PIPE,
+                stderr=convert_log_file,
                 text=True, 
                 timeout=300
             )
             
             convert_log_file.close()
             
-            # 🔥 追加：変換ログを表示
+            # 変換ログを表示
             if convert_log_path.exists():
                 print("\n" + "="*50)
                 print("📋 ProRes変換ログ:")
@@ -275,7 +282,6 @@ class VideoRecorder:
                 print("="*50 + "\n")
             
             if process.returncode == 0:
-                # 変換成功：ファイルサイズ確認
                 if output.exists():
                     output_size = output.stat().st_size
                     print(f"✅ ProRes変換完了: {output}")
