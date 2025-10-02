@@ -32,6 +32,9 @@ class WAVPlayer(QObject):
         self._playback_start_time = 0.0  # 🔥 追加
         self._playback_start_position = 0.0  # 🔥 追加
         
+        # 🔥 追加：再生完了時の処理
+        self.playback_finished.connect(self._on_playback_finished)
+        
     def load_wav_file(self, file_path: str) -> bool:
         """WAVファイルを読み込み"""
         try:
@@ -82,10 +85,12 @@ class WAVPlayer(QObject):
             self.current_position = start_position if start_position is not None else 0.0
         
         self.is_playing = True
-
+        
+        # 🔥 追加：再生開始時刻を記録
         import time
         self._playback_start_time = time.time()
         self._playback_start_position = self.current_position
+        
         self._start_playback()
         self._position_timer.start(50)  # 50msごとに位置更新
         
@@ -143,13 +148,24 @@ class WAVPlayer(QObject):
         """内部：再生開始"""
         try:
             start_sample = int(self.current_position * self.sample_rate)
-            audio_segment = self.audio_data[start_sample:] * self.volume
+            audio_segment = self.audio_data[start_sample:]
+            
+            # 🔍 デバッグログ追加
+            expected_duration = len(audio_segment) / self.sample_rate
+            print(f"🔍 再生データ: {len(audio_segment)}サンプル, 予想時間: {expected_duration:.2f}秒")
+            print(f"🔍 開始位置: {self.current_position:.2f}秒, 開始サンプル: {start_sample}")
+            
+            audio_segment = audio_segment * self.volume
             
             # 別スレッドで再生
             def play_audio():
                 try:
+                    import time
+                    play_start = time.time()
                     sd.play(audio_segment, self.sample_rate, blocking=True)
-                    # 🔥 修正：PyQtのシグナルはスレッドセーフなので直接emit
+                    actual_duration = time.time() - play_start
+                    print(f"🔍 実際の再生時間: {actual_duration:.2f}秒")
+                    
                     if self.is_playing:
                         self.is_playing = False
                         self.playback_finished.emit()
@@ -177,15 +193,18 @@ class WAVPlayer(QObject):
         if not self.is_playing:
             return
         
+        # 🔥 修正：実際の経過時間から位置を計算
         import time
         elapsed = time.time() - self._playback_start_time
-        self.current_position += 0.05  # 50ms進める
+        self.current_position = self._playback_start_position + elapsed
         
-        if self.current_position >= self.duration:
-            self.current_position = self.duration
-            self._position_timer.stop()
-            return
-        
+        # タイマー停止はplayback_finishedで行う
+        self.playback_position_changed.emit(self.current_position)
+    
+    def _on_playback_finished(self):
+        """再生完了時の処理"""
+        self._position_timer.stop()
+        self.current_position = self.duration
         self.playback_position_changed.emit(self.current_position)
     
     def get_audio_data(self) -> Optional[np.ndarray]:
