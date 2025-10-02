@@ -7,7 +7,7 @@ tts_studio/
 ├── assets/                           # 静的アセット
 │   └── live2d_dist/                  # Live2D環境
 │       ├── index.html                # Live2Dビューアー用HTML
-│       ├── main.js                   # Live2D制御JavaScript（編集：パラメータ操作API強化）
+│       ├── main.js                   # Live2D制御JavaScript
 │       ├── lip_sync/                 # リップシンク専用ディレクトリ
 │       │   ├── phoneme_classifier.js # 音素分類・予測エンジン
 │       │   ├── audio_analyzer.js     # リアルタイム音声解析
@@ -37,24 +37,26 @@ tts_studio/
 │   ├── live2d_manager.py             # Live2Dモデル管理システム
 │   ├── lip_sync_engine.py            # メインリップシンクエンジン
 │   ├── phoneme_analyzer.py           # 音素解析・最適化エンジン
+│   ├── wav_player.py                 # WAV再生エンジン
 │   └── audio_realtime_processor.py   # リアルタイム音声処理
 └── ui/                               # ユーザーインターフェース
     ├── __init__.py                   # パッケージ初期化
     ├── audio_cleaner_control.py      # 音声クリーナー制御UI
     ├── audio_effects_control.py      # 音声エフェクト制御UI
-    ├── character_display.py          # キャラクター表示・Live2D統合UI（編集：パラメータAPI追加）
+    ├── character_display.py          # キャラクター表示・Live2D統合UI
     ├── help_dialog.py                # ヘルプ・操作説明ダイアログ
     ├── image_history.py              # 画像履歴選択・管理ダイアログ
     ├── live2d_history.py             # Live2D履歴選択・管理ダイアログ
     ├── keyboard_shortcuts.py         # キーボードショートカット管理
-    ├── main_window.py                # メインウィンドウ・アプリケーション制御（編集：モデリングシグナル接続）
+    ├── main_window.py                # メインウィンドウ・アプリケーション制御
     ├── model_history.py              # モデル履歴表示・管理UI
     ├── model_loader.py               # AIモデル読み込みダイアログ
     ├── multi_text.py                 # 複数テキスト入力・管理UI
     ├── operation_instructions.html   # 操作説明HTMLファイル
     ├── sliding_menu.py               # スライド式ファイルメニューUI
-    ├── tabbed_audio_control.py       # タブ式音声制御統合UI（編集：5つ目のタブ追加）
+    ├── tabbed_audio_control.py       # タブ式音声制御統合UI
     ├── tabbed_emotion_control.py     # タブ式感情・パラメータ制御UI
     ├── tabbed_lip_sync_control.py    # タブ式リップシンク制御UI
-    ├── tabbed_modeling_control.py    # タブ式モデリング制御UI（追加）
+    ├── tabbed_modeling_control.py    # タブ式モデリング制御UI
+    ├── wav_playback_control.py       # タブ式wav再生制御UI
     └── tts_worker.py                 # TTS生成・リップシンク処理用バックグラウンドワーカー

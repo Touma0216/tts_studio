@@ -7,6 +7,7 @@ from .tabbed_modeling_control import TabbedModelingControl
 from .tabbed_emotion_control import TabbedEmotionControl
 from .audio_cleaner_control import AudioCleanerControl
 from .audio_effects_control import AudioEffectsControl
+from .wav_playback_control import WAVPlaybackControl
 from .tabbed_lip_sync_control import TabbedLipSyncControl
 
 class TabbedAudioControl(QWidget):
@@ -21,6 +22,14 @@ class TabbedAudioControl(QWidget):
     # 🆕 ドラッグ制御シグナル追加
     drag_control_toggled = pyqtSignal(bool)
     drag_sensitivity_changed = pyqtSignal(float)
+
+    # 🆕 WAV再生関連シグナル
+    wav_file_loaded = pyqtSignal(str)  # ファイルパス
+    wav_playback_started = pyqtSignal(float)  # 開始位置
+    wav_playback_paused = pyqtSignal()
+    wav_playback_stopped = pyqtSignal()
+    wav_position_changed = pyqtSignal(float)  # 再生位置
+    wav_volume_changed = pyqtSignal(float)  # 音量
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -92,17 +101,27 @@ class TabbedAudioControl(QWidget):
         self.effects_control.effects_settings_changed.connect(self.effects_settings_changed)
         self.effects_control.undo_executed.connect(self.on_effects_undo_executed)
         self.main_tab_widget.addTab(self.effects_control, "🎛️ 音声エフェクト")
+
+        # 🆕 4. WAV再生タブ
+        self.wav_playback_control = WAVPlaybackControl()
+        self.wav_playback_control.wav_loaded.connect(self.wav_file_loaded)
+        self.wav_playback_control.playback_started.connect(self.wav_playback_started)
+        self.wav_playback_control.playback_paused.connect(self.wav_playback_paused)
+        self.wav_playback_control.playback_stopped.connect(self.wav_playback_stopped)
+        self.wav_playback_control.position_changed.connect(self.wav_position_changed)
+        self.wav_playback_control.volume_changed.connect(self.wav_volume_changed)
+        self.main_tab_widget.addTab(self.wav_playback_control, "🎵 音声再生")
         
-        # 4. リップシンクタブ
+        # 5. リップシンクタブ（タブ番号が1つずれる）
         self.lip_sync_control = TabbedLipSyncControl()
         self.lip_sync_control.settings_changed.connect(self.on_lip_sync_settings_changed)
         self.main_tab_widget.addTab(self.lip_sync_control, "💋 リップシンク")
         
-        # 5. モデリングタブ
+        # 6. モデリングタブ
         self.modeling_control = TabbedModelingControl()
         self.modeling_control.parameter_changed.connect(self.on_modeling_parameter_changed)
         self.modeling_control.parameters_changed.connect(self.on_modeling_parameters_changed)
-        # 🆕 ドラッグ制御シグナル接続（中継）
+        #ドラッグ制御シグナル接続（中継）
         self.modeling_control.drag_control_toggled.connect(self.drag_control_toggled)
         self.modeling_control.drag_sensitivity_changed.connect(self.drag_sensitivity_changed)
         self.main_tab_widget.addTab(self.modeling_control, "🎨 モデリング")
@@ -334,3 +353,32 @@ class TabbedAudioControl(QWidget):
     def set_modeling_tab_active(self):
         """モデリングタブをアクティブに設定"""
         self.main_tab_widget.setCurrentIndex(4)
+
+
+    # ================================
+    # 🆕 WAV再生関連
+    # ================================
+    
+    def get_wav_playback_control(self):
+        """WAV再生コントロールウィジェットを取得"""
+        return self.wav_playback_control
+    
+    def is_wav_loaded(self) -> bool:
+        """WAVファイルが読み込まれているか"""
+        return self.wav_playback_control.is_wav_loaded
+    
+    def is_wav_playing(self) -> bool:
+        """WAV再生中か"""
+        return self.wav_playback_control.is_playing
+    
+    def get_wav_file_path(self) -> str:
+        """現在のWAVファイルパスを取得"""
+        return self.wav_playback_control.get_current_file_path()
+    
+    def is_wav_lipsync_enabled(self) -> bool:
+        """WAV再生時のリップシンク連動が有効か"""
+        return self.wav_playback_control.is_lipsync_enabled()
+    
+    def set_wav_playback_tab_active(self):
+        """WAV再生タブをアクティブに設定"""
+        self.main_tab_widget.setCurrentIndex(3)

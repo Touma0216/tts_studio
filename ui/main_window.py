@@ -22,6 +22,7 @@ from core.audio_processor import AudioProcessor
 from core.audio_analyzer import AudioAnalyzer
 from core.audio_effects_processor import AudioEffectsProcessor
 from core.lip_sync_engine import LipSyncEngine
+from core.wav_player import WAVPlayer
 
 class TTSStudioMainWindow(QMainWindow):
     tts_synthesis_requested = pyqtSignal(str, dict, bool)
@@ -34,9 +35,12 @@ class TTSStudioMainWindow(QMainWindow):
         self.audio_processor = AudioProcessor()
         self.audio_analyzer = AudioAnalyzer()
         self.audio_effects_processor = AudioEffectsProcessor()
-        
-        # リップシンクエンジン追加
         self.lip_sync_engine = LipSyncEngine()
+        self.setup_tts_worker()
+        self.wav_player = WAVPlayer()
+        self._wav_lipsync_timer = None
+        self._wav_lipsync_data = None
+        
         self.setup_tts_worker()
         
         self.last_generated_audio = None
@@ -49,6 +53,8 @@ class TTSStudioMainWindow(QMainWindow):
         
         # リップシンク統合設定
         self.setup_lipsync_integration()
+
+        self.setup_wav_playback_integration()
         
         self.sliding_menu = SlidingMenuWidget(self)
         self.sliding_menu.load_model_clicked.connect(self.open_model_loader)
@@ -517,7 +523,29 @@ class TTSStudioMainWindow(QMainWindow):
         QTimer.singleShot(100, self.sync_drag_control_state)
 
     def setup_audio_processing_integration(self):
-        self.tabbed_audio_control.cleaner_control.analyze_requested.connect(self.handle_cleaner_analysis_request)
+            self.tabbed_audio_control.cleaner_control.analyze_requested.connect(self.handle_cleaner_analysis_request)
+    
+    def setup_wav_playback_integration(self):
+        """WAV再生機能の統合設定"""
+        try:
+            print("🎵 WAV再生機能統合中...")
+            
+            # WAV再生シグナル接続
+            self.tabbed_audio_control.wav_file_loaded.connect(self.on_wav_file_loaded)
+            self.tabbed_audio_control.wav_playback_started.connect(self.on_wav_playback_started)
+            self.tabbed_audio_control.wav_playback_paused.connect(self.on_wav_playback_paused)
+            self.tabbed_audio_control.wav_playback_stopped.connect(self.on_wav_playback_stopped)
+            self.tabbed_audio_control.wav_position_changed.connect(self.on_wav_position_changed)
+            self.tabbed_audio_control.wav_volume_changed.connect(self.on_wav_volume_changed)
+            
+            # WAVプレイヤーシグナル接続
+            self.wav_player.playback_position_changed.connect(self.on_wav_player_position_update)
+            self.wav_player.playback_finished.connect(self.on_wav_player_finished)
+            
+            print("✅ WAV再生機能統合完了")
+            
+        except Exception as e:
+            print(f"❌ WAV再生統合エラー: {e}")
         
     def handle_cleaner_analysis_request(self):
         if not self.tts_engine.is_loaded:
@@ -876,3 +904,269 @@ class TTSStudioMainWindow(QMainWindow):
             self.on_drag_sensitivity_changed(modeling_control.get_drag_sensitivity())
         except Exception as e:
             print(f"⚠️ ドラッグ感度同期エラー: {e}")
+    
+    # ================================
+    # 🆕 WAV再生関連ハンドラー
+    # ================================
+    
+    def on_wav_file_loaded(self, file_path: str):
+        """WAVファイル読み込み完了"""
+        try:
+            print(f"🎵 WAVファイル読み込み開始: {file_path}")
+            
+            # WAVプレイヤーで読み込み
+            if self.wav_player.load_wav_file(file_path):
+                # UI側に長さを通知
+                duration = self.wav_player.get_duration()
+                wav_control = self.tabbed_audio_control.get_wav_playback_control()
+                wav_control.set_duration(duration)
+                
+                # リップシンクデータを事前生成
+                if wav_control.is_lipsync_enabled():
+                    self._generate_wav_lipsync_data(file_path)
+                
+                print(f"✅ WAVファイル読み込み完了: {duration:.2f}秒")
+            else:
+                QMessageBox.warning(self, "エラー", "WAVファイルの読み込みに失敗しました。")
+                
+        except Exception as e:
+            print(f"❌ WAVファイル読み込みエラー: {e}")
+            QMessageBox.critical(self, "エラー", f"WAVファイル読み込みエラー:\n{str(e)}")
+    
+    def _generate_wav_lipsync_data(self, file_path: str):
+        """WAV全体のリップシンクデータを事前生成"""
+        try:
+            print("🎭 WAV全体のリップシンク解析開始...")
+            
+            audio_data = self.wav_player.get_audio_data()
+            sample_rate = self.wav_player.get_sample_rate()
+            
+            if audio_data is None or sample_rate is None:
+                print("⚠️ 音声データが取得できません")
+                return
+            
+            # テキスト推定（実際には音声認識が必要だが、ここでは仮テキスト）
+            # TODO: 音声認識APIを使って実際のテキストを取得
+            estimated_text = "音声ファイル再生中"
+            
+            # リップシンク解析実行
+            self._wav_lipsync_data = self.lip_sync_engine.analyze_text_for_lipsync(
+                text=estimated_text,
+                audio_data=audio_data,
+                sample_rate=sample_rate
+            )
+            
+            if self._wav_lipsync_data:
+                print(f"✅ WAVリップシンク解析完了: {len(self._wav_lipsync_data.vowel_frames)}フレーム")
+            else:
+                print("⚠️ WAVリップシンク解析失敗")
+                
+        except Exception as e:
+            print(f"❌ WAVリップシンク解析エラー: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def on_wav_playback_started(self, start_position: float):
+        """WAV再生開始"""
+        try:
+            print(f"▶️ WAV再生開始: {start_position:.2f}秒から")
+            
+            # WAVプレイヤーで再生
+            self.wav_player.play(start_position)
+            
+            # リップシンク連動開始
+            wav_control = self.tabbed_audio_control.get_wav_playback_control()
+            if wav_control.is_lipsync_enabled() and self._wav_lipsync_data:
+                self._start_wav_lipsync(start_position)
+            
+        except Exception as e:
+            print(f"❌ WAV再生開始エラー: {e}")
+    
+    def on_wav_playback_paused(self):
+        """WAV再生一時停止"""
+        try:
+            print("⏸️ WAV一時停止")
+            self.wav_player.pause()
+            self._stop_wav_lipsync()
+            
+        except Exception as e:
+            print(f"❌ WAV一時停止エラー: {e}")
+    
+    def on_wav_playback_stopped(self):
+        """WAV再生停止"""
+        try:
+            print("⏹️ WAV停止")
+            self.wav_player.stop()
+            self._stop_wav_lipsync()
+            
+        except Exception as e:
+            print(f"❌ WAV停止エラー: {e}")
+    
+    def on_wav_position_changed(self, position: float):
+        """WAV再生位置変更（シーク）"""
+        try:
+            print(f"🎯 WAVシーク: {position:.2f}秒")
+            self.wav_player.seek(position)
+            
+            # リップシンク再開
+            wav_control = self.tabbed_audio_control.get_wav_playback_control()
+            if wav_control.is_lipsync_enabled() and self._wav_lipsync_data:
+                self._start_wav_lipsync(position)
+            
+        except Exception as e:
+            print(f"❌ WAVシークエラー: {e}")
+    
+    def on_wav_volume_changed(self, volume: float):
+        """WAV音量変更"""
+        try:
+            self.wav_player.set_volume(volume)
+            
+        except Exception as e:
+            print(f"❌ WAV音量変更エラー: {e}")
+    
+    def on_wav_player_position_update(self, position: float):
+        """WAVプレイヤーからの位置更新"""
+        try:
+            # UI側に通知
+            wav_control = self.tabbed_audio_control.get_wav_playback_control()
+            wav_control.update_position(position)
+            
+        except Exception as e:
+            print(f"❌ WAV位置更新エラー: {e}")
+    
+    def on_wav_player_finished(self):
+        """WAV再生完了"""
+        try:
+            print("✅ WAV再生完了")
+            
+            # UI側に通知
+            wav_control = self.tabbed_audio_control.get_wav_playback_control()
+            wav_control.on_playback_finished()
+            
+            # リップシンク停止
+            self._stop_wav_lipsync()
+            
+        except Exception as e:
+            print(f"❌ WAV完了処理エラー: {e}")
+    
+    def _start_wav_lipsync(self, start_position: float):
+        """WAVリップシンク開始"""
+        try:
+            if not self._wav_lipsync_data:
+                print("⚠️ リップシンクデータがありません")
+                return
+            
+            if not (hasattr(self.character_display, 'live2d_webview') and 
+                    self.character_display.live2d_webview.is_model_loaded):
+                print("⚠️ Live2Dモデルが読み込まれていません")
+                return
+            
+            # 開始位置からのフレームデータを抽出
+            filtered_frames = [
+                frame for frame in self._wav_lipsync_data.vowel_frames
+                if frame.timestamp >= start_position
+            ]
+            
+            if not filtered_frames:
+                print("⚠️ 該当するリップシンクフレームがありません")
+                return
+            
+            # タイムスタンプを調整（開始位置を0とする）
+            adjusted_frames = []
+            for frame in filtered_frames:
+                from core.lip_sync_engine import VowelFrame
+                adjusted_frame = VowelFrame(
+                    timestamp=frame.timestamp - start_position,
+                    vowel=frame.vowel,
+                    intensity=frame.intensity,
+                    duration=frame.duration,
+                    is_ending=frame.is_ending
+                )
+                adjusted_frames.append(adjusted_frame)
+            
+            # シンプルなデータ準備
+            simple_data = {
+                'text': self._wav_lipsync_data.text,
+                'duration': self._wav_lipsync_data.total_duration - start_position,
+                'frames': [
+                    {
+                        'time': frame.timestamp,
+                        'vowel': frame.vowel,
+                        'intensity': frame.intensity,
+                        'duration': frame.duration
+                    }
+                    for frame in adjusted_frames
+                ]
+            }
+            
+            # Live2Dに送信
+            self.character_display.mark_lipsync_in_progress(True)
+            
+            webview = self.character_display.live2d_webview
+            import json
+            data_json = json.dumps(simple_data, ensure_ascii=False)
+            
+            script = f"""
+            (function() {{
+                try {{
+                    const lipSyncData = {data_json};
+                    console.log('🎭 WAVリップシンク開始:', lipSyncData.frames.length, 'フレーム');
+                    
+                    if (typeof window.startSimpleLipSync === 'function') {{
+                        return window.startSimpleLipSync(lipSyncData);
+                    }} else {{
+                        console.error('❌ startSimpleLipSync関数が見つかりません');
+                        return false;
+                    }}
+                }} catch (error) {{
+                    console.error('❌ WAVリップシンクエラー:', error);
+                    return false;
+                }}
+            }})()
+            """
+            
+            webview.page().runJavaScript(script)
+            
+            # 設定を強制同期
+            QTimer.singleShot(10, self.character_display.sync_current_live2d_settings_to_webview)
+            
+            print(f"🎭 WAVリップシンク送信完了: {len(adjusted_frames)}フレーム")
+            
+        except Exception as e:
+            print(f"❌ WAVリップシンク開始エラー: {e}")
+            import traceback
+            traceback.print_exc()
+            self.character_display.mark_lipsync_in_progress(False)
+    
+    def _stop_wav_lipsync(self):
+        """WAVリップシンク停止"""
+        try:
+            if not (hasattr(self.character_display, 'live2d_webview') and 
+                    self.character_display.live2d_webview.is_model_loaded):
+                return
+            
+            webview = self.character_display.live2d_webview
+            
+            script = """
+            (function() {
+                try {
+                    if (typeof window.stopSimpleLipSync === 'function') {
+                        window.stopSimpleLipSync();
+                        return true;
+                    }
+                    return false;
+                } catch (error) {
+                    console.error('❌ リップシンク停止エラー:', error);
+                    return false;
+                }
+            })()
+            """
+            
+            webview.page().runJavaScript(script)
+            
+            self.character_display.mark_lipsync_in_progress(False)
+            
+            print("⏹️ WAVリップシンク停止")
+            
+        except Exception as e:
+            print(f"❌ WAVリップシンク停止エラー: {e}")
