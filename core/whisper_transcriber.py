@@ -96,9 +96,8 @@ class WhisperTranscriber:
             print(f"🎤 文字起こし開始: {path.name}")
             print(f"   モデル: {self.model_size}, デバイス: {self.device}, 言語: {language}")
             
-            # 🔥 デフォルトはキャラ名のみ（シンプル＆実用的）
             if initial_prompt is None:
-                initial_prompt = "れいねほのか"
+                initial_prompt = "零音ほのか, 修行"
             
             if initial_prompt:
                 print(f"   ヒント: {initial_prompt}")
