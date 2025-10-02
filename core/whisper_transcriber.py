@@ -14,7 +14,7 @@ except ImportError:
 class WhisperTranscriber:
     """faster-whisperを使った音声文字起こしエンジン
     
-    WAVファイルから日本語テキストを自動抽出
+    WAVファイルから日本語テキストを自動抽出（精度改善版）
     """
     
     def __init__(self, model_size: str = "small", device: str = "cuda"):
@@ -28,6 +28,10 @@ class WhisperTranscriber:
         self.model = None
         self.model_size = model_size
         self.device = device
+        
+        # 固有名詞・専門用語の修正辞書
+        self.correction_dict = {
+        }
         
         if self.is_available:
             self._initialize_model()
@@ -65,12 +69,14 @@ class WhisperTranscriber:
             self.is_available = False
             self.model = None
     
-    def transcribe_wav(self, wav_path: str, language: str = "ja") -> Tuple[bool, str]:
-        """WAVファイルから文字起こし
+    def transcribe_wav(self, wav_path: str, language: str = "ja", 
+                      initial_prompt: str = None) -> Tuple[bool, str]:
+        """WAVファイルから文字起こし（精度改善版）
         
         Args:
             wav_path: WAVファイルパス
             language: 言語コード (ja/en/auto)
+            initial_prompt: 認識精度向上のためのヒント文（固有名詞など）
         
         Returns:
             (成功フラグ, 文字起こしテキスト)
@@ -86,11 +92,21 @@ class WhisperTranscriber:
             print(f"🎤 文字起こし開始: {path.name}")
             print(f"   モデル: {self.model_size}, デバイス: {self.device}, 言語: {language}")
             
-            # faster-whisperで文字起こし実行
+            # 🔥 デフォルトはキャラ名のみ（シンプル＆実用的）
+            if initial_prompt is None:
+                initial_prompt = "れいねほのか"
+            
+            if initial_prompt:
+                print(f"   ヒント: {initial_prompt}")
+            else:
+                print(f"   ヒント: なし")
+            
+            # faster-whisperで文字起こし実行（キャラ名ヒント付き）
             segments, info = self.model.transcribe(
                 str(wav_path),
                 language=language if language != "auto" else None,
                 beam_size=5,
+                initial_prompt=initial_prompt,  # キャラ名をヒントとして使用
                 vad_filter=True,  # 無音部分を自動検出
                 vad_parameters=dict(
                     min_silence_duration_ms=500,  # 最小無音時間
@@ -121,10 +137,16 @@ class WhisperTranscriber:
             if not full_text:
                 return False, "⚠️ テキストを検出できませんでした"
             
-            print(f"✅ 文字起こし完了: {len(full_text)}文字, {segment_count}セグメント")
-            print(f"   テキスト: {full_text[:100]}{'...' if len(full_text) > 100 else ''}")
+            # 🆕 後処理：固有名詞・専門用語の修正
+            corrected_text = self._post_process_text(full_text)
             
-            return True, full_text
+            if corrected_text != full_text:
+                print(f"   📝 修正前: {full_text}")
+                print(f"   ✅ 修正後: {corrected_text}")
+            
+            print(f"✅ 文字起こし完了: {len(corrected_text)}文字, {segment_count}セグメント")
+            
+            return True, corrected_text
             
         except Exception as e:
             error_msg = f"❌ 文字起こしエラー: {e}"
@@ -132,14 +154,45 @@ class WhisperTranscriber:
             traceback.print_exc()
             return False, error_msg
     
+    def _post_process_text(self, text: str) -> str:
+        """文字起こし結果の後処理（固有名詞・専門用語の修正）
+        
+        Args:
+            text: 元のテキスト
+            
+        Returns:
+            修正後のテキスト
+        """
+        corrected = text
+        
+        # 修正辞書を適用
+        for wrong, correct in self.correction_dict.items():
+            if wrong in corrected:
+                print(f"      🔧 '{wrong}' → '{correct}'")
+                corrected = corrected.replace(wrong, correct)
+        
+        return corrected
+    
+    def add_correction(self, wrong: str, correct: str):
+        """修正辞書に新しいエントリを追加
+        
+        Args:
+            wrong: 誤認識される文字列
+            correct: 正しい文字列
+        """
+        self.correction_dict[wrong] = correct
+        print(f"✅ 修正辞書に追加: '{wrong}' → '{correct}'")
+    
     def transcribe_audio_data(self, audio_data: np.ndarray, sample_rate: int, 
-                             language: str = "ja") -> Tuple[bool, str]:
+                             language: str = "ja", 
+                             initial_prompt: str = None) -> Tuple[bool, str]:
         """音声データから直接文字起こし（numpy配列対応）
         
         Args:
             audio_data: 音声データ (float32, モノラル)
             sample_rate: サンプルレート
             language: 言語コード
+            initial_prompt: 認識精度向上のためのヒント文
         
         Returns:
             (成功フラグ, 文字起こしテキスト)
@@ -159,7 +212,7 @@ class WhisperTranscriber:
                 sf.write(tmp_path, audio_data, sample_rate, format='WAV', subtype='PCM_16')
                 
                 # 文字起こし実行
-                success, text = self.transcribe_wav(tmp_path, language)
+                success, text = self.transcribe_wav(tmp_path, language, initial_prompt)
                 
                 # 一時ファイル削除
                 Path(tmp_path).unlink(missing_ok=True)
@@ -182,7 +235,8 @@ class WhisperTranscriber:
             'available': self.is_available,
             'model_size': self.model_size,
             'device': self.device,
-            'model_loaded': self.model is not None
+            'model_loaded': self.model is not None,
+            'correction_dict_size': len(self.correction_dict)
         }
     
     def change_model(self, model_size: str):
