@@ -4,7 +4,10 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont
 from pathlib import Path
+import time  # ← 追加
+import tempfile  # ← 追加
 
+from core.video_recorder import VideoRecorder  # ← 追加
 
 class VideoRecordingItem(QWidget):
     """録画済み動画アイテム"""
@@ -26,11 +29,19 @@ class VideoRecordingItem(QWidget):
         
         # ファイル情報
         file_name = Path(self.file_path).name
-        size_mb = self.file_size / (1024 * 1024)
+        
+        # 🔧 修正：容量表示を改善
+        if self.file_size >= 1024**3:  # 1GB以上
+            size_str = f"{self.file_size / (1024**3):.2f}GB"
+        elif self.file_size >= 1024**2:  # 1MB以上
+            size_str = f"{self.file_size / (1024**2):.1f}MB"
+        else:
+            size_str = f"{self.file_size / 1024:.0f}KB"
+        
         minutes = int(self.duration // 60)
         seconds = int(self.duration % 60)
         
-        info_label = QLabel(f"{file_name}\n{size_mb:.1f}MB  {minutes:02d}:{seconds:02d}")
+        info_label = QLabel(f"{file_name}\n{size_str}  {minutes:02d}:{seconds:02d}")
         info_label.setStyleSheet("color: #333; font-size: 11px; border: none;")
         
         # 保存ボタン
@@ -248,6 +259,13 @@ class TabbedVideoExportControl(QWidget):
         self.output_folder = str(Path.home() / "Videos" / "TTS_Studio")
         self.recorded_videos = []  # [(file_path, size, duration), ...]
         
+        # 録画関連の状態管理（ここに移動）
+        self.video_recorder = None
+        self.is_recording = False
+        self.temp_dir = Path(tempfile.gettempdir()) / "tts_studio_recordings"
+        self.temp_dir.mkdir(exist_ok=True)
+        self.character_display = None  # 後でset_character_displayで設定
+        
         self.init_ui()
     
     def init_ui(self):
@@ -431,17 +449,79 @@ class TabbedVideoExportControl(QWidget):
             self.folder_label.setText(folder)
     
     def on_start_recording(self):
-        print("🔴 録画開始")
-        # TODO: 実際の録画処理を呼び出す
+        """録画開始"""
+        # Live2Dモデルが読み込まれているか確認
+        if not self.character_display or not self.character_display.live2d_webview.is_model_loaded:
+            QMessageBox.warning(self, "エラー", "Live2Dモデルが読み込まれていません")
+            self.recording_tab.stop_recording_ui()  # UIを元に戻す
+            return
+        
+        # 一時ファイル名生成
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        temp_output = self.temp_dir / f"recording_{timestamp}"
+        
+        # 解像度とFPS（固定値使用）
+        width, height = 1920, 1080
+        fps = 60
+        
+        # VideoRecorder初期化（NVENC使用）
+        try:
+            self.video_recorder = VideoRecorder(
+                output_path=str(temp_output),
+                width=width,
+                height=height,
+                fps=fps,
+                use_nvenc=True
+            )
+            self.video_recorder.start()
+            
+            # JavaScript側の録画開始
+            script = f"window.startRecording({fps})"
+            self.character_display.live2d_webview.page().runJavaScript(script)
+            
+            self.is_recording = True
+            print(f"🎬 録画開始: {width}x{height} @ {fps}fps")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "エラー", f"録画開始エラー:\n{str(e)}")
+            self.video_recorder = None
+            self.recording_tab.stop_recording_ui()  # UIを元に戻す
     
     def on_stop_recording(self):
-        print("⏹️ 録画停止")
-        # TODO: 録画停止＆ファイル保存
+        """録画停止"""
+        if not self.is_recording:
+            return
         
-        # テスト用：ダミー動画を追加
-        import time
-        dummy_path = f"temp_recording_{int(time.time())}.mkv"
-        self.add_recorded_video(dummy_path, 1024 * 1024 * 500, 150)  # 500MB, 2分30秒
+        # JavaScript側の録画停止
+        script = "window.stopRecording()"
+        self.character_display.live2d_webview.page().runJavaScript(script)
+        
+        # VideoRecorder停止
+        if self.video_recorder:
+            self.video_recorder.stop()
+            
+            # 🔧 修正：ProRes変換後のファイルパスを取得
+            if self.video_recorder.use_nvenc:
+                # NVENC録画の場合、ProRes変換後の.movファイル
+                video_path = str(self.video_recorder.output_path.with_suffix('.mov'))
+            else:
+                # ProRes直接録画の場合
+                video_path = str(self.video_recorder.output_path.with_suffix('.mov'))
+            
+            # ファイルが存在するか確認
+            if Path(video_path).exists():
+                file_size = Path(video_path).stat().st_size
+                duration = self.video_recorder.frame_count / self.video_recorder.fps
+                
+                # 録画済みリストに追加
+                self.add_recorded_video(video_path, file_size, duration)
+            else:
+                print(f"⚠️ 録画ファイルが見つかりません: {video_path}")
+            
+            self.video_recorder = None
+        
+        self.is_recording = False
+        print("⏹️ 録画停止完了")
     
     def add_recorded_video(self, file_path: str, file_size: int, duration: float):
         if len(self.recorded_videos) >= 3:
@@ -473,20 +553,80 @@ class TabbedVideoExportControl(QWidget):
             self.videos_list.setItemWidget(item, video_widget)
     
     def on_save_video(self, file_path: str):
+        """録画済み動画を保存"""
+        if not Path(file_path).exists():
+            QMessageBox.warning(self, "エラー", "元ファイルが見つかりません")
+            return
+        
+        # デフォルトのファイル名生成
+        default_name = Path(file_path).name
+        
         save_path, _ = QFileDialog.getSaveFileName(
             self,
             "動画を保存",
-            str(Path(self.output_folder) / Path(file_path).name),
-            "MKV動画 (*.mkv);;すべてのファイル (*)"
+            str(Path(self.output_folder) / default_name),
+            "ProRes 4444 (*.mov);;すべてのファイル (*)"
         )
         
         if save_path:
-            print(f"💾 保存: {file_path} → {save_path}")
-            # TODO: 実際のファイルコピー＆ProRes変換
-            QMessageBox.information(self, "保存完了", f"動画を保存しました:\n{save_path}")
-    
+            try:
+                import shutil
+                
+                # ファイルコピー
+                shutil.copy2(file_path, save_path)
+                
+                print(f"💾 保存完了: {file_path} → {save_path}")
+                QMessageBox.information(
+                    self, 
+                    "保存完了", 
+                    f"動画を保存しました:\n{save_path}\n\n"
+                    f"ファイルサイズ: {Path(save_path).stat().st_size / (1024**3):.2f}GB"
+                )
+                
+            except Exception as e:
+                QMessageBox.critical(self, "エラー", f"保存に失敗しました:\n{str(e)}")
+                print(f"❌ 保存エラー: {e}")
+        
     def on_delete_video(self, file_path: str):
-        self.recorded_videos = [(p, s, d) for p, s, d in self.recorded_videos if p != file_path]
-        self.update_videos_list()
-        print(f"🗑️ 削除: {file_path}")
-        # TODO: 実際のファイル削除
+        """録画済み動画を削除"""
+        try:
+            # リストから削除
+            self.recorded_videos = [(p, s, d) for p, s, d in self.recorded_videos if p != file_path]
+            self.update_videos_list()
+            
+            # ファイル削除
+            if Path(file_path).exists():
+                Path(file_path).unlink()
+                print(f"🗑️ ファイル削除: {file_path}")
+            else:
+                print(f"⚠️ ファイルが既に存在しません: {file_path}")
+                
+        except Exception as e:
+            print(f"❌ 削除エラー: {e}")
+            QMessageBox.warning(self, "エラー", f"削除に失敗しました:\n{str(e)}")
+
+    def set_character_display(self, character_display):
+        """CharacterDisplayWidgetを設定"""
+        self.character_display = character_display
+        
+        # RecordingBackendのシグナル接続
+        if hasattr(character_display, 'live2d_webview'):
+            backend = character_display.live2d_webview.recording_backend
+            backend.frame_received.connect(self.on_frame_received)
+            print("✅ 動画書き出しコントロール: RecordingBackend接続完了")
+
+    def on_frame_received(self, dataURL: str):
+        """RecordingBackendからフレームを受信"""
+        # 🔧 修正：録画中かつVideoRecorderが有効な場合のみ処理
+        if not self.is_recording:
+            return  # 停止後のフレームは無視
+        
+        if not self.video_recorder:
+            return  # VideoRecorderが無い場合も無視
+        
+        try:
+            self.video_recorder.write_frame_from_dataurl(dataURL)
+        except Exception as e:
+            print(f"❌ フレーム書き込みエラー: {e}")
+            self.recording_tab.stop_recording_ui()
+            self.on_stop_recording()

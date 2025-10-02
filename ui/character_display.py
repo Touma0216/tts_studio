@@ -4,9 +4,10 @@ from pathlib import Path
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
                              QFileDialog, QMessageBox,
                              QScrollArea, QSlider, QDialog, QTabWidget)
-from PyQt6.QtCore import Qt, QRect, QPoint, QTimer, QUrl, pyqtSignal
+from PyQt6.QtCore import Qt, QRect, QPoint, QTimer, QUrl, pyqtSignal, QObject, pyqtSlot
 from PyQt6.QtGui import QFont, QPixmap, QPainter, QPen, QColor
 from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWebChannel import QWebChannel
 
 from typing import Dict, Optional, Any
 
@@ -297,6 +298,35 @@ class DraggableImageLabel(QLabel):
             self.setCursor(Qt.CursorShape.ArrowCursor)
         super().leaveEvent(event)
 
+class RecordingBackend(QObject):
+    """JavaScript→Python ブリッジ（録画用）"""
+    
+    frame_received = pyqtSignal(str)  # DataURL形式のフレームを受信
+    
+    def __init__(self):
+        super().__init__()
+        self.frame_count = 0
+    
+    @pyqtSlot(str)
+    def receiveFrame(self, dataURL: str):
+        """JavaScriptからフレームを受信"""
+        try:
+            self.frame_count += 1
+            
+            # 100フレームごとにログ
+            if self.frame_count % 100 == 0:
+                print(f"📹 受信: {self.frame_count}フレーム")
+            
+            # シグナルで通知（後でVideoRecorderに接続）
+            self.frame_received.emit(dataURL)
+            
+        except Exception as e:
+            print(f"❌ フレーム受信エラー: {e}")
+    
+    def reset_count(self):
+        """フレームカウントリセット"""
+        self.frame_count = 0
+
 class Live2DWebView(QWebEngineView):
     """Live2D表示用WebEngineView（デバッグ版）"""
     model_loaded = pyqtSignal(str)
@@ -320,6 +350,14 @@ class Live2DWebView(QWebEngineView):
         self.page().javaScriptConsoleMessage = self.on_js_console_message
         
         self.page().loadFinished.connect(self.on_page_loaded)
+        
+        # 🎥 追加：QWebChannel初期化（録画用）
+        self.recording_backend = RecordingBackend()
+        self.web_channel = QWebChannel(self.page())
+        self.web_channel.registerObject('recording_backend', self.recording_backend)
+        self.page().setWebChannel(self.web_channel)
+        print("✅ QWebChannel（録画用）初期化完了")
+        
         self.load_initial_page()
     
     def on_js_console_message(self, level, message, line, source):
@@ -439,6 +477,22 @@ class Live2DWebView(QWebEngineView):
     def on_page_loaded(self, success):
         if success and self.live2d_url and self.page().url().toString() == self.live2d_url:
             print("✅ Live2D viewer page loaded successfully")
+            
+            # 🎥 追加：JavaScript側のQWebChannel初期化を呼び出し
+            script = """
+            (function() {
+                if (typeof window.initializeRecordingChannel === 'function') {
+                    window.initializeRecordingChannel();
+                    console.log('✅ JavaScript側QWebChannel初期化完了');
+                    return true;
+                } else {
+                    console.warn('⚠️ initializeRecordingChannel関数が見つかりません');
+                    return false;
+                }
+            })()
+            """
+            self.page().runJavaScript(script)
+            
         elif not success:
             print("❌ Failed to load Live2D viewer page")
             self.display_fallback_html()

@@ -37,6 +37,7 @@ tts_studio/
 │   ├── live2d_manager.py             # Live2Dモデル管理システム
 │   ├── lip_sync_engine.py            # メインリップシンクエンジン
 │   ├── phoneme_analyzer.py           # 音素解析・最適化エンジン
+│   ├── video_recorder.py             # 動画保存エンジン
 │   └── audio_realtime_processor.py   # リアルタイム音声処理
 └── ui/                               # ユーザーインターフェース
     ├── __init__.py                   # パッケージ初期化

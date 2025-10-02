@@ -109,6 +109,9 @@ class TTSStudioMainWindow(QMainWindow):
         self.tabbed_audio_control.lip_sync_settings_changed.connect(self.on_lipsync_settings_changed)
         self.tabbed_audio_control.add_text_row("initial", 1)
 
+        if hasattr(self.tabbed_audio_control, 'video_export_control'):
+            self.character_display_to_set_later = True  # フラグ設定
+
         self.vertical_splitter.addWidget(self.multi_text)
         self.vertical_splitter.addWidget(self.tabbed_audio_control)
 
@@ -158,6 +161,11 @@ class TTSStudioMainWindow(QMainWindow):
             live2d_server_manager=self.live2d_server_manager,
             parent=self
         )
+
+        if hasattr(self, 'character_display_to_set_later') and self.character_display_to_set_later:
+            if hasattr(self.tabbed_audio_control, 'video_export_control'):
+                self.tabbed_audio_control.video_export_control.set_character_display(self.character_display)
+                print("✅ 動画書き出し機能: CharacterDisplay統合完了")
         self.main_splitter.addWidget(left_widget)
         self.main_splitter.addWidget(self.character_display)
         self.main_splitter.setSizes([700, 300])
