@@ -1,6 +1,6 @@
 import numpy as np
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import List, Tuple
 import traceback
 
 try:
@@ -69,8 +69,8 @@ class WhisperTranscriber:
             self.is_available = False
             self.model = None
     
-    def transcribe_wav(self, wav_path: str, language: str = "ja", 
-                      initial_prompt: str = None) -> Tuple[bool, str]:
+    def transcribe_wav(self, wav_path: str, language: str = "ja",
+                    initial_prompt: str = None) -> Tuple[bool, str, List[dict]]:
         """WAVファイルから文字起こし（精度改善版）
         
         Args:
@@ -79,7 +79,7 @@ class WhisperTranscriber:
             initial_prompt: 認識精度向上のためのヒント文（固有名詞など）
         
         Returns:
-            (成功フラグ, 文字起こしテキスト)
+            (成功フラグ, 文字起こしテキスト, セグメント情報リスト)
         """
         if not self.is_available or self.model is None:
             return False, "❌ faster-whisperが利用できません"
@@ -87,7 +87,7 @@ class WhisperTranscriber:
         try:
             path = Path(wav_path)
             if not path.exists():
-                return False, f"❌ ファイルが見つかりません: {wav_path}"
+                return False, f"❌ ファイルが見つかりません: {wav_path}", []
             
             print(f"🎤 文字起こし開始: {path.name}")
             print(f"   モデル: {self.model_size}, デバイス: {self.device}, 言語: {language}")
@@ -102,7 +102,7 @@ class WhisperTranscriber:
                 print(f"   ヒント: なし")
             
             # faster-whisperで文字起こし実行（キャラ名ヒント付き）
-            segments, info = self.model.transcribe(
+            segment_generator, info = self.model.transcribe(
                 str(wav_path),
                 language=language if language != "auto" else None,
                 beam_size=5,
@@ -123,7 +123,15 @@ class WhisperTranscriber:
             full_text = ""
             segment_count = 0
             
-            for segment in segments:
+            segments_data: List[dict] = []
+
+            for segment in segment_generator:
+                segment_dict = {
+                    "start": segment.start,
+                    "end": segment.end,
+                    "text": segment.text
+                }
+                segments_data.append(segment_dict)
                 full_text += segment.text
                 segment_count += 1
                 
@@ -135,7 +143,7 @@ class WhisperTranscriber:
             full_text = full_text.strip()
             
             if not full_text:
-                return False, "⚠️ テキストを検出できませんでした"
+                return False, "⚠️ テキストを検出できませんでした", []
             
             # 🆕 後処理：固有名詞・専門用語の修正
             corrected_text = self._post_process_text(full_text)
@@ -146,7 +154,7 @@ class WhisperTranscriber:
             
             print(f"✅ 文字起こし完了: {len(corrected_text)}文字, {segment_count}セグメント")
             
-            return True, corrected_text
+            return True, corrected_text, segments_data
             
         except Exception as e:
             error_msg = f"❌ 文字起こしエラー: {e}"
@@ -183,9 +191,9 @@ class WhisperTranscriber:
         self.correction_dict[wrong] = correct
         print(f"✅ 修正辞書に追加: '{wrong}' → '{correct}'")
     
-    def transcribe_audio_data(self, audio_data: np.ndarray, sample_rate: int, 
-                             language: str = "ja", 
-                             initial_prompt: str = None) -> Tuple[bool, str]:
+    def transcribe_audio_data(self, audio_data: np.ndarray, sample_rate: int,
+                             language: str = "ja",
+                             initial_prompt: str = None) -> Tuple[bool, str, List[dict]]:
         """音声データから直接文字起こし（numpy配列対応）
         
         Args:
@@ -195,10 +203,10 @@ class WhisperTranscriber:
             initial_prompt: 認識精度向上のためのヒント文
         
         Returns:
-            (成功フラグ, 文字起こしテキスト)
+            (成功フラグ, 文字起こしテキスト, セグメント情報リスト)
         """
         if not self.is_available or self.model is None:
-            return False, "❌ faster-whisperが利用できません"
+            return False, "❌ faster-whisperが利用できません", []
         
         try:
             import tempfile
@@ -212,18 +220,18 @@ class WhisperTranscriber:
                 sf.write(tmp_path, audio_data, sample_rate, format='WAV', subtype='PCM_16')
                 
                 # 文字起こし実行
-                success, text = self.transcribe_wav(tmp_path, language, initial_prompt)
+                success, text, segments = self.transcribe_wav(tmp_path, language, initial_prompt)
                 
                 # 一時ファイル削除
                 Path(tmp_path).unlink(missing_ok=True)
                 
-                return success, text
+                return success, text, segments
             
         except Exception as e:
             error_msg = f"❌ 音声データ文字起こしエラー: {e}"
             print(error_msg)
             traceback.print_exc()
-            return False, error_msg
+            return False, error_msg, []
     
     def is_ready(self) -> bool:
         """文字起こし機能が利用可能か"""
