@@ -1,9 +1,11 @@
 import json
 import time
+import base64
+import mimetypes
 from pathlib import Path
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
                              QFileDialog, QMessageBox,
-                             QScrollArea, QSlider, QDialog, QTabWidget)
+                             QScrollArea, QSlider, QDialog, QTabWidget, QMenu)
 from PyQt6.QtCore import Qt, QRect, QPoint, QTimer, QUrl, pyqtSignal, QObject, pyqtSlot
 from PyQt6.QtGui import QFont, QPixmap, QPainter, QPen, QColor
 from PyQt6.QtWebEngineWidgets import QWebEngineView
@@ -367,6 +369,8 @@ class Live2DWebView(QWebEngineView):
     def set_character_display_widget(self, character_display):
         """キャラクター表示ウィジェットを設定"""
         self.character_display = character_display
+        if self.character_display:
+            QTimer.singleShot(0, self.character_display.apply_live2d_background)
     
     def wheelEvent(self, event):
         """マウスホイールでズーム制御（500%対応）"""
@@ -492,6 +496,9 @@ class Live2DWebView(QWebEngineView):
             })()
             """
             self.page().runJavaScript(script)
+
+            if self.character_display:
+                QTimer.singleShot(200, self.character_display.apply_live2d_background)
             
         elif not success:
             print("❌ Failed to load Live2D viewer page")
@@ -619,6 +626,17 @@ class CharacterDisplayWidget(QWidget):
         self.current_live2d_zoom_percent = 100  # デフォルト100%
         self.current_live2d_h_position = 50     # 中央
         self.current_live2d_v_position = 50     # 中央
+
+        # Live2D背景設定
+        self.live2d_background_settings = {
+            'mode': 'transparent',
+            'color': '#000000',
+            'alpha': 0.0,
+            'previewAlpha': 0.0
+        }
+        self._background_image_cache = {}
+        self._background_retry_attempts = 0
+        self._background_image_warning_shown = False
         
         # 🔧 追加：リップシンク状態管理
         self._lipsync_in_progress = False
@@ -653,6 +671,19 @@ class CharacterDisplayWidget(QWidget):
         header_label.setStyleSheet("color: #333; border: none; padding: 5px;")
         header_layout.addWidget(header_label)
         header_layout.addStretch()
+        # 背景切り替えボタン
+        self.live2d_background_btn = QPushButton("🎨 背景:標準")
+        self.live2d_background_btn.setToolTip("Live2D表示の背景を切り替え")
+        self.live2d_background_btn.setStyleSheet(
+            "QPushButton { background-color: #f8f9fa; border: 1px solid #ccc; border-radius: 4px; "
+            "font-size: 11px; padding: 4px 8px; } "
+            "QPushButton:hover:enabled { background-color: #e9ecef; } "
+            "QPushButton:disabled { color: #ccc; }"
+        )
+        self.live2d_background_btn.clicked.connect(self.show_live2d_background_menu)
+        header_layout.addWidget(self.live2d_background_btn)
+        self._create_live2d_background_menu()
+        self.update_live2d_background_button()
         
         # タブウィジェット
         self.mode_tab_widget = QTabWidget()
@@ -685,6 +716,260 @@ class CharacterDisplayWidget(QWidget):
         
         layout.addLayout(header_layout)
         layout.addWidget(self.mode_tab_widget, 1)
+    def _create_live2d_background_menu(self):
+        self.live2d_background_menu = QMenu(self)
+        self.live2d_background_menu.setStyleSheet(
+            "QMenu { background-color: #f8f9fa; border: 1px solid #ccc; }"
+            "QMenu::item { padding: 6px 24px; }"
+            "QMenu::item:selected { background-color: #e9ecef; }"
+        )
+
+        default_action = self.live2d_background_menu.addAction("標準（グラデーション）")
+        default_action.triggered.connect(lambda checked=False: self.set_live2d_background_mode('default'))
+
+        white_action = self.live2d_background_menu.addAction("白（アルファチャンネル）")
+        white_action.triggered.connect(
+            lambda checked=False: self.set_live2d_background_mode(
+                'white_alpha', color='#ffffff', alpha=0.0, previewAlpha=1.0
+            )
+        )
+
+        transparent_action = self.live2d_background_menu.addAction("透明（完全透過）")
+        transparent_action.triggered.connect(
+            lambda checked=False: self.set_live2d_background_mode(
+                'transparent', color='#000000', alpha=0.0, previewAlpha=0.0
+            )
+        )
+
+        chroma_action = self.live2d_background_menu.addAction("クロマキー（グリーン）")
+        chroma_action.triggered.connect(
+            lambda checked=False: self.set_live2d_background_mode(
+                'chroma', color='#00ff6a', alpha=1.0, previewAlpha=1.0
+            )
+        )
+
+        self.live2d_background_menu.addSeparator()
+
+        image_action = self.live2d_background_menu.addAction("画像を選択...")
+        image_action.triggered.connect(lambda checked=False: self.choose_live2d_background_image())
+
+    def show_live2d_background_menu(self):
+        if not hasattr(self, 'live2d_background_menu'):
+            return
+        button_rect = self.live2d_background_btn.rect()
+        global_pos = self.live2d_background_btn.mapToGlobal(button_rect.bottomLeft())
+        self.live2d_background_menu.exec(global_pos)
+
+    def update_live2d_background_button(self):
+        if not hasattr(self, 'live2d_background_btn'):
+            return
+
+        mode = self.live2d_background_settings.get('mode', 'default')
+        mode_label_map = {
+            'default': '標準',
+            'white_alpha': '白α',
+            'transparent': '透明',
+            'chroma': 'クロマキー',
+            'image': '画像'
+        }
+        label = mode_label_map.get(mode, '標準')
+        self.live2d_background_btn.setText(f"🎨 背景:{label}")
+
+        if mode == 'image':
+            image_path = self.live2d_background_settings.get('imagePath', '')
+            tooltip = "Live2D表示の背景を切り替え\n現在: 画像背景"
+            if image_path:
+                tooltip += f"\n{image_path}"
+        elif mode == 'white_alpha':
+            tooltip = "Live2D表示の背景を白(アルファチャンネル)に切り替え"
+        elif mode == 'transparent':
+            tooltip = "Live2D表示の背景を完全透明に切り替え"
+        elif mode == 'chroma':
+            tooltip = "Live2D表示の背景をクロマキー用のグリーンに切り替え"
+        elif mode == 'default':
+            tooltip = "Live2D表示の背景を標準のグラデーションに切り替え"
+        else:
+            tooltip = "Live2D表示の背景を切り替え"
+
+        self.live2d_background_btn.setToolTip(tooltip)
+
+    def choose_live2d_background_image(self):
+        file_dialog_filter = "画像ファイル (*.png *.jpg *.jpeg *.bmp *.webp *.gif)"
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "背景に使用する画像を選択",
+            str(Path.home()),
+            file_dialog_filter
+        )
+
+        if not file_path:
+            return
+
+        if not self._load_background_image_data(file_path):
+            QMessageBox.warning(self, "背景画像エラー", "選択した画像を読み込めませんでした。")
+            return
+
+        self.set_live2d_background_mode('image', imagePath=file_path)
+
+    def set_live2d_background_mode(self, mode: str, **kwargs):
+        new_settings = {'mode': mode}
+
+        if mode == 'white_alpha':
+            new_settings.update({
+                'color': kwargs.get('color', '#ffffff'),
+                'alpha': kwargs.get('alpha', 0.0),
+                'previewAlpha': kwargs.get('previewAlpha', 1.0)
+            })
+        elif mode == 'transparent':
+            new_settings.update({
+                'color': kwargs.get('color', '#000000'),
+                'alpha': kwargs.get('alpha', 0.0),
+                'previewAlpha': kwargs.get('previewAlpha', 0.0)
+            })
+        elif mode == 'chroma':
+            new_settings.update({
+                'color': kwargs.get('color', '#00ff6a'),
+                'alpha': kwargs.get('alpha', 1.0),
+                'previewAlpha': kwargs.get('previewAlpha', 1.0)
+            })
+        elif mode == 'image':
+            image_path = kwargs.get('imagePath') or self.live2d_background_settings.get('imagePath')
+            if not image_path:
+                QMessageBox.warning(self, "背景画像", "背景に使用する画像を選択してください。")
+                return
+            new_settings.update({
+                'imagePath': image_path,
+                'imageFit': kwargs.get('imageFit', self.live2d_background_settings.get('imageFit', 'contain')),
+                'imageRepeat': kwargs.get('imageRepeat', self.live2d_background_settings.get('imageRepeat', 'no-repeat')),
+                'alpha': kwargs.get('alpha', 0.0),
+                'previewAlpha': kwargs.get('previewAlpha', 1.0)
+            })
+        else:
+            new_settings.update({
+                'alpha': kwargs.get('alpha', 0.0),
+                'previewAlpha': kwargs.get('previewAlpha', 1.0)
+            })
+
+        self.live2d_background_settings = new_settings
+        self._background_image_warning_shown = False
+        self._background_retry_attempts = 0
+        self.update_live2d_background_button()
+        self.apply_live2d_background(notify_user=True)
+        if self.current_live2d_id:
+            self.save_live2d_ui_settings()
+
+    def _load_background_image_data(self, image_path: str):
+        if not image_path:
+            return None
+
+        try:
+            path = Path(image_path)
+            if not path.exists():
+                print(f"⚠️ 背景画像が見つかりません: {image_path}")
+                return None
+
+            mtime = path.stat().st_mtime
+            cache_entry = self._background_image_cache.get(str(path))
+            if cache_entry and cache_entry['mtime'] == mtime:
+                return cache_entry['data']
+
+            mime_type, _ = mimetypes.guess_type(str(path))
+            if not mime_type:
+                mime_type = 'image/png'
+
+            with open(path, 'rb') as f:
+                encoded = base64.b64encode(f.read()).decode('ascii')
+
+            data_url = f"data:{mime_type};base64,{encoded}"
+            self._background_image_cache[str(path)] = {'mtime': mtime, 'data': data_url}
+            return data_url
+
+        except Exception as e:
+            print(f"❌ 背景画像読み込みエラー: {e}")
+            return None
+
+    def _build_background_config(self):
+        settings = self.live2d_background_settings or {}
+        mode = settings.get('mode', 'default')
+        config = {'mode': mode}
+
+        if mode in {'white_alpha', 'transparent', 'chroma'}:
+            if settings.get('color'):
+                config['color'] = settings['color']
+            config['alpha'] = settings.get('alpha', 0.0)
+            config['previewAlpha'] = settings.get('previewAlpha', config['alpha'])
+        elif mode == 'image':
+            image_path = settings.get('imagePath')
+            data_url = self._load_background_image_data(image_path)
+            if not data_url:
+                return None, f"背景画像を読み込めませんでした: {image_path}"
+            config['imageDataUrl'] = data_url
+            config['imageFit'] = settings.get('imageFit', 'contain')
+            config['imageRepeat'] = settings.get('imageRepeat', 'no-repeat')
+            config['alpha'] = settings.get('alpha', 0.0)
+            config['previewAlpha'] = settings.get('previewAlpha', 1.0)
+        else:
+            config['alpha'] = settings.get('alpha', 0.0)
+            config['previewAlpha'] = settings.get('previewAlpha', 1.0)
+
+        return config, None
+
+    def apply_live2d_background(self, notify_user: bool = False):
+        if not hasattr(self, 'live2d_webview') or not self.live2d_webview:
+            return
+
+        result = self._build_background_config()
+        if not result:
+            return
+
+        config, error = result
+        if error:
+            print(f"⚠️ 背景適用エラー: {error}")
+            if notify_user and not self._background_image_warning_shown:
+                QMessageBox.warning(self, "背景の適用に失敗しました", error)
+                self._background_image_warning_shown = True
+            if self.live2d_background_settings.get('mode') == 'image':
+                self.live2d_background_settings = {
+                    'mode': 'transparent',
+                    'color': '#000000',
+                    'alpha': 0.0,
+                    'previewAlpha': 0.0
+                }
+                self._background_retry_attempts = 0
+                self.update_live2d_background_button()
+                QTimer.singleShot(0, lambda: self.apply_live2d_background())
+            return
+
+        config_json = json.dumps(config)
+        script = f"""
+        (function() {{
+            if (typeof window.setLive2DBackground === 'function') {{
+                return window.setLive2DBackground({config_json});
+            }}
+            return {{ success: false, message: 'setLive2DBackground not found' }};
+        }})()
+        """
+
+        def handle_result(result):
+            try:
+                if isinstance(result, dict):
+                    if result.get('success'):
+                        self._background_retry_attempts = 0
+                        self._background_image_warning_shown = False
+                    elif result.get('pending') and self._background_retry_attempts < 5:
+                        self._background_retry_attempts += 1
+                        QTimer.singleShot(400, lambda: self.apply_live2d_background(notify_user))
+                    else:
+                        message = result.get('message', '背景の適用に失敗しました。')
+                        print(f"⚠️ 背景適用失敗: {message}")
+                        if notify_user and not result.get('pending'):
+                            QMessageBox.warning(self, "背景の適用に失敗しました", message)
+                else:
+                    self._background_retry_attempts = 0
+            except Exception as e:
+                print(f"⚠️ 背景適用結果処理エラー: {e}")
+
+        self.live2d_webview.page().runJavaScript(script, handle_result)
 
     def setup_image_tab(self):
         layout = QVBoxLayout(self.image_tab)
@@ -992,6 +1277,8 @@ class CharacterDisplayWidget(QWidget):
             self.current_display_mode = "live2d"
             self.toggle_minimap_btn.setVisible(True)
             self.toggle_minimap_btn.setEnabled(hasattr(self, 'live2d_webview') and self.live2d_webview.is_model_loaded)
+            QTimer.singleShot(0, self.apply_live2d_background)
+
         
         if not self.is_initializing:
             self.display_mode_manager.set_last_tab_index(index)
@@ -1445,6 +1732,21 @@ class CharacterDisplayWidget(QWidget):
             else:
                 self.live2d_minimap.hide()
 
+        background_settings = ui_settings.get('background_settings')
+        if background_settings:
+            self.live2d_background_settings = dict(background_settings)
+        else:
+            self.live2d_background_settings = {
+                'mode': 'transparent',
+                'color': '#000000',
+                'alpha': 0.0,
+                'previewAlpha': 0.0
+            }
+        self._background_image_warning_shown = False
+        self._background_retry_attempts = 0
+        self.update_live2d_background_button()
+        QTimer.singleShot(0, lambda: self.apply_live2d_background())
+
     def save_live2d_ui_settings(self):
         """Live2DのUI設定を保存（500%対応）"""
         if not self.current_live2d_id:
@@ -1456,6 +1758,8 @@ class CharacterDisplayWidget(QWidget):
             'v_position': self.live2d_v_position_slider.value(),
             'minimap_visible': self.toggle_minimap_btn.isChecked()
         }
+        bg_settings = {k: v for k, v in self.live2d_background_settings.items() if k != 'imageDataUrl'}
+        ui_settings['background_settings'] = bg_settings
         self.live2d_manager.update_ui_settings(self.current_live2d_id, ui_settings)
 
     def show_live2d_history_dialog(self):

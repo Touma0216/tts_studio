@@ -16,6 +16,157 @@ let currentLipSyncData = null;
 let preservedModelSettings = null;
 let isPositionProtected = false;
 
+// 背景制御関連
+let backgroundSettings = {
+    mode: 'transparent',
+    color: '#000000',
+    alpha: 0,
+    previewAlpha: 0,
+    imageFit: 'contain',
+    imageRepeat: 'no-repeat'
+};
+let backgroundApplyPending = false;
+
+function clampAlpha(value) {
+    if (value === undefined || value === null || Number.isNaN(value)) {
+        return 0;
+    }
+    return Math.max(0, Math.min(1, Number(value)));
+}
+
+function parseColorToNumber(color) {
+    if (typeof color === 'number' && Number.isFinite(color)) {
+        return color;
+    }
+    if (typeof color === 'string') {
+        try {
+            return PIXI.utils.string2hex(color);
+        } catch (error) {
+            console.warn('⚠️ 背景カラー解析失敗:', color, error);
+        }
+    }
+    return PIXI.utils.string2hex('#000000');
+}
+
+function colorToCss(color, alpha) {
+    const value = parseColorToNumber(color);
+    const r = (value >> 16) & 0xff;
+    const g = (value >> 8) & 0xff;
+    const b = value & 0xff;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function resetBackgroundStyles(body, canvas) {
+    body.style.background = '';
+    body.style.backgroundColor = 'transparent';
+    body.style.backgroundImage = '';
+    body.style.backgroundSize = '';
+    body.style.backgroundRepeat = '';
+    body.style.backgroundPosition = '';
+
+    canvas.style.background = 'transparent';
+    canvas.style.backgroundColor = 'transparent';
+    canvas.style.backgroundImage = '';
+    canvas.style.backgroundSize = '';
+    canvas.style.backgroundRepeat = '';
+}
+
+function applyBackgroundSettings() {
+    const body = document.body;
+    const canvas = document.getElementById('live2d-canvas');
+
+    if (!body || !canvas) {
+        backgroundApplyPending = true;
+        return { success: false, pending: true, message: 'Live2D canvas not ready' };
+    }
+
+    resetBackgroundStyles(body, canvas);
+
+    const mode = backgroundSettings.mode || 'default';
+    const renderAlpha = clampAlpha(backgroundSettings.alpha);
+    const previewAlpha = clampAlpha(
+        backgroundSettings.previewAlpha !== undefined ? backgroundSettings.previewAlpha : renderAlpha
+    );
+
+    if (app && app.renderer) {
+        if (mode === 'image') {
+            app.renderer.background.alpha = renderAlpha;
+        } else if (mode === 'default') {
+            app.renderer.background.alpha = renderAlpha;
+            app.renderer.background.color = parseColorToNumber('#000000');
+        } else {
+            app.renderer.background.alpha = renderAlpha;
+            app.renderer.background.color = parseColorToNumber(backgroundSettings.color || '#000000');
+        }
+    }
+
+    if (mode === 'image') {
+        const dataUrl = backgroundSettings.imageDataUrl;
+        if (!dataUrl) {
+            backgroundApplyPending = true;
+            return { success: false, pending: true, message: 'Background image data not ready' };
+        }
+        body.style.backgroundImage = `url(${dataUrl})`;
+        body.style.backgroundSize = backgroundSettings.imageFit || 'contain';
+        body.style.backgroundRepeat = backgroundSettings.imageRepeat || 'no-repeat';
+        body.style.backgroundPosition = 'center center';
+        canvas.style.backgroundColor = 'rgba(0,0,0,0)';
+    } else if (mode === 'transparent') {
+        const cssColor = colorToCss(backgroundSettings.color || '#000000', previewAlpha);
+        body.style.backgroundColor = cssColor;
+        canvas.style.backgroundColor = cssColor;
+    } else if (mode === 'white_alpha' || mode === 'chroma') {
+        const cssColor = colorToCss(backgroundSettings.color || '#ffffff', previewAlpha);
+        body.style.backgroundColor = cssColor;
+        canvas.style.backgroundColor = cssColor;
+    } else {
+        body.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+        canvas.style.backgroundColor = colorToCss('#000000', 0);
+    }
+
+    backgroundApplyPending = false;
+    return { success: true, appliedSettings: { ...backgroundSettings } };
+}
+
+window.setLive2DBackground = function(config = {}) {
+    try {
+        if (!config || typeof config !== 'object') {
+            return { success: false, message: 'Invalid background configuration' };
+        }
+
+        backgroundSettings = {
+            ...backgroundSettings,
+            ...config
+        };
+
+        if (!backgroundSettings.mode) {
+            backgroundSettings.mode = 'default';
+        }
+
+        if (backgroundSettings.mode !== 'image') {
+            delete backgroundSettings.imageDataUrl;
+            delete backgroundSettings.imageFit;
+            delete backgroundSettings.imageRepeat;
+        }
+
+        const result = applyBackgroundSettings();
+
+        if (result && result.pending) {
+            return { success: false, pending: true, message: result.message };
+        }
+
+        return result || { success: true, appliedSettings: { ...backgroundSettings } };
+    } catch (error) {
+        console.error('❌ 背景設定エラー:', error);
+        backgroundApplyPending = true;
+        return { success: false, message: error?.message || String(error) };
+    }
+};
+
+window.getLive2DBackground = function() {
+    return { ...backgroundSettings };
+};
+
 async function initialize() {
     const canvas = document.getElementById('live2d-canvas');
     
@@ -30,6 +181,8 @@ async function initialize() {
     
     // リップシンクコントローラー初期化
     await initializeLipSyncController();
+
+    applyBackgroundSettings();
     
     console.log("✅ Live2D Viewer Initialized.");
 }

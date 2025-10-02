@@ -30,6 +30,14 @@ class Live2DManager:
                 with open(self.history_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     self.models_data = data.get('models', [])
+                    for model in self.models_data:
+                        ui_settings = model.setdefault('ui_settings', {})
+                        ui_settings.setdefault('background_settings', {
+                            'mode': 'transparent',
+                            'color': '#000000',
+                            'alpha': 0.0,
+                            'previewAlpha': 0.0
+                        })
                     # 存在しないモデルフォルダを自動削除
                     self.cleanup_missing_models()
         except Exception as e:
@@ -78,7 +86,13 @@ class Live2DManager:
                 'auto_breath': True,
                 'auto_eye_blink': True,
                 'lip_sync_gain': 1.0,
-                'background_visible': True
+                'background_visible': True,
+                'background_settings': {
+                    'mode': 'transparent',
+                    'color': '#000000',
+                    'alpha': 0.0,
+                    'previewAlpha': 0.0
+                }
             }
         }
         
@@ -136,7 +150,13 @@ class Live2DManager:
             'auto_breath': True,
             'auto_eye_blink': True,
             'lip_sync_gain': 1.0,
-            'background_visible': True
+            'background_visible': True,
+            'background_settings': {
+                'mode': 'transparent',
+                'color': '#000000',
+                'alpha': 0.0,
+                'previewAlpha': 0.0
+            }
         }
     
     # ★追加: find_model3_json メソッドを追加
