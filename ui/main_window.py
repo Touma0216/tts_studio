@@ -167,9 +167,15 @@ class TTSStudioMainWindow(QMainWindow):
         )
         self.main_splitter.addWidget(left_widget)
         self.main_splitter.addWidget(self.character_display)
-        self.main_splitter.setSizes([420, 780])
-        left_widget.setMinimumWidth(360)
-        self.main_splitter.setSizes([700, 300])
+        preferred_left_ratio = 0.7
+        total_width = max(self.width(), 1000)
+        preferred_left_width = int(total_width * preferred_left_ratio)
+        preferred_right_width = max(total_width - preferred_left_width, 300)
+
+        self.main_splitter.setStretchFactor(0, 7)
+        self.main_splitter.setStretchFactor(1, 3)
+        self.main_splitter.setSizes([preferred_left_width, preferred_right_width])
+
         left_widget.setMinimumWidth(500)
         self.character_display.setMinimumWidth(200)
         self.main_splitter.splitterMoved.connect(self.on_splitter_moved)
@@ -499,17 +505,17 @@ class TTSStudioMainWindow(QMainWindow):
             if total_width <= 0:
                 return
 
-            min_left_width = int(total_width * 0.35)
-            max_right_width = total_width - min_left_width
+            min_left_width = int(total_width * 0.6)
+            max_right_width = int(total_width * 0.4)
             if len(sizes) >= 2:
                 left_width, right_width = sizes[0], sizes[1]
                 if left_width < min_left_width:
                     new_left_width = min_left_width
-                    new_right_width = total_width - new_left_width
+                    new_right_width = max(total_width - new_left_width, int(total_width * 0.3))
                     self.main_splitter.setSizes([new_left_width, new_right_width])
                 elif right_width > max_right_width:
                     new_right_width = max_right_width
-                    new_left_width = total_width - new_right_width
+                    new_left_width = max(total_width - new_right_width, min_left_width)
                     self.main_splitter.setSizes([new_left_width, new_right_width])
                     
     def resizeEvent(self, event):
