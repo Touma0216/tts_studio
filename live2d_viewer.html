@@ -273,15 +273,6 @@
             console.log('Setting expression:', expressionName);
         }
     };
-    
-    window.setBackgroundVisible = function(visible) {
-        if (visible) {
-            document.body.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-        } else {
-            document.body.style.background = 'transparent';
-        }
-    };
-    
     window.updateModelSettings = function(settings) {
         console.log('Updating model settings:', settings);
         if (ttsModel && ttsModelLoaded) {

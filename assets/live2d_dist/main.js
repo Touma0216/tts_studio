@@ -426,16 +426,6 @@ window.updateModelSettings = function(settings) {
     }
 };
 
-window.setBackgroundVisible = function(visible) {
-    if (app && app.renderer) {
-        try {
-            app.renderer.background.alpha = visible ? 1 : 0;
-        } catch (e) {
-            console.error("背景設定エラー:", e);
-        }
-    }
-};
-
 window.addEventListener('resize', () => {
     if (app && app.renderer) {
         app.renderer.resize(window.innerWidth, window.innerHeight);

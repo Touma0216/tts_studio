@@ -1,17 +1,14 @@
-import os
-import shutil
 import json
 import time
 from pathlib import Path
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-                             QFileDialog, QFrame, QApplication, QMessageBox,
-                             QScrollArea, QSlider, QDialog, QTabWidget, QGroupBox,
-                             QCheckBox, QDoubleSpinBox)
+                             QFileDialog, QMessageBox,
+                             QScrollArea, QSlider, QDialog, QTabWidget)
 from PyQt6.QtCore import Qt, QRect, QPoint, QTimer, QUrl, pyqtSignal
 from PyQt6.QtGui import QFont, QPixmap, QPainter, QPen, QColor
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
-from typing import Dict, List, Optional, Any
+from typing import Dict, Optional, Any
 
 from core.image_manager import ImageManager
 from core.live2d_manager import Live2DManager
@@ -511,10 +508,6 @@ class Live2DWebView(QWebEngineView):
             settings_json = json.dumps(settings)
             script = f"if (typeof updateModelSettings === 'function') updateModelSettings({settings_json});"
             self.page().runJavaScript(script)
-    
-    def set_background_visible(self, visible):
-        script = f"if (typeof setBackgroundVisible === 'function') setBackgroundVisible({str(visible).lower()});"
-        self.page().runJavaScript(script)
 
     def load_model_parameters(self):
         """モデルのパラメータ一覧を取得"""
@@ -1759,6 +1752,7 @@ class CharacterDisplayWidget(QWidget):
             print("↺ ドラッグ角度リセット")
         except Exception as e:
             print(f"❌ ドラッグ角度リセットエラー: {e}")
+
     def register_video_bridge(self, video_bridge):
         """VideoBridgeをQWebChannelに登録"""
         try:
