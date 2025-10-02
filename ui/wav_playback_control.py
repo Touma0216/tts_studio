@@ -35,6 +35,10 @@ class WAVPlaybackControl(QWidget):
         self.current_position = 0.0
         self.transcribed_text = ""  # 🆕
         self.transcription_segments = []  # 🆕 タイムスタンプ付きセグメント
+        self._typing_timer = QTimer()
+        self._typing_timer.timeout.connect(self._on_typing_timer)
+        self._typing_text = ""
+        self._typing_index = 0
         
         self.init_ui()
     
@@ -473,23 +477,58 @@ class WAVPlaybackControl(QWidget):
             self.transcription_progress.setRange(0, 100)
             self.transcription_progress.setValue(100 if "完了" in status else 0)
     
-    def set_transcription_text(self, text: str, segments: list = None):
+    def set_transcription_text(self, text: str, segments: list = None, animated: bool = True):
         """文字起こし結果をセット
         
         Args:
             text: 全文テキスト
             segments: タイムスタンプ付きセグメントリスト（オプション）
+            animated: タイピングアニメーション有効/無効
         """
         self.transcribed_text = text
-        self.transcription_segments = segments or []  # 🆕
+        self.transcription_segments = segments or []
         
-        self.transcription_text_edit.blockSignals(True)
-        self.transcription_text_edit.setPlainText(text)
-        self.transcription_text_edit.blockSignals(False)
+        if animated and text:
+            # タイピングアニメーションで表示
+            self._start_typing_animation(text)
+        else:
+            # 一気に表示
+            self.transcription_text_edit.blockSignals(True)
+            self.transcription_text_edit.setPlainText(text)
+            self.transcription_text_edit.blockSignals(False)
         
         # ボタンを有効化
         self.reanalyze_btn.setEnabled(True)
-        self.save_transcription_btn.setEnabled(len(self.transcription_segments) > 0)  # 🆕
+        self.save_transcription_btn.setEnabled(len(self.transcription_segments) > 0)
+
+    def _start_typing_animation(self, text: str):
+        """タイピングアニメーション開始"""
+        self._typing_timer.stop()
+        
+        self.transcription_text_edit.blockSignals(True)
+        self.transcription_text_edit.clear()
+        self.transcription_text_edit.blockSignals(False)
+        
+        self._typing_text = text
+        self._typing_index = 0
+        self._typing_timer.start(30)
+
+    def _on_typing_timer(self):
+        """タイピングアニメーションのタイマー処理"""
+        if self._typing_index < len(self._typing_text):
+            current_text = self._typing_text[:self._typing_index + 1]
+            
+            self.transcription_text_edit.blockSignals(True)
+            self.transcription_text_edit.setPlainText(current_text)
+            
+            cursor = self.transcription_text_edit.textCursor()
+            cursor.movePosition(cursor.MoveOperation.End)
+            self.transcription_text_edit.setTextCursor(cursor)
+            
+            self.transcription_text_edit.blockSignals(False)
+            self._typing_index += 1
+        else:
+            self._typing_timer.stop()
     
     def get_transcription_text(self) -> str:
         """現在の文字起こしテキストを取得"""

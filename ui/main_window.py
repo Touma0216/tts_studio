@@ -956,14 +956,6 @@ class TTSStudioMainWindow(QMainWindow):
             QMessageBox.critical(self, "エラー", f"WAVファイル読み込みエラー:\n{str(e)}")
 
 
-    # ========================================
-    # 📍 ファイル: ui/main_window.py
-    # 📍 場所: 新規メソッド（on_wav_file_loaded の下に追加）
-    # ========================================
-
-    # 📍 ファイル: ui/main_window.py
-    # 📍 場所: _transcribe_and_generate_lipsync() メソッドを修正
-
     def _transcribe_and_generate_lipsync(self, file_path: str, wav_control):
         """Whisper文字起こし + リップシンク生成"""
         try:
@@ -972,7 +964,7 @@ class TTSStudioMainWindow(QMainWindow):
             QApplication.processEvents()
             
             # Whisperで文字起こし実行
-            success, transcribed_text, segments = self.whisper_transcriber.transcribe_wav(  # 🆕 segments追加
+            success, transcribed_text, segments = self.whisper_transcriber.transcribe_wav(
                 file_path, 
                 language="ja"
             )
@@ -980,12 +972,15 @@ class TTSStudioMainWindow(QMainWindow):
             if success:
                 print(f"✅ 文字起こし成功: {transcribed_text[:50]}...")
                 
-                # UIにテキスト表示（セグメント付き）
-                wav_control.set_transcription_text(transcribed_text, segments)  # 🆕 segments追加
+                # UIにテキスト表示（タイピングアニメーション付き）
+                wav_control.set_transcription_text(transcribed_text, segments, animated=True)  # 🆕 animated=True
                 wav_control.set_transcription_status("✅ 文字起こし完了", is_processing=False)
                 
                 # リップシンクデータ生成
                 self._generate_wav_lipsync_data_with_text(file_path, transcribed_text)
+                
+                # 🆕 自動保存（追記型）
+                self._auto_save_transcription(file_path, segments)
                 
             else:
                 # エラー時
@@ -1004,6 +999,40 @@ class TTSStudioMainWindow(QMainWindow):
             wav_control.set_transcription_status("❌ 処理エラー", is_processing=False)
             self._generate_wav_lipsync_data_with_text(file_path, "こんにちは")
 
+
+    # 📍 新規メソッド追加（_transcribe_and_generate_lipsync の下）
+
+    def _auto_save_transcription(self, wav_path: str, segments: list):
+        """文字起こし結果を自動保存（追記型）
+        
+        Args:
+            wav_path: 元のWAVファイルパス
+            segments: セグメントリスト
+        """
+        try:
+            if not segments:
+                return
+            
+            # 保存先ファイルパス
+            transcription_file = Path("transcriptions.txt")
+            
+            # ファイル名を取得
+            file_name = Path(wav_path).name
+            
+            # 追記モードで保存
+            success = self.whisper_transcriber.save_transcription_to_file(
+                segments,
+                str(transcription_file),
+                include_timestamps=True,
+                append_mode=True,  # 🆕 追記モード
+                file_name=file_name  # 🆕 ヘッダー用
+            )
+            
+            if success:
+                print(f"💾 自動保存完了: {transcription_file}")
+            
+        except Exception as e:
+            print(f"⚠️ 自動保存エラー（処理は継続）: {e}")
 
     def _generate_wav_lipsync_data_with_text(self, file_path: str, text: str):
         """指定されたテキストでWAV全体のリップシンクデータを生成

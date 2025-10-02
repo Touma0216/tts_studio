@@ -1,6 +1,6 @@
 import numpy as np
 from pathlib import Path
-from typing import List, Tuple
+from typing import Optional, Tuple
 import traceback
 
 try:
@@ -31,6 +31,10 @@ class WhisperTranscriber:
         
         # 固有名詞・専門用語の修正辞書
         self.correction_dict = {
+            '零音ほのか': 'れいねほのか',
+            'レイネホノカ': 'れいねほのか',
+            'れいねホノカ': 'れいねほのか',
+            '零音': 'れいね',
         }
         
         if self.is_available:
@@ -69,8 +73,8 @@ class WhisperTranscriber:
             self.is_available = False
             self.model = None
     
-    def transcribe_wav(self, wav_path: str, language: str = "ja",
-                    initial_prompt: str = None) -> Tuple[bool, str, List[dict]]:
+    def transcribe_wav(self, wav_path: str, language: str = "ja", 
+                      initial_prompt: str = None) -> Tuple[bool, str, list]:
         """WAVファイルから文字起こし（精度改善版）
         
         Args:
@@ -79,10 +83,10 @@ class WhisperTranscriber:
             initial_prompt: 認識精度向上のためのヒント文（固有名詞など）
         
         Returns:
-            (成功フラグ, 文字起こしテキスト, セグメント情報リスト)
+            (成功フラグ, 文字起こしテキスト, セグメントリスト)
         """
         if not self.is_available or self.model is None:
-            return False, "❌ faster-whisperが利用できません"
+            return False, "❌ faster-whisperが利用できません", []
         
         try:
             path = Path(wav_path)
@@ -102,7 +106,7 @@ class WhisperTranscriber:
                 print(f"   ヒント: なし")
             
             # faster-whisperで文字起こし実行（キャラ名ヒント付き）
-            segment_generator, info = self.model.transcribe(
+            segments, info = self.model.transcribe(
                 str(wav_path),
                 language=language if language != "auto" else None,
                 beam_size=5,
@@ -119,21 +123,21 @@ class WhisperTranscriber:
             language_probability = info.language_probability
             print(f"   検出言語: {detected_language} (確率: {language_probability:.2%})")
             
-            # セグメントを結合してテキスト生成
+            # セグメントを結合してテキスト生成 + セグメントデータを保存
             full_text = ""
             segment_count = 0
+            segment_list = []  # 🆕 タイムスタンプ付きセグメントリスト
             
-            segments_data: List[dict] = []
-
-            for segment in segment_generator:
-                segment_dict = {
-                    "start": segment.start,
-                    "end": segment.end,
-                    "text": segment.text
-                }
-                segments_data.append(segment_dict)
+            for segment in segments:
                 full_text += segment.text
                 segment_count += 1
+                
+                # 🆕 セグメント情報を保存
+                segment_list.append({
+                    'start': segment.start,
+                    'end': segment.end,
+                    'text': segment.text.strip()
+                })
                 
                 # デバッグ出力（最初の3セグメントのみ）
                 if segment_count <= 3:
@@ -154,13 +158,14 @@ class WhisperTranscriber:
             
             print(f"✅ 文字起こし完了: {len(corrected_text)}文字, {segment_count}セグメント")
             
-            return True, corrected_text, segments_data
+            # 🆕 セグメントリストも返す（タプルの3番目として）
+            return True, corrected_text, segment_list
             
         except Exception as e:
             error_msg = f"❌ 文字起こしエラー: {e}"
             print(error_msg)
             traceback.print_exc()
-            return False, error_msg
+            return False, error_msg, []
     
     def _post_process_text(self, text: str) -> str:
         """文字起こし結果の後処理（固有名詞・専門用語の修正）
@@ -181,6 +186,75 @@ class WhisperTranscriber:
         
         return corrected
     
+    def save_transcription_to_file(self, segments: list, output_path: str,
+                                  include_timestamps: bool = True, 
+                                  append_mode: bool = False,
+                                  file_name: str = None) -> bool:
+        """文字起こし結果をファイルに保存
+        
+        Args:
+            segments: セグメントリスト
+            output_path: 出力ファイルパス
+            include_timestamps: タイムスタンプを含めるか
+            append_mode: 追記モード（True）か上書きモード（False）
+            file_name: 元ファイル名（追記モード時のヘッダー用）
+            
+        Returns:
+            成功フラグ
+        """
+        try:
+            mode = 'a' if append_mode else 'w'  # 🆕 追記 or 上書き
+            
+            with open(output_path, mode, encoding='utf-8') as f:
+                # 🆕 追記モードの場合、ヘッダーを追加
+                if append_mode and file_name:
+                    from datetime import datetime
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    f.write(f"\n{'='*60}\n")
+                    f.write(f"=== {file_name} ({timestamp}) ===\n")
+                    f.write(f"{'='*60}\n")
+                
+                if include_timestamps:
+                    # タイムスタンプ付き形式
+                    for segment in segments:
+                        start_time = self._format_timestamp(segment['start'])
+                        end_time = self._format_timestamp(segment['end'])
+                        text = segment['text']
+                        f.write(f"[{start_time} - {end_time}] {text}\n")
+                else:
+                    # テキストのみ
+                    for segment in segments:
+                        f.write(f"{segment['text']}\n")
+                
+                # 🆕 追記モードの場合、セクション終わりに空行
+                if append_mode:
+                    f.write("\n")
+            
+            print(f"✅ ファイル保存完了: {output_path} ({'追記' if append_mode else '新規'})")
+            return True
+            
+        except Exception as e:
+            print(f"❌ ファイル保存エラー: {e}")
+            traceback.print_exc()
+            return False
+    
+    def _format_timestamp(self, seconds: float) -> str:
+        """秒数をタイムスタンプ形式に変換（HH:MM:SS.mmm）
+        
+        Args:
+            seconds: 秒数
+            
+        Returns:
+            タイムスタンプ文字列
+        """
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        millis = int((seconds % 1) * 1000)
+        
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}.{millis:03d}"
+
+
     def add_correction(self, wrong: str, correct: str):
         """修正辞書に新しいエントリを追加
         
@@ -191,9 +265,9 @@ class WhisperTranscriber:
         self.correction_dict[wrong] = correct
         print(f"✅ 修正辞書に追加: '{wrong}' → '{correct}'")
     
-    def transcribe_audio_data(self, audio_data: np.ndarray, sample_rate: int,
-                             language: str = "ja",
-                             initial_prompt: str = None) -> Tuple[bool, str, List[dict]]:
+    def transcribe_audio_data(self, audio_data: np.ndarray, sample_rate: int, 
+                             language: str = "ja", 
+                             initial_prompt: str = None) -> Tuple[bool, str]:
         """音声データから直接文字起こし（numpy配列対応）
         
         Args:
@@ -203,10 +277,10 @@ class WhisperTranscriber:
             initial_prompt: 認識精度向上のためのヒント文
         
         Returns:
-            (成功フラグ, 文字起こしテキスト, セグメント情報リスト)
+            (成功フラグ, 文字起こしテキスト)
         """
         if not self.is_available or self.model is None:
-            return False, "❌ faster-whisperが利用できません", []
+            return False, "❌ faster-whisperが利用できません"
         
         try:
             import tempfile
@@ -220,18 +294,18 @@ class WhisperTranscriber:
                 sf.write(tmp_path, audio_data, sample_rate, format='WAV', subtype='PCM_16')
                 
                 # 文字起こし実行
-                success, text, segments = self.transcribe_wav(tmp_path, language, initial_prompt)
+                success, text = self.transcribe_wav(tmp_path, language, initial_prompt)
                 
                 # 一時ファイル削除
                 Path(tmp_path).unlink(missing_ok=True)
                 
-                return success, text, segments
+                return success, text
             
         except Exception as e:
             error_msg = f"❌ 音声データ文字起こしエラー: {e}"
             print(error_msg)
             traceback.print_exc()
-            return False, error_msg, []
+            return False, error_msg
     
     def is_ready(self) -> bool:
         """文字起こし機能が利用可能か"""
