@@ -1,5 +1,6 @@
 import * as PIXI from 'pixi.js';
 import { Live2DModel } from 'pixi-live2d-display';
+import './animation_player.js';
 
 // PIXIをグローバルスコープに公開
 window.PIXI = PIXI;

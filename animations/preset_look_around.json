@@ -1,0 +1,48 @@
+{
+  "version": "1.0",
+  "metadata": {
+    "name": "preset_look_around",
+    "description": "左右を見渡すモーション（首＋視線）",
+    "duration": 4.0
+  },
+  "model": {
+    "model_id": "honoka_v1",
+    "required_parameters": ["ParamAngleX", "ParamEyeBallX"]
+  },
+  "keyframes": [
+    {
+      "time": 0.0,
+      "parameters": {
+        "ParamAngleX": 0.0,
+        "ParamEyeBallX": 0.0
+      },
+      "easing": "linear"
+    },
+    {
+      "time": 1.0,
+      "parameters": {
+        "ParamAngleX": 20.0,
+        "ParamEyeBallX": 0.5
+      },
+      "easing": "ease_in_out"
+    },
+    {
+      "time": 2.5,
+      "parameters": {
+        "ParamAngleX": -20.0,
+        "ParamEyeBallX": -0.5
+      },
+      "easing": "ease_in_out"
+    },
+    {
+      "time": 4.0,
+      "parameters": {
+        "ParamAngleX": 0.0,
+        "ParamEyeBallX": 0.0
+      },
+      "easing": "ease_out"
+    }
+  ],
+  "loop": false,
+  "auto_reset": true
+}

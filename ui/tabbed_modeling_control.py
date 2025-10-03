@@ -30,6 +30,9 @@ class TabbedModelingControl(QWidget):
         self.physics_sliders = {}  # 🆕 物理演算制御用スライダー
         self.is_loading = False
         self.physics_enabled = True  # 🆕 物理演算の状態
+
+        from core.animation_manager import AnimationManager
+        self.animation_manager = AnimationManager("animations")
         
         self.update_timer = QTimer()
         self.update_timer.setSingleShot(True)
@@ -130,6 +133,7 @@ class TabbedModelingControl(QWidget):
         self.tabs.addTab(self.create_body_tab(), "🧍 体")
         self.tabs.addTab(self.create_emotion_tab(), "🎭 感情")
         self.tabs.addTab(self.create_motion_tab(), "🎬 モーション")
+        self.tabs.addTab(self.create_animation_tab(), "🎞️ アニメーション")
         
         main_layout.addLayout(header)
         main_layout.addWidget(self.tabs, 1)
@@ -1171,3 +1175,237 @@ class TabbedModelingControl(QWidget):
                 """)
         except Exception as e:
             print(f"⚠️ 物理演算復元エラー: {e}")
+
+    def create_animation_tab(self):
+        """アニメーションタブ"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(15)
+        
+        # ヘッダー
+        header_layout = QHBoxLayout()
+        title = QLabel("🎞️ アニメーション再生")
+        title.setFont(QFont("", 13, QFont.Weight.Bold))
+        
+        refresh_btn = QPushButton("🔄")
+        refresh_btn.setFixedSize(35, 35)
+        refresh_btn.setToolTip("リスト更新")
+        refresh_btn.clicked.connect(self.refresh_animation_list)
+        
+        header_layout.addWidget(title)
+        header_layout.addStretch()
+        header_layout.addWidget(refresh_btn)
+        layout.addLayout(header_layout)
+        
+        # アニメーション一覧
+        from PyQt6.QtWidgets import QListWidget
+        self.animation_list = QListWidget()
+        self.animation_list.setStyleSheet("""
+            QListWidget {
+                border: 2px solid #4a90e2;
+                border-radius: 6px;
+                background-color: white;
+                font-size: 12px;
+            }
+            QListWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #e0e0e0;
+            }
+            QListWidget::item:selected {
+                background-color: #4a90e2;
+                color: white;
+            }
+            QListWidget::item:hover {
+                background-color: #e3f2fd;
+            }
+        """)
+        self.animation_list.itemDoubleClicked.connect(self.on_animation_double_clicked)
+        layout.addWidget(self.animation_list, 1)
+        
+        # 再生コントロール
+        control_group = QGroupBox("再生制御")
+        control_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #4a90e2;
+                border-radius: 8px;
+                margin-top: 10px;
+                padding-top: 15px;
+            }
+        """)
+        
+        control_layout = QVBoxLayout(control_group)
+        
+        # 再生ボタン
+        buttons_layout = QHBoxLayout()
+        
+        self.play_btn = QPushButton("▶️ 再生")
+        self.play_btn.setMinimumHeight(40)
+        self.play_btn.clicked.connect(self.play_animation)
+        
+        self.pause_btn = QPushButton("⏸️ 一時停止")
+        self.pause_btn.setMinimumHeight(40)
+        self.pause_btn.clicked.connect(self.pause_animation)
+        
+        self.stop_btn = QPushButton("⏹️ 停止")
+        self.stop_btn.setMinimumHeight(40)
+        self.stop_btn.clicked.connect(self.stop_animation)
+        
+        buttons_layout.addWidget(self.play_btn)
+        buttons_layout.addWidget(self.pause_btn)
+        buttons_layout.addWidget(self.stop_btn)
+        control_layout.addLayout(buttons_layout)
+        
+        # ループ設定
+        loop_layout = QHBoxLayout()
+        self.loop_checkbox = QCheckBox("🔄 ループ再生")
+        self.loop_checkbox.setChecked(False)
+        self.loop_checkbox.stateChanged.connect(self.on_loop_changed)
+        loop_layout.addWidget(self.loop_checkbox)
+        loop_layout.addStretch()
+        control_layout.addLayout(loop_layout)
+        
+        # 再生速度
+        speed_layout = QHBoxLayout()
+        speed_layout.addWidget(QLabel("速度:"))
+        
+        self.speed_slider = QSlider(Qt.Orientation.Horizontal)
+        self.speed_slider.setRange(10, 300)
+        self.speed_slider.setValue(100)
+        self.speed_slider.valueChanged.connect(self.on_speed_changed)
+        speed_layout.addWidget(self.speed_slider)
+        
+        self.speed_label = QLabel("1.0x")
+        self.speed_label.setMinimumWidth(50)
+        speed_layout.addWidget(self.speed_label)
+        control_layout.addLayout(speed_layout)
+        
+        layout.addWidget(control_group)
+        
+        # 初期化
+        self.refresh_animation_list()
+        
+        return widget
+
+    def refresh_animation_list(self):
+        """アニメーション一覧を更新"""
+        self.animation_manager.refresh_list()
+        animations = self.animation_manager.get_animation_list()
+        
+        self.animation_list.clear()
+        for anim in animations:
+            item_text = f"{anim['name']} ({anim['duration']:.1f}秒)"
+            self.animation_list.addItem(item_text)
+        
+        print(f"✅ アニメーション一覧更新: {len(animations)}件")
+
+    def on_animation_double_clicked(self, item):
+        """アニメーション選択時（ダブルクリック）"""
+        index = self.animation_list.row(item)
+        animations = self.animation_manager.get_animation_list()
+        
+        if 0 <= index < len(animations):
+            selected = animations[index]
+            self.load_and_play_animation(selected['file_name'])
+
+    def load_and_play_animation(self, file_name: str):
+        """アニメーションを読み込んで再生"""
+        animation_data = self.animation_manager.load_animation_by_name(file_name)
+        
+        if not animation_data:
+            QMessageBox.warning(self, "エラー", f"アニメーション読み込み失敗: {file_name}")
+            return
+        
+        # JavaScript側に送信
+        parent = self.parent()
+        while parent and not hasattr(parent, 'character_display'):
+            parent = parent.parent()
+        
+        if parent and hasattr(parent, 'character_display'):
+            char_display = parent.character_display
+            
+            import json
+            animation_json = json.dumps(animation_data, ensure_ascii=False)
+            
+            script = f"""
+            (function() {{
+                const animData = {animation_json};
+                const success = window.loadAnimation(animData);
+                
+                if (success) {{
+                    window.playAnimation();
+                    console.log('✅ アニメーション再生開始');
+                }} else {{
+                    console.error('❌ アニメーション読み込み失敗');
+                }}
+            }})();
+            """
+            
+            char_display.live2d_webview.page().runJavaScript(script)
+            print(f"▶️ アニメーション再生: {file_name}")
+        else:
+            QMessageBox.warning(self, "エラー", "Live2Dビューアーが見つかりません")
+
+    def play_animation(self):
+        """アニメーション再生"""
+        parent = self.parent()
+        while parent and not hasattr(parent, 'character_display'):
+            parent = parent.parent()
+        
+        if parent and hasattr(parent, 'character_display'):
+            char_display = parent.character_display
+            char_display.live2d_webview.page().runJavaScript("window.playAnimation();")
+            print("▶️ アニメーション再生")
+
+    def pause_animation(self):
+        """アニメーション一時停止"""
+        parent = self.parent()
+        while parent and not hasattr(parent, 'character_display'):
+            parent = parent.parent()
+        
+        if parent and hasattr(parent, 'character_display'):
+            char_display = parent.character_display
+            char_display.live2d_webview.page().runJavaScript("window.pauseAnimation();")
+            print("⏸️ アニメーション一時停止")
+
+    def stop_animation(self):
+        """アニメーション停止"""
+        parent = self.parent()
+        while parent and not hasattr(parent, 'character_display'):
+            parent = parent.parent()
+        
+        if parent and hasattr(parent, 'character_display'):
+            char_display = parent.character_display
+            char_display.live2d_webview.page().runJavaScript("window.stopAnimation();")
+            print("⏹️ アニメーション停止")
+
+    def on_loop_changed(self, state):
+        """ループ設定変更"""
+        enabled = state == Qt.CheckState.Checked.value
+        
+        parent = self.parent()
+        while parent and not hasattr(parent, 'character_display'):
+            parent = parent.parent()
+        
+        if parent and hasattr(parent, 'character_display'):
+            char_display = parent.character_display
+            char_display.live2d_webview.page().runJavaScript(
+                f"window.setAnimationLoop({str(enabled).lower()});"
+            )
+            print(f"🔄 ループ: {'ON' if enabled else 'OFF'}")
+
+    def on_speed_changed(self, value: int):
+        """再生速度変更"""
+        speed = value / 100.0
+        self.speed_label.setText(f"{speed:.1f}x")
+        
+        parent = self.parent()
+        while parent and not hasattr(parent, 'character_display'):
+            parent = parent.parent()
+        
+        if parent and hasattr(parent, 'character_display'):
+            char_display = parent.character_display
+            char_display.live2d_webview.page().runJavaScript(
+                f"window.setAnimationSpeed({speed});"
+            )
