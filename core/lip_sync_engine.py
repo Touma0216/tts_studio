@@ -98,6 +98,15 @@ class LipSyncEngine:
             self.phoneme_analyzer = PhonemeAnalyzer()
             self.audio_processor = AudioRealtimeProcessor()
             
+            # 🆕 WhisperTranscriberを初期化（長時間WAV対応用）
+            try:
+                from .whisper_transcriber import WhisperTranscriber
+                self.whisper_transcriber = WhisperTranscriber(model_size="medium", device="cuda")
+                print("✅ WhisperTranscriber初期化完了")
+            except Exception as e:
+                print(f"⚠️ WhisperTranscriber初期化エラー: {e}")
+                self.whisper_transcriber = None
+            
             print("✅ LipSyncEngine初期化完了 (完全修正版)")
             
         except ImportError as e:
@@ -1139,25 +1148,11 @@ class LipSyncEngine:
 
 
     def _get_whisper_segments(self, wav_path: str, provided_text: str = None) -> List[Dict]:
-        """Whisperでセグメント情報を取得
-        
-        Args:
-            wav_path: WAVファイルパス
-            provided_text: 提供されたテキスト（Noneの場合は自動文字起こし）
-            
-        Returns:
-            セグメントリスト [{'start': float, 'end': float, 'text': str}, ...]
-        """
+        """Whisperでセグメント情報を取得"""
         try:
-            # WhisperTranscriberを使用
-            if not self.phoneme_analyzer:
+            if not self.whisper_transcriber:
                 print("⚠️ WhisperTranscriber利用不可")
                 return []
-            
-            # whisper_transcriberがあるか確認
-            if not hasattr(self, 'whisper_transcriber'):
-                from .whisper_transcriber import WhisperTranscriber
-                self.whisper_transcriber = WhisperTranscriber(model_size="medium", device="cuda")
             
             # 文字起こし実行
             success, transcribed_text, segments = self.whisper_transcriber.transcribe_wav(
