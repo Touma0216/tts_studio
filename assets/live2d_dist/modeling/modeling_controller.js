@@ -425,13 +425,17 @@ class IdleMotionManager {
     }
     
     /**
-     * 髪揺れ設定
+     * 髪揺れ設定（修正版）
      */
     setHairSway(x, y) {
         if (window.setLive2DParameter) {
+            // 髪の揺れを設定
             window.setLive2DParameter('ParamHairFront', x * 0.8);
             window.setLive2DParameter('ParamHairSide', x);
             window.setLive2DParameter('ParamHairBack', x * 0.6);
+            
+            // 🔥 追加：体の揺れも連動させる
+            window.setLive2DParameter('ParamBodyAngleX', x * 0.3);
         }
     }
 }
@@ -478,31 +482,66 @@ window.setIdleMotionParam = function(paramName, value) {
 console.log('✅ アイドルモーション機能を追加しました');
 
 // =============================================================================
-// 物理演算制御機能
+// 物理演算制御機能（修正版）
 // =============================================================================
 
 /**
- * 物理演算のON/OFF切り替え
- * @param {boolean} enabled - true: ON, false: OFF
+ * 物理演算のON/OFF切り替え（デバッグ強化版）
  */
 window.togglePhysics = function(enabled) {
     try {
-        if (!window.currentModel) {
-            console.warn('⚠️ モデル未読み込み：物理演算切り替えスキップ');
+        console.log('🔍 togglePhysics呼び出し:', enabled);
+        console.log('🔍 window.live2dModel:', window.live2dModel);
+        console.log('🔍 window.currentModel:', window.currentModel);
+        
+        // 複数の方法でモデルを探す
+        let model = window.live2dModel || window.currentModel;
+        
+        if (!model) {
+            // app.stage.childrenから探す
+            if (window.app && window.app.stage && window.app.stage.children.length > 0) {
+                model = window.app.stage.children.find(child => 
+                    child.internalModel && child.internalModel.coreModel
+                );
+                console.log('🔍 app.stageから検索:', model);
+            }
+        }
+        
+        if (!model) {
+            console.warn('⚠️ モデルが見つかりません');
             return false;
         }
         
-        const model = window.currentModel;
+        console.log('🔍 model.internalModel:', model.internalModel);
         
-        // pixi-live2d-displayのphysics制御
-        if (model.internalModel && model.internalModel.physicsRig) {
-            model.internalModel.physicsRig.enabled = enabled;
-            console.log(`💨 物理演算: ${enabled ? 'ON' : 'OFF'}`);
+        // 物理演算の切り替えを試す
+        const internalModel = model.internalModel;
+        
+        // 方法1: physicsRig
+        if (internalModel && internalModel.physicsRig) {
+            internalModel.physicsRig.enabled = enabled;
+            console.log(`✅ physicsRig.enabled = ${enabled}`);
             return true;
-        } else {
-            console.warn('⚠️ 物理演算リグが見つかりません');
-            return false;
         }
+        
+        // 方法2: coreModel.physics
+        if (internalModel && internalModel.coreModel && internalModel.coreModel.physics) {
+            internalModel.coreModel.physics.enabled = enabled;
+            console.log(`✅ coreModel.physics.enabled = ${enabled}`);
+            return true;
+        }
+        
+        // 方法3: physics直接
+        if (internalModel && internalModel.physics) {
+            internalModel.physics.enabled = enabled;
+            console.log(`✅ physics.enabled = ${enabled}`);
+            return true;
+        }
+        
+        console.warn('⚠️ 物理演算リグが見つかりません');
+        console.log('🔍 利用可能なプロパティ:', Object.keys(internalModel || {}));
+        return false;
+        
     } catch (error) {
         console.error('❌ 物理演算切り替えエラー:', error);
         return false;
@@ -515,25 +554,22 @@ window.togglePhysics = function(enabled) {
  */
 window.setPhysicsWeight = function(weight) {
     try {
-        if (!window.currentModel) {
+        // 🔥 修正：正しいモデル取得方法
+        if (!window.live2dModel) {
             console.warn('⚠️ モデル未読み込み：物理演算強度設定スキップ');
             return false;
         }
         
-        const model = window.currentModel;
+        const model = window.live2dModel.internalModel;
         
-        // 物理演算の重み調整
-        if (model.internalModel && model.internalModel.physicsRig) {
-            // 物理演算の各パラメータに重みを適用
-            const physicsRig = model.internalModel.physicsRig;
+        // 物理演算の強度調整
+        if (model && model.coreModel && model.coreModel.physics) {
+            const physics = model.coreModel.physics;
             
-            // 強度を反映（実装はLive2Dのバージョンに依存）
-            if (physicsRig.settings) {
-                // 物理演算設定に重みを適用
-                physicsRig.settings.forEach(setting => {
-                    if (setting.normalization) {
-                        setting.normalization.weight = weight;
-                    }
+            // 全ての物理演算パラメータに重みを適用
+            if (physics.settings) {
+                physics.settings.forEach(setting => {
+                    setting.weight = weight;
                 });
             }
             

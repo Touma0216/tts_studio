@@ -296,16 +296,20 @@ window.loadLive2DModel = async function(modelJsonPath) {
         }
         
         currentModel = await Live2DModel.from(modelJsonPath, {
-            autoUpdate: true,
-            autoHitTest: false,
-            autoFocus: false
-        });
-        
-        window.currentModelForDebug = currentModel;
+                    autoUpdate: true,
+                    autoHitTest: false,
+                    autoFocus: false
+                });
+                
+                // 🔥 追加：グローバル変数に登録
+                window.currentModelForDebug = currentModel;
+                window.currentModel = currentModel;  // 🔥 これを追加
+                window.live2dModel = currentModel;   // 🔥 これも追加
 
-        console.log("モデル作成成功:", currentModel);
-        
-        app.stage.addChild(currentModel);
+                console.log("モデル作成成功:", currentModel);
+                console.log("✅ グローバル変数登録完了");
+                
+                app.stage.addChild(currentModel);
         
         const modelBounds = currentModel.getBounds();
         const scaleX = (window.innerWidth * 0.9) / modelBounds.width;

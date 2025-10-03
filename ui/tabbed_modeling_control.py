@@ -36,9 +36,31 @@ class TabbedModelingControl(QWidget):
         self.update_timer.timeout.connect(self.emit_all_parameters)
         
         self.init_ui()
+
+        # 🔥 追加：瞬きと視線をデフォルトでON
+        QTimer.singleShot(200, lambda: self.idle_motion_toggled.emit("blink", True))
+        QTimer.singleShot(200, lambda: self.idle_motion_toggled.emit("gaze", True))
         
         # 初期化後、ドラッグ制御を有効化
         QTimer.singleShot(100, lambda: self.on_drag_toggle(True))
+
+        QTimer.singleShot(300, self._activate_default_idle_motions)
+
+    def _activate_default_idle_motions(self):
+        """デフォルトのアイドルモーションを起動"""
+        try:
+            # 瞬きON
+            if hasattr(self, 'blink_checkbox') and self.blink_checkbox.isChecked():
+                self.idle_motion_toggled.emit("blink", True)
+                print("✅ 起動時：瞬きON")
+            
+            # 視線揺れON
+            if hasattr(self, 'gaze_checkbox') and self.gaze_checkbox.isChecked():
+                self.idle_motion_toggled.emit("gaze", True)
+                print("✅ 起動時：視線揺れON")
+        except Exception as e:
+            print(f"⚠️ デフォルトモーション起動エラー: {e}")
+
     
     def init_ui(self):
         main_layout = QVBoxLayout(self)
@@ -595,6 +617,7 @@ class TabbedModelingControl(QWidget):
         # 瞬き
         self.blink_checkbox = QCheckBox("👁️ 瞬き")
         self.blink_checkbox.setStyleSheet("font-size: 13px; font-weight: bold;")
+        self.blink_checkbox.setChecked(True)
         self.blink_checkbox.toggled.connect(lambda checked: self.idle_motion_toggled.emit("blink", checked))
         idle_layout.addWidget(self.blink_checkbox)
         
@@ -614,6 +637,7 @@ class TabbedModelingControl(QWidget):
         # 視線揺れ
         self.gaze_checkbox = QCheckBox("👀 視線揺れ")
         self.gaze_checkbox.setStyleSheet("font-size: 13px; font-weight: bold;")
+        self.gaze_checkbox.setChecked(True)
         self.gaze_checkbox.toggled.connect(lambda checked: self.idle_motion_toggled.emit("gaze", checked))
         idle_layout.addWidget(self.gaze_checkbox)
         
