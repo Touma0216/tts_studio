@@ -559,6 +559,15 @@ class TTSStudioMainWindow(QMainWindow):
             if hasattr(modeling_control, 'gaze_checkbox') and modeling_control.gaze_checkbox.isChecked():
                 print("  → 視線揺れON")
                 self.on_idle_motion_toggled("gaze", True)
+
+            if hasattr(modeling_control, 'wind_checkbox') and modeling_control.wind_checkbox.isChecked():
+                print("  → 風揺れON")
+                self.on_idle_motion_toggled("wind", True)
+
+                # スライダーの現在値をLive2D側へ反映
+                if hasattr(modeling_control, 'wind_strength_slider'):
+                    strength = modeling_control.wind_strength_slider.value() / 100.0
+                    self.on_idle_motion_param_changed("wind_strength", strength)
                 
         except Exception as e:
             print(f"⚠️ アイドルモーション起動エラー: {e}")
