@@ -66,8 +66,8 @@ class TabbedModelingControl(QWidget):
                 print("  → 風揺れシグナル発火")
                 self.idle_motion_toggled.emit("wind", True)
                 # 風の強度も設定
-                self.idle_motion_param_changed.emit("wind_strength", 0.7)
-                
+                if hasattr(self, 'wind_strength_slider'):
+                    self.on_wind_strength_slider_changed(self.wind_strength_slider.value())                
             print("✅ デフォルトアイドルモーション起動完了")
             
         except Exception as e:
@@ -647,7 +647,6 @@ class TabbedModelingControl(QWidget):
         self.wind_checkbox = QCheckBox("💨 風揺れ")
         self.wind_checkbox.setStyleSheet("font-size: 13px; font-weight: bold;")
         self.wind_checkbox.setChecked(True)
-        self.wind_checkbox.setChecked(False)
         self.wind_checkbox.toggled.connect(lambda checked: self.idle_motion_toggled.emit("wind", checked))
         idle_layout.addWidget(self.wind_checkbox)
         
@@ -656,9 +655,8 @@ class TabbedModelingControl(QWidget):
         self.wind_strength_slider = QSlider(Qt.Orientation.Horizontal)
         self.wind_strength_slider.setRange(10, 100)
         self.wind_strength_slider.setValue(100)
-        self.wind_strength_slider.valueChanged.connect(
-            lambda v: self.idle_motion_param_changed.emit("wind_strength", v / 100.0)
-        )
+        self.wind_strength_slider.valueChanged.connect(self.on_wind_strength_slider_changed)
+
         wind_param_layout.addWidget(self.wind_strength_slider)
         self.wind_strength_label = QLabel("1.00")
         wind_param_layout.addWidget(self.wind_strength_label)
@@ -671,6 +669,12 @@ class TabbedModelingControl(QWidget):
         layout.addWidget(scroll, 1)
         
         return widget
+    
+    def on_wind_strength_slider_changed(self, value: int):
+        strength = value / 100.0
+        if hasattr(self, 'wind_strength_label'):
+            self.wind_strength_label.setText(f"{strength:.2f}")
+        self.idle_motion_param_changed.emit("wind_strength", strength)
     # ================================
     # 🆕 物理演算制御ハンドラー
     # ================================

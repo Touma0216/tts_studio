@@ -184,7 +184,7 @@ class IdleMotionManager {
             },
             wind: {
                 enabled: false,
-                strength: 0.5,
+                strength: 1.0,
                 phase: 0,
                 frequency: 1.0,
                 isOverriding: false
