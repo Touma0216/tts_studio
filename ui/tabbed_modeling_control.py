@@ -47,24 +47,31 @@ class TabbedModelingControl(QWidget):
         QTimer.singleShot(300, self._activate_default_idle_motions)
 
     def _activate_default_idle_motions(self):
-            """デフォルトのアイドルモーションを起動"""
-            try:
-                print("🌟 デフォルトアイドルモーション起動開始")
+        """デフォルトのアイドルモーションを起動（風揺れ追加）"""
+        try:
+            print("🌟 デフォルトアイドルモーション起動開始")
+            
+            # 瞬きON
+            if hasattr(self, 'blink_checkbox') and self.blink_checkbox.isChecked():
+                print("  → 瞬きシグナル発火")
+                self.idle_motion_toggled.emit("blink", True)
+            
+            # 視線揺れON
+            if hasattr(self, 'gaze_checkbox') and self.gaze_checkbox.isChecked():
+                print("  → 視線揺れシグナル発火")
+                self.idle_motion_toggled.emit("gaze", True)
+            
+            # 🔥 追加：風揺れON
+            if hasattr(self, 'wind_checkbox') and self.wind_checkbox.isChecked():
+                print("  → 風揺れシグナル発火")
+                self.idle_motion_toggled.emit("wind", True)
+                # 風の強度も設定
+                self.idle_motion_param_changed.emit("wind_strength", 0.7)
                 
-                # 瞬きON
-                if hasattr(self, 'blink_checkbox') and self.blink_checkbox.isChecked():
-                    print("  → 瞬きシグナル発火")
-                    self.idle_motion_toggled.emit("blink", True)
-                
-                # 視線揺れON
-                if hasattr(self, 'gaze_checkbox') and self.gaze_checkbox.isChecked():
-                    print("  → 視線揺れシグナル発火")
-                    self.idle_motion_toggled.emit("gaze", True)
-                    
-                print("✅ デフォルトアイドルモーション起動完了")
-                
-            except Exception as e:
-                print(f"⚠️ デフォルトモーション起動エラー: {e}")
+            print("✅ デフォルトアイドルモーション起動完了")
+            
+        except Exception as e:
+            print(f"⚠️ デフォルトモーション起動エラー: {e}")
 
     
     def init_ui(self):
@@ -388,10 +395,10 @@ class TabbedModelingControl(QWidget):
             ("髪揺れ 横", "ParamHairSide", -1.0, 1.0, 0.0, "左 ← → 右"),
             ("胸揺れ 横", "ParamHairBack", -1.0, 1.0, 0.0, "左 ← → 右"),
             ("胸揺れ 縦", "Param", -1.0, 1.0, 0.0, "下 ← → 上"),
-            ("右目 瞳孔", "Param5", 0.0, 1.0, 0.0, "小 ← → 大"),
-            ("右目 ハイライト", "Param6", 0.0, 1.0, 0.0, "暗 ← → 明"),
-            ("左目 瞳孔", "Param7", 0.0, 1.0, 0.0, "小 ← → 大"),
-            ("左目 ハイライト", "Param8", 0.0, 1.0, 0.0, "暗 ← → 明")
+            ("右目 瞳孔", "Param5", -1.0, 1.0, 0.0, "小 ← → 大"),
+            ("右目 ハイライト", "Param6", -1.0, 1.0, 0.0, "暗 ← → 明"),
+            ("左目 瞳孔", "Param7", -1.0, 1.0, 0.0, "小 ← → 大"),
+            ("左目 ハイライト", "Param8", -1.0, 1.0, 0.0, "暗 ← → 明")
         ]
         
         grid = QGridLayout()
@@ -639,6 +646,7 @@ class TabbedModelingControl(QWidget):
         # 風揺れ
         self.wind_checkbox = QCheckBox("💨 風揺れ")
         self.wind_checkbox.setStyleSheet("font-size: 13px; font-weight: bold;")
+        self.wind_checkbox.setChecked(True)
         self.wind_checkbox.setChecked(False)
         self.wind_checkbox.toggled.connect(lambda checked: self.idle_motion_toggled.emit("wind", checked))
         idle_layout.addWidget(self.wind_checkbox)
@@ -647,12 +655,12 @@ class TabbedModelingControl(QWidget):
         wind_param_layout.addWidget(QLabel("  強さ:"))
         self.wind_strength_slider = QSlider(Qt.Orientation.Horizontal)
         self.wind_strength_slider.setRange(10, 100)
-        self.wind_strength_slider.setValue(50)
+        self.wind_strength_slider.setValue(100)
         self.wind_strength_slider.valueChanged.connect(
             lambda v: self.idle_motion_param_changed.emit("wind_strength", v / 100.0)
         )
         wind_param_layout.addWidget(self.wind_strength_slider)
-        self.wind_strength_label = QLabel("0.50")
+        self.wind_strength_label = QLabel("1.00")
         wind_param_layout.addWidget(self.wind_strength_label)
         idle_layout.addLayout(wind_param_layout)
         
