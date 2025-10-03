@@ -17,7 +17,7 @@ class WhisperTranscriber:
     WAVファイルから日本語テキストを自動抽出（精度改善版）
     """
     
-    def __init__(self, model_size: str = "small", device: str = "cuda"):
+    def __init__(self, model_size: str = "medium", device: str = "cuda"):
         """初期化
         
         Args:
@@ -32,8 +32,6 @@ class WhisperTranscriber:
         # 固有名詞・専門用語の修正辞書
         self.correction_dict = {
             '零音ほのか': 'れいねほのか',
-            'レイネホノカ': 'れいねほのか',
-            'れいねホノカ': 'れいねほのか',
             '零音': 'れいね',
         }
         
@@ -112,8 +110,9 @@ class WhisperTranscriber:
                 initial_prompt=initial_prompt,  # キャラ名をヒントとして使用
                 vad_filter=True,  # 無音部分を自動検出
                 vad_parameters=dict(
-                    min_silence_duration_ms=500,  # 最小無音時間
-                    speech_pad_ms=400  # 発話前後のパディング
+                    min_silence_duration_ms=300,  # 無音判定を少し厳しく
+                    speech_pad_ms=200,  # パディングを減らす
+                    threshold=0.5  # 音声検出の閾値
                 )
             )
             
