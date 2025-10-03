@@ -833,13 +833,122 @@ class TTSStudioMainWindow(QMainWindow):
         return final_audio, sample_rate
         
     def play_sequential(self):
-        if not self.tts_engine.is_loaded: return
+        """連続再生（リップシンク対応版）"""
+        if not self.tts_engine.is_loaded:
+            return
+        
         self.sequential_play_btn.setEnabled(False)
-        final_audio, sr = self._synthesize_and_process_all()
-        self.sequential_play_btn.setEnabled(True)
-        if final_audio is not None:
+        
+        try:
+            texts_data = self.multi_text.get_all_texts_and_parameters()
+            if not texts_data:
+                QMessageBox.information(self, "情報", "処理するテキストがありません。")
+                self.sequential_play_btn.setEnabled(True)
+                return
+            
+            all_audio = []
+            all_lipsync_frames = []
+            audio_offset = 0.0
+            sample_rate = None
+            
+            # リップシンクが有効かチェック
+            enable_lipsync = (
+                self.tabbed_audio_control.is_lip_sync_enabled() and
+                hasattr(self.character_display, 'live2d_webview') and
+                self.character_display.live2d_webview.is_model_loaded
+            )
+            
+            print(f"🎬 連続再生開始: {len(texts_data)}個のテキスト")
+            if enable_lipsync:
+                print("🎭 リップシンク有効")
+            
+            # 各テキストを処理
+            for i, data in enumerate(texts_data, 1):
+                text = data['text']
+                params = self.tabbed_audio_control.get_parameters(data['row_id']) or data['parameters']
+                
+                # TTS生成
+                sr, audio = self.tts_engine.synthesize(text, **params)
+                if sample_rate is None:
+                    sample_rate = sr
+                
+                # 音声処理
+                audio = self.apply_audio_cleaning(audio, sr)
+                audio = self.apply_audio_effects(audio, sr)
+                audio = self.trim_silence(audio, sr)
+                
+                # 🆕 リップシンク生成
+                if enable_lipsync:
+                    lipsync_data = self.lip_sync_engine.analyze_text_for_lipsync(
+                        text=text,
+                        audio_data=audio,
+                        sample_rate=sr
+                    )
+                    
+                    if lipsync_data:
+                        # タイムスタンプをオフセット調整
+                        for frame in lipsync_data.vowel_frames:
+                            from core.lip_sync_engine import VowelFrame
+                            adjusted_frame = VowelFrame(
+                                timestamp=frame.timestamp + audio_offset,
+                                vowel=frame.vowel,
+                                intensity=frame.intensity,
+                                duration=frame.duration,
+                                is_ending=frame.is_ending
+                            )
+                            all_lipsync_frames.append(adjusted_frame)
+                        
+                        print(f"  ✓ [{i}/{len(texts_data)}] リップシンク生成: {len(lipsync_data.vowel_frames)}フレーム")
+                
+                # 音声を追加
+                all_audio.append(audio)
+                audio_offset += len(audio) / sr
+                
+                print(f"  ✓ [{i}/{len(texts_data)}] 音声生成完了: {text[:30]}...")
+            
+            # 音声を連結
+            final_audio = np.concatenate(all_audio).astype(np.float32)
+            
+            # 正規化
+            max_val = np.abs(final_audio).max()
+            if max_val > 0.9:
+                final_audio *= 0.9 / max_val
+            
+            self.last_generated_audio = final_audio
+            self.last_sample_rate = sample_rate
+            
+            print(f"✅ 連続音声生成完了: {audio_offset:.2f}秒")
+            
+            # 🆕 リップシンクデータを作成
+            combined_lipsync = None
+            if enable_lipsync and all_lipsync_frames:
+                from core.lip_sync_engine import LipSyncData
+                combined_lipsync = LipSyncData(
+                    text="\n".join([d['text'] for d in texts_data]),
+                    total_duration=audio_offset,
+                    vowel_frames=all_lipsync_frames,
+                    sample_rate=sample_rate
+                )
+                print(f"🎭 結合リップシンクデータ: {len(all_lipsync_frames)}フレーム")
+            
+            # 音声再生
             import sounddevice as sd
-            sd.play(final_audio, sr, blocking=False)
+            sd.play(final_audio, sample_rate, blocking=False)
+            print("▶️ 音声再生開始")
+            
+            # 🆕 リップシンク送信
+            if combined_lipsync:
+                self.send_lipsync_to_live2d(combined_lipsync)
+                print("🎭 リップシンク送信完了")
+            
+        except Exception as e:
+            print(f"❌ 連続再生エラー: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(self, "エラー", f"連続再生中にエラーが発生しました:\n{str(e)}")
+        
+        finally:
+            self.sequential_play_btn.setEnabled(True)
             
     def save_individual(self):
         folder_path = QFileDialog.getExistingDirectory(self, "個別保存フォルダを選択")
