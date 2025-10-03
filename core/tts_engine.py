@@ -5,6 +5,7 @@ import traceback
 import inspect
 import logging
 import json
+from typing import List, Dict, Optional
 from scipy.signal import butter, filtfilt, iirnotch
 from scipy.ndimage import gaussian_filter1d
 from scipy.fft import fft, ifft
@@ -56,6 +57,7 @@ class TTSEngine:
             'Happy': 'Happy', 'Sad': 'Sad', 'Surprise': 'Surprise',
             'Neutral': 'Neutral',
         }
+        self.long_processor = None
     
     def remove_dc_offset(self, audio):
         """DCオフセットを除去"""
@@ -653,3 +655,38 @@ class TTSEngine:
         except Exception as e:
             print(f"❌ テスト失敗: {e}")
             return False, None, None
+        
+    def generate_continuous_wav(
+        self, 
+        texts: List[str], 
+        output_path: str,
+        chunk_size: int = 100,
+        resume: bool = True,
+        progress_callback = None
+    ) -> Dict:
+        """
+        複数テキストを連続TTS処理して1つのWAVに保存
+        
+        使い方:
+            texts = ["リアクション1", "リアクション2", "リアクション3"]
+            result = tts_engine.generate_continuous_wav(
+                texts, 
+                "outputs/reaction_part.wav",
+                progress_callback=self.update_progress
+            )
+        
+        Args:
+            texts: 処理するテキストのリスト
+            output_path: 出力WAVファイルパス
+            chunk_size: メモリ管理用チャンクサイズ（デフォルト100）
+            resume: 中断から再開するか
+            progress_callback: 進捗コールバック
+        """
+        # 遅延初期化
+        if self.long_processor is None:
+            from core.tts_long_processor import LongTTSProcessor
+            self.long_processor = LongTTSProcessor(self)
+        
+        return self.long_processor.process_texts_to_wav(
+            texts, output_path, chunk_size, resume, progress_callback
+        )

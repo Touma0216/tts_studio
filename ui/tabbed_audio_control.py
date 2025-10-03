@@ -9,6 +9,7 @@ from .audio_cleaner_control import AudioCleanerControl
 from .audio_effects_control import AudioEffectsControl
 from .wav_playback_control import WAVPlaybackControl
 from .tabbed_lip_sync_control import TabbedLipSyncControl
+from .tabbed_wav_export_control import WavExportControl
 
 class TabbedAudioControl(QWidget):
     """音声パラメータ・クリーナー・エフェクト・リップシンクタブ統合ウィジェット"""
@@ -38,7 +39,8 @@ class TabbedAudioControl(QWidget):
     # 🆕 物理演算シグナル
     physics_toggled = pyqtSignal(bool)
     physics_weight_changed = pyqtSignal(float)
-    
+
+    wav_export_requested = pyqtSignal(dict)    
     def __init__(self, parent=None):
         super().__init__(parent)
         self.init_ui()
@@ -119,13 +121,18 @@ class TabbedAudioControl(QWidget):
         self.wav_playback_control.position_changed.connect(self.wav_position_changed)
         self.wav_playback_control.volume_changed.connect(self.wav_volume_changed)
         self.main_tab_widget.addTab(self.wav_playback_control, "🎵 音声再生")
+
+        # 5. 音声書き出しタブ
+        self.wav_export_control = WavExportControl()
+        self.wav_export_control.export_requested.connect(self.wav_export_requested)
+        self.main_tab_widget.addTab(self.wav_export_control, "📼 音声書き出し")
         
-        # 5. リップシンクタブ（タブ番号が1つずれる）
+        # 6. リップシンクタブ
         self.lip_sync_control = TabbedLipSyncControl()
         self.lip_sync_control.settings_changed.connect(self.on_lip_sync_settings_changed)
         self.main_tab_widget.addTab(self.lip_sync_control, "💋 リップシンク")
         
-        # 6. モデリングタブ
+        # 7. モデリングタブ
         self.modeling_control = TabbedModelingControl()
         self.modeling_control.parameter_changed.connect(self.on_modeling_parameter_changed)
         self.modeling_control.parameters_changed.connect(self.on_modeling_parameters_changed)
@@ -399,3 +406,27 @@ class TabbedAudioControl(QWidget):
     def set_wav_playback_tab_active(self):
         """WAV再生タブをアクティブに設定"""
         self.main_tab_widget.setCurrentIndex(3)
+
+    # ================================
+    # 🆕 音声書き出し関連
+    # ================================
+    
+    def get_wav_export_control(self):
+        """音声書き出しコントロールウィジェットを取得"""
+        return self.wav_export_control
+    
+    def set_wav_export_processing(self, is_processing: bool):
+        """音声書き出し処理状態を設定"""
+        self.wav_export_control.set_processing_state(is_processing)
+    
+    def update_wav_export_progress(self, current: int, total: int):
+        """音声書き出し進捗を更新"""
+        self.wav_export_control.update_progress(current, total)
+    
+    def add_wav_export_log(self, message: str):
+        """音声書き出しログを追加"""
+        self.wav_export_control.add_log(message)
+    
+    def set_wav_export_tab_active(self):
+        """音声書き出しタブをアクティブに設定"""
+        self.main_tab_widget.setCurrentIndex(4)  # 音声書き出しタブ

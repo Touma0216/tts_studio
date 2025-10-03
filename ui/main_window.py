@@ -61,6 +61,8 @@ class TTSStudioMainWindow(QMainWindow):
         self.tabbed_audio_control.physics_toggled.connect(self.on_physics_toggled)
         self.tabbed_audio_control.physics_weight_changed.connect(self.on_physics_weight_changed)
 
+        self.tabbed_audio_control.wav_export_requested.connect(self.on_wav_export_requested)
+
         self.setup_wav_playback_integration()
         
         self.sliding_menu = SlidingMenuWidget(self)
@@ -1223,6 +1225,120 @@ class TTSStudioMainWindow(QMainWindow):
         except Exception as e:
             print(f"❌ 文字起こし保存エラー: {e}")
             QMessageBox.critical(self, "エラー", f"保存エラー:\n{str(e)}")
+
+    # ================================
+    # 🆕 音声書き出し制御
+    # ================================
+    
+    def on_wav_export_requested(self, settings: dict):
+        """音声書き出しリクエスト処理"""
+        try:
+            print(f"📼 音声書き出し開始: {settings}")
+            
+            # テキストデータを取得
+            texts_data = self.multi_text.get_all_texts_and_parameters()
+            
+            if not texts_data:
+                QMessageBox.warning(self, "エラー", "書き出すテキストがありません")
+                return
+            
+            # テキストのみを抽出
+            texts = [data['text'] for data in texts_data if data['text'].strip()]
+            
+            if not texts:
+                QMessageBox.warning(self, "エラー", "有効なテキストがありません")
+                return
+            
+            # モデルが読み込まれているか確認
+            if not self.tts_engine.is_loaded:
+                QMessageBox.warning(self, "エラー", 
+                    "音声モデルが読み込まれていません。\n"
+                    "先にモデルを読み込んでから書き出してください。")
+                return
+            
+            # 確認ダイアログ
+            output_path = settings['output_path']
+            chunk_size = settings['chunk_size']
+            
+            reply = QMessageBox.question(
+                self,
+                "確認",
+                f"以下の設定で書き出しを開始しますか？\n\n"
+                f"📝 テキスト数: {len(texts)}個\n"
+                f"📦 チャンクサイズ: {chunk_size}個ずつ\n"
+                f"📁 出力先: {output_path}\n"
+                f"⏱️ 推定時間: 約{len(texts) * 3}秒\n\n"
+                f"※処理中はアプリケーションが応答しなくなります",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+            
+            # 出力ディレクトリを作成
+            output_dir = Path(output_path).parent
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # UI状態変更
+            export_control = self.tabbed_audio_control.get_wav_export_control()
+            export_control.set_processing_state(True)
+            export_control.clear_log()
+            export_control.add_log(f"📼 書き出し開始: {len(texts)}個のテキスト")
+            
+            # 進捗コールバック
+            def progress_callback(current, total):
+                export_control.update_progress(current, total)
+                export_control.add_log(f"  ✓ [{current}/{total}] 処理完了")
+                QApplication.processEvents()
+            
+            # 書き出し実行
+            result = self.tts_engine.generate_continuous_wav(
+                texts=texts,
+                output_path=output_path,
+                chunk_size=chunk_size,
+                resume=settings['resume'],
+                progress_callback=progress_callback
+            )
+            
+            # 結果処理
+            if result['success']:
+                export_control.add_log(f"✅ 書き出し完了！")
+                export_control.add_log(f"📁 保存先: {result['output_path']}")
+                
+                QMessageBox.information(
+                    self,
+                    "完了",
+                    f"音声書き出しが完了しました！\n\n"
+                    f"📁 保存先:\n{result['output_path']}\n\n"
+                    f"📝 処理したテキスト: {result['total_texts']}個"
+                )
+            else:
+                export_control.add_log(f"❌ エラー: {result.get('error', '不明')}")
+                export_control.add_log(f"💾 進捗: {result.get('completed', 0)}/{result.get('total', 0)}")
+                export_control.add_log(f"📋 チェックポイント: {result.get('checkpoint', 'なし')}")
+                
+                QMessageBox.warning(
+                    self,
+                    "エラー",
+                    f"書き出し中にエラーが発生しました\n\n"
+                    f"エラー: {result.get('error', '不明なエラー')}\n"
+                    f"進捗: {result.get('completed', 0)}/{result.get('total', 0)}\n\n"
+                    f"チェックポイントから再開できます:\n{result.get('checkpoint', 'なし')}"
+                )
+            
+            # UI状態をリセット
+            export_control.set_processing_state(False)
+            
+        except Exception as e:
+            print(f"❌ 音声書き出しエラー: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            export_control = self.tabbed_audio_control.get_wav_export_control()
+            export_control.set_processing_state(False)
+            export_control.add_log(f"❌ 予期しないエラー: {e}")
+            
+            QMessageBox.critical(self, "エラー", f"予期しないエラーが発生しました:\n{str(e)}")
     
     def on_wav_playback_started(self, start_position: float):
         """WAV再生開始"""
