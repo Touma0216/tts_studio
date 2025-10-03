@@ -1133,31 +1133,14 @@ class CharacterDisplayWidget(QWidget):
         image_main_layout.addLayout(left_side_layout, 1)
         image_main_layout.addLayout(v_slider_layout)
         
-        # 情報ラベル
-        self.image_info_label = QLabel("")
-        self.image_info_label.setStyleSheet("color: #666; font-size: 10px; border: none;")
-        
-        # クリアボタン
-        button_layout = QHBoxLayout()
-        self.image_clear_btn = QPushButton("🗑️")
-        self.image_clear_btn.setFixedSize(30, 30)
-        self.image_clear_btn.setToolTip("画像をクリア")
-        self.image_clear_btn.setEnabled(False)
-        self.image_clear_btn.setStyleSheet("QPushButton { background-color: #f8f9fa; border: 1px solid #ccc; border-radius: 4px; } QPushButton:hover:enabled { background-color: #f5c6cb; } QPushButton:disabled { color: #999; }")
-        button_layout.addStretch()
-        button_layout.addWidget(self.image_clear_btn)
-        
         layout.addLayout(zoom_layout)
         layout.addWidget(image_container, 1)
-        layout.addWidget(self.image_info_label)
-        layout.addLayout(button_layout)
         
         # シグナル接続
         self.zoom_slider.valueChanged.connect(self.on_zoom_slider_changed)
         self.h_position_slider.valueChanged.connect(self.on_position_slider_changed)
         self.v_position_slider.valueChanged.connect(self.on_position_slider_changed)
         self.toggle_minimap_btn.toggled.connect(self.toggle_minimap)
-        self.image_clear_btn.clicked.connect(self.clear_character_image)
 
     def setup_live2d_tab(self):
         """Live2Dタブ（500%ズーム・直感的操作対応）"""
@@ -1230,31 +1213,14 @@ class CharacterDisplayWidget(QWidget):
         live2d_main_layout.addLayout(left_side_layout, 1)
         live2d_main_layout.addLayout(v_slider_layout)
         
-        # 情報ラベル
-        self.live2d_info_label = QLabel("Live2Dモデルが読み込まれていません")
-        self.live2d_info_label.setStyleSheet("color: #666; font-size: 10px; border: none;")
-        
-        # クリアボタン
-        live2d_button_layout = QHBoxLayout()
-        self.live2d_clear_btn = QPushButton("🗑️")
-        self.live2d_clear_btn.setFixedSize(30, 30)
-        self.live2d_clear_btn.setToolTip("Live2Dモデルをクリア")
-        self.live2d_clear_btn.setEnabled(False)
-        self.live2d_clear_btn.setStyleSheet("QPushButton { background-color: #f8f9fa; border: 1px solid #ccc; border-radius: 4px; } QPushButton:hover:enabled { background-color: #f5c6cb; } QPushButton:disabled { color: #999; }")
-        live2d_button_layout.addStretch()
-        live2d_button_layout.addWidget(self.live2d_clear_btn)
-        
         # レイアウト組み立て
         layout.addLayout(zoom_layout)
         layout.addWidget(live2d_container, 1)
-        layout.addWidget(self.live2d_info_label)
-        layout.addLayout(live2d_button_layout)
         
         # シグナル接続
         self.live2d_zoom_slider.valueChanged.connect(self.on_live2d_zoom_changed)
         self.live2d_h_position_slider.valueChanged.connect(self.on_live2d_position_changed)
         self.live2d_v_position_slider.valueChanged.connect(self.on_live2d_position_changed)
-        self.live2d_clear_btn.clicked.connect(self.clear_live2d_model)
 
     def on_live2d_zoom_changed(self, value):
         """Live2Dズーム変更時の処理（位置調整制限を削除）"""
@@ -1444,10 +1410,6 @@ class CharacterDisplayWidget(QWidget):
         
         self.character_image_label.setStyleSheet("QLabel { background-color: white; border: none; }")
         
-        file_info = Path(image_path)
-        img_size = pixmap.size()
-        self.image_info_label.setText(f"📁 {image_data['name']}\n📐 {img_size.width()}×{img_size.height()}px 💾 {file_info.stat().st_size // 1024} KB")
-        
         self.enable_controls()
         self.update_minimap_position()
         
@@ -1477,7 +1439,6 @@ class CharacterDisplayWidget(QWidget):
                 self.current_live2d_folder = folder_path
                 self.current_live2d_id = new_model_data['id']
                 self.display_mode_manager.set_last_live2d_id(self.current_live2d_id)
-                self.live2d_info_label.setText(f"📁 {model_name} を読み込み中...")
                 self.enable_live2d_controls()
                 ui_settings = self.live2d_manager.get_ui_settings(self.current_live2d_id)
                 self.restore_live2d_settings(ui_settings)
@@ -1507,7 +1468,6 @@ class CharacterDisplayWidget(QWidget):
                 self.current_live2d_folder = folder_path
                 self.current_live2d_id = model_data['id']
                 self.display_mode_manager.set_last_live2d_id(self.current_live2d_id)
-                self.live2d_info_label.setText(f"📁 {model_name} を読み込み中...")
                 self.enable_live2d_controls()
                 ui_settings = self.live2d_manager.get_ui_settings(self.current_live2d_id)
                 self.restore_live2d_settings(ui_settings)
@@ -1635,7 +1595,6 @@ class CharacterDisplayWidget(QWidget):
                         try:
                             self.current_live2d_folder = pending['folder_path']
                             self.current_live2d_id = model_data['id']
-                            self.live2d_info_label.setText(f"📁 {pending['model_name']} (自動復元)")
                             
                             self.display_mode_manager.set_last_live2d_id(self.current_live2d_id)
                             
@@ -1746,46 +1705,14 @@ class CharacterDisplayWidget(QWidget):
     def enable_live2d_controls(self):
         """Live2D制御を有効化"""
         for control in [
-            self.live2d_zoom_slider, 
-            self.live2d_h_position_slider, 
-            self.live2d_v_position_slider,
-            self.live2d_clear_btn
+            self.live2d_zoom_slider,
+            self.live2d_h_position_slider,
+            self.live2d_v_position_slider
         ]:
             control.setEnabled(True)
         
         if self.current_display_mode == "live2d":
             self.toggle_minimap_btn.setEnabled(True)
-
-    def clear_live2d_model(self):
-        """Live2Dモデルをクリア（修正版：設定キャッシュもクリア・強化版）"""
-        self.live2d_webview.is_model_loaded = False
-        self.current_live2d_folder = None
-        self.current_live2d_id = None
-        self.live2d_info_label.setText("Live2Dモデルが読み込まれていません")
-        
-        # 🔧 追加：設定キャッシュを完全クリア
-        for attr in ['_last_applied_settings', '_last_applied_settings_key', '_last_settings_apply_time', '_lipsync_in_progress']:
-            if hasattr(self, attr):
-                delattr(self, attr)
-                
-        print("🧹 Live2D設定キャッシュを完全クリア")
-        
-        for control in [
-            self.live2d_zoom_slider, 
-            self.live2d_h_position_slider, 
-            self.live2d_v_position_slider,
-            self.live2d_clear_btn
-        ]:
-            control.setEnabled(False)
-        
-        self.live2d_zoom_slider.setValue(100)
-        self.live2d_h_position_slider.setValue(50)
-        self.live2d_v_position_slider.setValue(50)
-        self.live2d_zoom_label.setText("100%")
-        
-        self.live2d_webview.load_initial_page()
-        
-        print("✅ Live2Dモデルクリア完了（強化版）")
 
     def restore_live2d_settings(self, ui_settings):
         """Live2D設定を復元（500%対応）"""
@@ -1890,9 +1817,6 @@ class CharacterDisplayWidget(QWidget):
         ui_settings = self.image_manager.get_ui_settings(self.current_image_id)
         self.restore_ui_settings(ui_settings)
         self.character_image_label.setStyleSheet("QLabel { background-color: white; border: none; }")
-        file_info = Path(image_path)
-        img_size = pixmap.size()
-        self.image_info_label.setText(f"📁 {image_data['name']}\n📐 {img_size.width()}×{img_size.height()}px 💾 {file_info.stat().st_size // 1024} KB")
         self.enable_controls()
         self.update_minimap_position()
         self.mode_tab_widget.setCurrentIndex(0)
@@ -1910,26 +1834,9 @@ class CharacterDisplayWidget(QWidget):
             self.load_image_from_data(new_image_data)
     
     def enable_controls(self):
-        for widget in [self.image_clear_btn, self.zoom_slider, self.h_position_slider, self.v_position_slider, self.toggle_minimap_btn]: 
+        for widget in [self.zoom_slider, self.h_position_slider, self.v_position_slider, self.toggle_minimap_btn]:
             widget.setEnabled(True)
-    
-    def clear_character_image(self):
-        self.character_image_label.clear()
-        self.character_image_label.setText("画像が読み込まれていません...")
-        self.character_image_label.setStyleSheet("QLabel { background-color: #f8f9fa; border: 2px dashed #adb5bd; }")
-        self.original_pixmap = None
-        self.current_image_path = None
-        self.current_image_id = None
-        self.image_info_label.setText("")
-        for widget in [self.image_clear_btn, self.zoom_slider, self.h_position_slider, self.v_position_slider, self.toggle_minimap_btn]: 
-            widget.setEnabled(False)
-        self.zoom_slider.setValue(50)
-        self.h_position_slider.setValue(50)
-        self.v_position_slider.setValue(50)
-        self.toggle_minimap_btn.setChecked(False)
-        self.zoom_label.setText("50%")
-        self.minimap.hide()
-    
+
     def restore_ui_settings(self, ui_settings):
         zoom = ui_settings.get('zoom_percent', 50)
         h_pos = ui_settings.get('h_position', 50)
