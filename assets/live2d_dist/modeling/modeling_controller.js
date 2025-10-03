@@ -1,5 +1,5 @@
 // assets/live2d_dist/modeling/modeling_controller.js
-// モデリング制御：パラメータ設定のメイン処理
+// モデリング制御：パラメータ設定のメイン処理（完全修正版）
 
 /**
  * 単一パラメータをLive2Dモデルに設定
@@ -10,29 +10,23 @@
 window.setLive2DParameter = function(paramId, value) {
     try {
         if (!window.currentModel) {
-            console.warn('⚠️ モデル未読み込み：パラメータ設定スキップ');
+            console.warn('⚠️ モデル未読み込み');
             return false;
         }
 
         const model = window.currentModel.internalModel.coreModel;
         
-        // パラメータIDの存在確認
+        // パラメータIDからインデックスを取得
         const paramIndex = model.getParameterIndex(paramId);
         if (paramIndex === -1) {
             console.warn(`⚠️ パラメータが見つかりません: ${paramId}`);
             return false;
         }
 
-        // パラメータ設定
-        model.setParameterValueById(paramId, value);
+        // インデックスを使ってパラメータ設定
+        model.setParameterValueByIndex(paramIndex, value);
         
-        // デバッグログ（詳細版：初回のみ）
-        if (!window._paramSetCount) window._paramSetCount = {};
-        if (!window._paramSetCount[paramId]) {
-            console.log(`✅ パラメータ設定: ${paramId} = ${value.toFixed(3)}`);
-            window._paramSetCount[paramId] = true;
-        }
-
+        console.log(`🔧 パラメータ設定: ${paramId} = ${value.toFixed(3)}`);
         return true;
     } catch (error) {
         console.error(`❌ パラメータ設定エラー (${paramId}):`, error);
@@ -48,32 +42,22 @@ window.setLive2DParameter = function(paramId, value) {
 window.setLive2DParameters = function(parameters) {
     try {
         if (!window.currentModel) {
-            console.warn('⚠️ モデル未読み込み：パラメータ一括設定スキップ');
-            return false;
-        }
-
-        if (!parameters || typeof parameters !== 'object') {
-            console.error('❌ パラメータが無効な形式です');
+            console.warn('⚠️ モデル未読み込み');
             return false;
         }
 
         const model = window.currentModel.internalModel.coreModel;
         let successCount = 0;
-        let failCount = 0;
 
-        // 全パラメータを設定
         for (const [paramId, value] of Object.entries(parameters)) {
             const paramIndex = model.getParameterIndex(paramId);
-            if (paramIndex === -1) {
-                failCount++;
-                continue;
-            }
+            if (paramIndex === -1) continue;
 
-            model.setParameterValueById(paramId, value);
+            model.setParameterValueByIndex(paramIndex, value);
             successCount++;
         }
 
-        console.log(`🎨 パラメータ一括設定: 成功${successCount}個, 失敗${failCount}個`);
+        console.log(`🎨 パラメータ一括設定: ${successCount}個`);
         return true;
     } catch (error) {
         console.error('❌ パラメータ一括設定エラー:', error);
@@ -83,25 +67,17 @@ window.setLive2DParameters = function(parameters) {
 
 /**
  * パラメータをデフォルト値にリセット
- * @param {string} paramId - パラメータID
- * @returns {boolean} - 成功したらtrue
  */
 window.resetLive2DParameter = function(paramId) {
     try {
-        if (!window.currentModel) {
-            return false;
-        }
+        if (!window.currentModel) return false;
 
         const model = window.currentModel.internalModel.coreModel;
         const paramIndex = model.getParameterIndex(paramId);
-        
-        if (paramIndex === -1) {
-            return false;
-        }
+        if (paramIndex === -1) return false;
 
-        // デフォルト値を取得して設定
-        const defaultValue = model.getParameterDefaultValueById(paramId);
-        model.setParameterValueById(paramId, defaultValue);
+        const defaultValue = model.getParameterDefaultValueByIndex(paramIndex);
+        model.setParameterValueByIndex(paramIndex, defaultValue);
         
         console.log(`↺ リセット: ${paramId} = ${defaultValue.toFixed(3)}`);
         return true;
@@ -113,22 +89,18 @@ window.resetLive2DParameter = function(paramId) {
 
 /**
  * 全パラメータをデフォルト値にリセット
- * @returns {boolean} - 成功したらtrue
  */
 window.resetAllLive2DParameters = function() {
     try {
-        if (!window.currentModel) {
-            return false;
-        }
+        if (!window.currentModel) return false;
 
         const model = window.currentModel.internalModel.coreModel;
         const paramCount = model.getParameterCount();
         let resetCount = 0;
 
         for (let i = 0; i < paramCount; i++) {
-            const paramId = model.getParameterId(i);
-            const defaultValue = model.getParameterDefaultValueById(paramId);
-            model.setParameterValueById(paramId, defaultValue);
+            const defaultValue = model.getParameterDefaultValueByIndex(i);
+            model.setParameterValueByIndex(i, defaultValue);
             resetCount++;
         }
 
@@ -142,23 +114,16 @@ window.resetAllLive2DParameters = function() {
 
 /**
  * 現在のパラメータ値を取得
- * @param {string} paramId - パラメータID
- * @returns {number|null} - パラメータ値、取得失敗時はnull
  */
 window.getLive2DParameterValue = function(paramId) {
     try {
-        if (!window.currentModel) {
-            return null;
-        }
+        if (!window.currentModel) return null;
 
         const model = window.currentModel.internalModel.coreModel;
         const paramIndex = model.getParameterIndex(paramId);
-        
-        if (paramIndex === -1) {
-            return null;
-        }
+        if (paramIndex === -1) return null;
 
-        return model.getParameterValueById(paramId);
+        return model.getParameterValueByIndex(paramIndex);
     } catch (error) {
         console.error(`❌ パラメータ取得エラー (${paramId}):`, error);
         return null;
@@ -167,13 +132,10 @@ window.getLive2DParameterValue = function(paramId) {
 
 /**
  * 全パラメータの現在値を取得
- * @returns {Object} - {paramId: value, ...}の形式
  */
 window.getAllLive2DParameterValues = function() {
     try {
-        if (!window.currentModel) {
-            return {};
-        }
+        if (!window.currentModel) return {};
 
         const model = window.currentModel.internalModel.coreModel;
         const paramCount = model.getParameterCount();
@@ -181,7 +143,7 @@ window.getAllLive2DParameterValues = function() {
 
         for (let i = 0; i < paramCount; i++) {
             const paramId = model.getParameterId(i);
-            const value = model.getParameterValueById(paramId);
+            const value = model.getParameterValueByIndex(i);
             values[paramId] = value;
         }
 
@@ -194,55 +156,46 @@ window.getAllLive2DParameterValues = function() {
 
 console.log('✅ modeling_controller.js 読み込み完了');
 
-// assets/live2d_dist/modeling/modeling_controller.js
-// 既存のコードの末尾に以下を追加
-
 // =============================================================================
-// アイドルモーション機能
+// アイドルモーション機能（完全修正版）
 // =============================================================================
 
-/**
- * アイドルモーション管理クラス
- */
 class IdleMotionManager {
     constructor() {
         this.motions = {
             blink: {
                 enabled: false,
-                period: 3.0,  // 秒
+                period: 3.0,
                 lastTime: 0,
-                duration: 0.15,  // 瞬きの長さ
+                duration: 0.15,
                 isBlinking: false,
                 blinkStartTime: 0
             },
             gaze: {
                 enabled: false,
-                range: 0.5,  // 視線移動範囲（0.0-1.0）
+                range: 0.5,
                 targetX: 0,
                 targetY: 0,
                 currentX: 0,
                 currentY: 0,
-                changeInterval: 2.0,  // 秒
+                changeInterval: 2.0,
                 lastChangeTime: 0,
-                smoothness: 0.05  // 移動の滑らかさ
+                smoothness: 0.05
             },
             wind: {
                 enabled: false,
-                strength: 0.5,  // 風の強さ（0.0-1.0）
-                windX: 0,
-                windY: 0,
+                strength: 0.5,
                 phase: 0,
-                frequency: 1.0  // 風の周波数
+                frequency: 1.0,
+                isOverriding: false
             }
         };
         
         this.animationFrameId = null;
         this.isRunning = false;
+        this.physicsOriginalState = null;
     }
     
-    /**
-     * アイドルモーション開始
-     */
     start() {
         if (this.isRunning) return;
         
@@ -251,9 +204,6 @@ class IdleMotionManager {
         console.log('🌟 アイドルモーション開始');
     }
     
-    /**
-     * アイドルモーション停止
-     */
     stop() {
         if (!this.isRunning) return;
         
@@ -262,22 +212,32 @@ class IdleMotionManager {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
         }
+        
+        if (this.motions.wind.isOverriding) {
+            this.restorePhysics();
+        }
+        
         console.log('⏹️ アイドルモーション停止');
     }
     
-    /**
-     * モーションのON/OFF切り替え
-     */
     toggleMotion(motionType, enabled) {
         if (!this.motions[motionType]) {
             console.warn(`⚠️ 不明なモーションタイプ: ${motionType}`);
             return;
         }
         
+        // 風揺れのON/OFF時に物理演算を制御
+        if (motionType === 'wind') {
+            if (enabled) {
+                this.disablePhysics();
+            } else {
+                this.restorePhysics();
+            }
+        }
+        
         this.motions[motionType].enabled = enabled;
         console.log(`🌟 ${motionType}: ${enabled ? 'ON' : 'OFF'}`);
         
-        // いずれかのモーションが有効なら開始、全て無効なら停止
         const anyEnabled = Object.values(this.motions).some(m => m.enabled);
         if (anyEnabled && !this.isRunning) {
             this.start();
@@ -286,42 +246,30 @@ class IdleMotionManager {
         }
     }
     
-    /**
-     * モーションパラメータ設定
-     */
     setMotionParam(paramName, value) {
-        // パラメータ名から対応するモーションを特定
         if (paramName === 'blink_period') {
             this.motions.blink.period = value;
         } else if (paramName === 'gaze_range') {
             this.motions.gaze.range = value;
         } else if (paramName === 'wind_strength') {
             this.motions.wind.strength = value;
-        } else {
-            console.warn(`⚠️ 不明なパラメータ: ${paramName}`);
         }
     }
     
-    /**
-     * アニメーションループ
-     */
     animate() {
         if (!this.isRunning) return;
         
         try {
             const currentTime = Date.now() / 1000;
             
-            // 瞬き処理
             if (this.motions.blink.enabled) {
                 this.updateBlink(currentTime);
             }
             
-            // 視線揺れ処理
             if (this.motions.gaze.enabled) {
                 this.updateGaze(currentTime);
             }
             
-            // 風揺れ処理
             if (this.motions.wind.enabled) {
                 this.updateWind(currentTime);
             }
@@ -333,34 +281,26 @@ class IdleMotionManager {
         this.animationFrameId = requestAnimationFrame(() => this.animate());
     }
     
-    /**
-     * 瞬き更新
-     */
     updateBlink(currentTime) {
         const blink = this.motions.blink;
         
         if (blink.isBlinking) {
-            // 瞬き中
             const elapsed = currentTime - blink.blinkStartTime;
             
             if (elapsed < blink.duration / 2) {
-                // 閉じる
                 const progress = elapsed / (blink.duration / 2);
                 const eyeOpen = 1.0 - progress;
                 this.setEyeOpen(eyeOpen);
             } else if (elapsed < blink.duration) {
-                // 開く
                 const progress = (elapsed - blink.duration / 2) / (blink.duration / 2);
                 const eyeOpen = progress;
                 this.setEyeOpen(eyeOpen);
             } else {
-                // 瞬き終了
                 blink.isBlinking = false;
                 this.setEyeOpen(1.0);
                 blink.lastTime = currentTime;
             }
         } else {
-            // 次の瞬きまで待機
             if (currentTime - blink.lastTime >= blink.period) {
                 blink.isBlinking = true;
                 blink.blinkStartTime = currentTime;
@@ -368,45 +308,38 @@ class IdleMotionManager {
         }
     }
     
-    /**
-     * 視線揺れ更新
-     */
     updateGaze(currentTime) {
         const gaze = this.motions.gaze;
         
-        // 一定間隔で新しいターゲット位置を設定
         if (currentTime - gaze.lastChangeTime >= gaze.changeInterval) {
             gaze.targetX = (Math.random() - 0.5) * 2 * gaze.range;
             gaze.targetY = (Math.random() - 0.5) * 2 * gaze.range;
             gaze.lastChangeTime = currentTime;
         }
         
-        // 現在位置をターゲットに向けて滑らかに移動
         gaze.currentX += (gaze.targetX - gaze.currentX) * gaze.smoothness;
         gaze.currentY += (gaze.targetY - gaze.currentY) * gaze.smoothness;
         
-        // Live2Dに反映
         this.setEyeBallPosition(gaze.currentX, gaze.currentY);
     }
     
-    /**
-     * 風揺れ更新
-     */
     updateWind(currentTime) {
         const wind = this.motions.wind;
         
         // サイン波で風の動きを生成
         wind.phase += 0.02 * wind.frequency;
-        wind.windX = Math.sin(wind.phase) * wind.strength;
-        wind.windY = Math.cos(wind.phase * 0.7) * wind.strength * 0.5;
+        const windX = Math.sin(wind.phase) * wind.strength;
+        const windY = Math.cos(wind.phase * 0.7) * wind.strength * 0.5;
         
-        // Live2Dに反映
-        this.setHairSway(wind.windX, wind.windY);
+        // 直接パラメータを設定（物理演算は既に無効化済み）
+        if (window.setLive2DParameter) {
+            window.setLive2DParameter('ParamHairFront', windX * 0.8);
+            window.setLive2DParameter('ParamHairSide', windX);
+            window.setLive2DParameter('ParamHairBack', windX * 0.6);
+            window.setLive2DParameter('ParamBodyAngleX', windX * 0.3);
+        }
     }
     
-    /**
-     * 目の開閉設定
-     */
     setEyeOpen(value) {
         if (window.setLive2DParameter) {
             window.setLive2DParameter('ParamEyeLOpen', value);
@@ -414,9 +347,6 @@ class IdleMotionManager {
         }
     }
     
-    /**
-     * 目玉位置設定
-     */
     setEyeBallPosition(x, y) {
         if (window.setLive2DParameter) {
             window.setLive2DParameter('ParamEyeBallX', x);
@@ -425,17 +355,47 @@ class IdleMotionManager {
     }
     
     /**
-     * 髪揺れ設定（修正版）
+     * 物理演算を無効化
      */
-    setHairSway(x, y) {
-        if (window.setLive2DParameter) {
-            // 髪の揺れを設定
-            window.setLive2DParameter('ParamHairFront', x * 0.8);
-            window.setLive2DParameter('ParamHairSide', x);
-            window.setLive2DParameter('ParamHairBack', x * 0.6);
+    disablePhysics() {
+        try {
+            const model = window.currentModel;
+            if (!model) return;
             
-            // 🔥 追加：体の揺れも連動させる
-            window.setLive2DParameter('ParamBodyAngleX', x * 0.3);
+            if (model.internalModel && model.internalModel.physics) {
+                this.physicsOriginalState = {
+                    enabled: true,
+                    physicsObject: model.internalModel.physics
+                };
+                
+                // 物理演算を完全無効化
+                model.internalModel.physics = null;
+                this.motions.wind.isOverriding = true;
+                
+                console.log('💨 物理演算を無効化（風揺れ制御開始）');
+            }
+        } catch (error) {
+            console.warn('⚠️ 物理演算無効化失敗:', error);
+        }
+    }
+    
+    /**
+     * 物理演算を復元
+     */
+    restorePhysics() {
+        try {
+            const model = window.currentModel;
+            if (!model || !this.physicsOriginalState) return;
+            
+            if (model.internalModel && this.physicsOriginalState.physicsObject) {
+                model.internalModel.physics = this.physicsOriginalState.physicsObject;
+                this.motions.wind.isOverriding = false;
+                this.physicsOriginalState = null;
+                
+                console.log('♻️ 物理演算を復元');
+            }
+        } catch (error) {
+            console.warn('⚠️ 物理演算復元失敗:', error);
         }
     }
 }
@@ -448,7 +408,7 @@ window.idleMotionManager = new IdleMotionManager();
  */
 window.toggleIdleMotion = function(motionType, enabled) {
     try {
-        console.log(`🌟 toggleIdleMotion呼び出し: type=${motionType}, enabled=${enabled}`);  // 🔥 追加
+        console.log(`🌟 toggleIdleMotion: ${motionType} = ${enabled}`);
         
         if (!window.idleMotionManager) {
             console.error('❌ idleMotionManager未初期化');
@@ -458,7 +418,7 @@ window.toggleIdleMotion = function(motionType, enabled) {
         window.idleMotionManager.toggleMotion(motionType, enabled);
         return true;
     } catch (error) {
-        console.error(`❌ toggleIdleMotionエラー (${motionType}):`, error);
+        console.error(`❌ toggleIdleMotionエラー:`, error);
         return false;
     }
 };
@@ -476,115 +436,9 @@ window.setIdleMotionParam = function(paramName, value) {
         window.idleMotionManager.setMotionParam(paramName, value);
         return true;
     } catch (error) {
-        console.error(`❌ setIdleMotionParamエラー (${paramName}):`, error);
+        console.error(`❌ setIdleMotionParamエラー:`, error);
         return false;
     }
 };
 
-console.log('✅ アイドルモーション機能を追加しました');
-
-// =============================================================================
-// 物理演算制御機能（最終修正版）
-// =============================================================================
-
-/**
- * 物理演算のON/OFF切り替え
- * @param {boolean} enabled - true: ON, false: OFF
- */
-window.togglePhysics = function(enabled) {
-    try {
-        console.log('🔍 物理演算切り替え試行:', enabled);
-        
-        // モデル取得（複数の方法を試す）
-        let model = window.currentModel || window.live2dModel;
-        
-        if (!model && window.app && window.app.stage) {
-            model = window.app.stage.children[0];
-        }
-        
-        if (!model) {
-            console.warn('⚠️ モデルが見つかりません');
-            console.log('🔍 window.currentModel:', window.currentModel);
-            console.log('🔍 window.live2dModel:', window.live2dModel);
-            console.log('🔍 window.app:', window.app);
-            return false;
-        }
-        
-        console.log('✅ モデル発見:', model);
-        
-        // 物理演算を制御（複数のアプローチ）
-        let success = false;
-        
-        // アプローチ1: 物理演算の時間スケールで制御
-        if (model.internalModel) {
-            try {
-                if (!enabled) {
-                    // 物理演算を無効化（時間を0にする）
-                    model.internalModel._physicsTimeScale = 0;
-                    console.log('✅ 物理演算OFF（timeScale=0）');
-                } else {
-                    // 物理演算を有効化（時間を1に戻す）
-                    model.internalModel._physicsTimeScale = 1;
-                    console.log('✅ 物理演算ON（timeScale=1）');
-                }
-                success = true;
-            } catch (e) {
-                console.warn('⚠️ timeScale制御失敗:', e);
-            }
-        }
-        
-        // アプローチ2: update関数をオーバーライド
-        if (!success) {
-            try {
-                if (!enabled) {
-                    // 物理演算を含まないupdate関数に差し替え
-                    if (!model._originalUpdate) {
-                        model._originalUpdate = model.update;
-                    }
-                    model.update = function(dt) {
-                        // 物理演算をスキップ
-                    };
-                    console.log('✅ 物理演算OFF（update無効化）');
-                } else {
-                    // 元のupdate関数に戻す
-                    if (model._originalUpdate) {
-                        model.update = model._originalUpdate;
-                        delete model._originalUpdate;
-                    }
-                    console.log('✅ 物理演算ON（update復元）');
-                }
-                success = true;
-            } catch (e) {
-                console.warn('⚠️ update制御失敗:', e);
-            }
-        }
-        
-        return success;
-        
-    } catch (error) {
-        console.error('❌ 物理演算切り替えエラー:', error);
-        return false;
-    }
-};
-
-/**
- * 物理演算の強度設定（ダミー実装）
- * ※pixi-live2d-displayでは直接制御できないため、パラメータ係数として使用
- * @param {number} weight - 強度（0.0-1.0）
- */
-window.setPhysicsWeight = function(weight) {
-    try {
-        console.log(`💨 物理演算強度: ${weight.toFixed(2)}（注：直接制御不可）`);
-        
-        // グローバル変数に保存して、パラメータ設定時に使用
-        window._physicsWeight = weight;
-        
-        return true;
-        
-    } catch (error) {
-        console.error('❌ 物理演算強度設定エラー:', error);
-        return false;
-    }
-};
-
-console.log('✅ 物理演算制御機能を追加しました');
+console.log('✅ アイドルモーション機能（修正版）を追加');

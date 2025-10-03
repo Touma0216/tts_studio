@@ -976,13 +976,76 @@ class TabbedModelingControl(QWidget):
     # ================================
     
     def on_slider_changed(self, param_id: str, value: int):
+        """スライダー変更時の処理（物理演算制御付き）"""
         if self.is_loading:
             return
+        
         val = value / 100.0
         slider, spinbox, _ = self.parameter_sliders[param_id]
+        
+        # スピンボックス更新
         spinbox.blockSignals(True)
         spinbox.setValue(val)
         spinbox.blockSignals(False)
+        
+        # CharacterDisplayWidgetを取得
+        parent = self.parent()
+        while parent and not hasattr(parent, 'character_display'):
+            parent = parent.parent()
+        
+        if parent and hasattr(parent, 'character_display'):
+            char_display = parent.character_display
+            
+            # 物理演算を無効化
+            char_display.live2d_webview.page().runJavaScript("""
+                (function() {
+                    if (window.currentModel && window.currentModel.internalModel && window.currentModel.internalModel.physics) {
+                        if (!window._manualPhysicsBackup) {
+                            window._manualPhysicsBackup = window.currentModel.internalModel.physics;
+                            window.currentModel.internalModel.physics = null;
+                            console.log('🛡️ 手動制御開始：物理演算を一時無効化');
+                        }
+                    }
+                })();
+            """)
+            
+            # パラメータ設定（瞳は代替名も試す）
+            if param_id in ['ParamEyeBallX', 'ParamEyeBallY']:
+                char_display.live2d_webview.page().runJavaScript(f"""
+                    (function() {{
+                        let success = window.setLive2DParameter('{param_id}', {val});
+                        
+                        if (!success) {{
+                            const alternatives = {{
+                                'ParamEyeBallX': ['PARAM_EYE_BALL_X', 'EyeBallX', 'ParamEyeX', '目玉X', '目玉 X'],
+                                'ParamEyeBallY': ['PARAM_EYE_BALL_Y', 'EyeBallY', 'ParamEyeY', '目玉Y', '目玉 Y']
+                            }};
+                            
+                            const altNames = alternatives['{param_id}'] || [];
+                            for (const altName of altNames) {{
+                                if (window.setLive2DParameter(altName, {val})) {{
+                                    console.log('✅ 代替パラメータで成功: ' + altName);
+                                    break;
+                                }}
+                            }}
+                        }}
+                    }})();
+                """)
+            else:
+                char_display.live2d_webview.page().runJavaScript(f"""
+                    window.setLive2DParameter('{param_id}', {val});
+                """)
+            
+            # 1秒後に物理演算を復元
+            if hasattr(self, '_physics_restore_timer'):
+                self._physics_restore_timer.stop()
+            else:
+                self._physics_restore_timer = QTimer()
+                self._physics_restore_timer.setSingleShot(True)
+                self._physics_restore_timer.timeout.connect(self._restore_physics)
+            
+            self._physics_restore_timer.start(1000)
+        
         self.parameter_changed.emit(param_id, val)
         self.update_timer.start(100)
     
@@ -1075,3 +1138,24 @@ class TabbedModelingControl(QWidget):
     def get_drag_sensitivity(self) -> float:
         """現在のドラッグ感度（0.1〜1.0）を返す"""
         return self.drag_sensitivity_slider.value() / 100.0
+    
+    def _restore_physics(self):
+        """物理演算を復元"""
+        try:
+            parent = self.parent()
+            while parent and not hasattr(parent, 'character_display'):
+                parent = parent.parent()
+            
+            if parent and hasattr(parent, 'character_display'):
+                char_display = parent.character_display
+                char_display.live2d_webview.page().runJavaScript("""
+                    (function() {
+                        if (window._manualPhysicsBackup) {
+                            window.currentModel.internalModel.physics = window._manualPhysicsBackup;
+                            delete window._manualPhysicsBackup;
+                            console.log('♻️ 手動制御終了：物理演算を復元');
+                        }
+                    })();
+                """)
+        except Exception as e:
+            print(f"⚠️ 物理演算復元エラー: {e}")
