@@ -1026,3 +1026,295 @@ class LipSyncEngine:
         print(f"✅ 無音区間適用完了: {correction_count}フレームを修正")
         
         return corrected_frames
+
+    def analyze_long_wav_for_lipsync(self, wav_path: str, text: str = None,
+                                    min_segment_gap: float = 1.0) -> Optional[LipSyncData]:
+        """長時間WAV用のリップシンク生成（セグメント分割方式）
+        
+        Args:
+            wav_path: WAVファイルパス
+            text: テキスト（Noneの場合はWhisperで自動文字起こし）
+            min_segment_gap: セグメント分割の最小無音時間（秒）
+            
+        Returns:
+            LipSyncData: 結合されたリップシンクデータ
+        """
+        try:
+            import soundfile as sf
+            from pathlib import Path
+            
+            print(f"🎬 長時間WAV解析開始: {Path(wav_path).name}")
+            
+            # WAVファイル読み込み
+            audio_data, sample_rate = sf.read(wav_path, dtype='float32')
+            total_duration = len(audio_data) / sample_rate
+            print(f"📊 総時間: {total_duration:.2f}秒 ({total_duration/60:.1f}分)")
+            
+            # ステレオ→モノラル変換
+            if audio_data.ndim > 1:
+                audio_data = np.mean(audio_data, axis=1)
+            
+            # ステップ1: Whisperで文字起こし + セグメント取得
+            segments = self._get_whisper_segments(wav_path, text)
+            if not segments:
+                print("⚠️ Whisperセグメント取得失敗、フォールバック処理")
+                return self._fallback_long_wav_analysis(audio_data, sample_rate, text)
+            
+            print(f"✅ Whisperセグメント取得: {len(segments)}個")
+            
+            # ステップ2: 無音区間でセグメントをグループ化
+            segment_groups = self._group_segments_by_silence(segments, min_segment_gap)
+            print(f"🔗 セグメントグループ化: {len(segment_groups)}グループ")
+            
+            # ステップ3: 各グループごとにリップシンク生成
+            all_vowel_frames = []
+            
+            for group_idx, group in enumerate(segment_groups):
+                group_start = group['start']
+                group_end = group['end']
+                group_text = group['text']
+                group_duration = group_end - group_start
+                
+                print(f"\n--- グループ {group_idx + 1}/{len(segment_groups)} ---")
+                print(f"⏱️  時間: {group_start:.2f}s - {group_end:.2f}s ({group_duration:.2f}s)")
+                print(f"📝 テキスト: {group_text[:50]}...")
+                
+                # WAVデータを切り出し
+                start_sample = int(group_start * sample_rate)
+                end_sample = int(group_end * sample_rate)
+                audio_segment = audio_data[start_sample:end_sample]
+                
+                # このセグメントのリップシンク生成
+                segment_lipsync = self.analyze_text_for_lipsync(
+                    text=group_text,
+                    audio_data=audio_segment,
+                    sample_rate=sample_rate
+                )
+                
+                if segment_lipsync and segment_lipsync.vowel_frames:
+                    # タイムスタンプをグローバル時間に変換
+                    for frame in segment_lipsync.vowel_frames:
+                        adjusted_frame = VowelFrame(
+                            timestamp=frame.timestamp + group_start,  # グローバル時間に変換
+                            vowel=frame.vowel,
+                            intensity=frame.intensity,
+                            duration=frame.duration,
+                            is_ending=frame.is_ending
+                        )
+                        all_vowel_frames.append(adjusted_frame)
+                    
+                    print(f"✅ {len(segment_lipsync.vowel_frames)}フレーム生成")
+                else:
+                    print(f"⚠️ リップシンク生成失敗、スキップ")
+            
+            # ステップ4: 全体を結合
+            if not all_vowel_frames:
+                print("❌ 有効なフレームが1つもありません")
+                return None
+            
+            # グループ間の無音を追加
+            all_vowel_frames = self._fill_gaps_with_silence(all_vowel_frames, total_duration)
+            
+            # 最終的なLipSyncDataを生成
+            combined_lipsync = LipSyncData(
+                text=text if text else " ".join([g['text'] for g in segment_groups]),
+                total_duration=total_duration,
+                vowel_frames=all_vowel_frames
+            )
+            
+            print(f"\n✅ 長時間リップシンク生成完了")
+            print(f"   総フレーム数: {len(all_vowel_frames)}")
+            print(f"   総時間: {total_duration:.2f}秒")
+            print(f"   セグメント数: {len(segment_groups)}")
+            
+            silence_count = sum(1 for f in all_vowel_frames if f.vowel == 'sil')
+            print(f"   無音フレーム: {silence_count}個 ({silence_count/len(all_vowel_frames)*100:.1f}%)")
+            
+            return combined_lipsync
+            
+        except Exception as e:
+            print(f"❌ 長時間WAV解析エラー: {e}")
+            traceback.print_exc()
+            return None
+
+
+    def _get_whisper_segments(self, wav_path: str, provided_text: str = None) -> List[Dict]:
+        """Whisperでセグメント情報を取得
+        
+        Args:
+            wav_path: WAVファイルパス
+            provided_text: 提供されたテキスト（Noneの場合は自動文字起こし）
+            
+        Returns:
+            セグメントリスト [{'start': float, 'end': float, 'text': str}, ...]
+        """
+        try:
+            # WhisperTranscriberを使用
+            if not self.phoneme_analyzer:
+                print("⚠️ WhisperTranscriber利用不可")
+                return []
+            
+            # whisper_transcriberがあるか確認
+            if not hasattr(self, 'whisper_transcriber'):
+                from .whisper_transcriber import WhisperTranscriber
+                self.whisper_transcriber = WhisperTranscriber(model_size="medium", device="cuda")
+            
+            # 文字起こし実行
+            success, transcribed_text, segments = self.whisper_transcriber.transcribe_wav(
+                wav_path,
+                language="ja"
+            )
+            
+            if not success or not segments:
+                print("⚠️ Whisper文字起こし失敗")
+                return []
+            
+            print(f"📝 Whisper文字起こし結果: {len(transcribed_text)}文字")
+            
+            return segments
+            
+        except Exception as e:
+            print(f"❌ Whisperセグメント取得エラー: {e}")
+            traceback.print_exc()
+            return []
+
+
+    def _group_segments_by_silence(self, segments: List[Dict], 
+                                min_gap: float) -> List[Dict]:
+        """セグメントを無音区間でグループ化
+        
+        Args:
+            segments: Whisperセグメントリスト
+            min_gap: グループ分割の最小無音時間（秒）
+            
+        Returns:
+            グループリスト [{'start': float, 'end': float, 'text': str, 'segments': [...]}, ...]
+        """
+        if not segments:
+            return []
+        
+        groups = []
+        current_group = {
+            'start': segments[0]['start'],
+            'end': segments[0]['end'],
+            'text': segments[0]['text'],
+            'segments': [segments[0]]
+        }
+        
+        for i in range(1, len(segments)):
+            prev_segment = segments[i - 1]
+            curr_segment = segments[i]
+            
+            # 前のセグメントとの間隔
+            gap = curr_segment['start'] - prev_segment['end']
+            
+            if gap >= min_gap:
+                # 無音が長い → 新しいグループを開始
+                groups.append(current_group)
+                
+                current_group = {
+                    'start': curr_segment['start'],
+                    'end': curr_segment['end'],
+                    'text': curr_segment['text'],
+                    'segments': [curr_segment]
+                }
+                
+                print(f"  🔗 グループ分割: {gap:.2f}秒の無音を検出")
+            else:
+                # 同じグループに追加
+                current_group['end'] = curr_segment['end']
+                current_group['text'] += curr_segment['text']
+                current_group['segments'].append(curr_segment)
+        
+        # 最後のグループを追加
+        groups.append(current_group)
+        
+        return groups
+
+
+    def _fill_gaps_with_silence(self, vowel_frames: List[VowelFrame], 
+                                total_duration: float) -> List[VowelFrame]:
+        """フレーム間のギャップを無音で埋める
+        
+        Args:
+            vowel_frames: 元の母音フレームリスト（時系列順）
+            total_duration: 総時間
+            
+        Returns:
+            ギャップが埋められた母音フレームリスト
+        """
+        if not vowel_frames:
+            return []
+        
+        filled_frames = []
+        
+        # 最初のフレームの前に無音がある場合
+        if vowel_frames[0].timestamp > 0.1:
+            silence_frame = VowelFrame(
+                timestamp=0.0,
+                vowel='sil',
+                intensity=0.0,
+                duration=vowel_frames[0].timestamp,
+                is_ending=False
+            )
+            filled_frames.append(silence_frame)
+            print(f"  🔇 先頭無音追加: 0.0s - {vowel_frames[0].timestamp:.2f}s")
+        
+        # フレーム間のギャップをチェック
+        for i in range(len(vowel_frames)):
+            filled_frames.append(vowel_frames[i])
+            
+            # 次のフレームとのギャップ
+            if i < len(vowel_frames) - 1:
+                current_end = vowel_frames[i].timestamp + vowel_frames[i].duration
+                next_start = vowel_frames[i + 1].timestamp
+                gap = next_start - current_end
+                
+                # 0.1秒以上のギャップがある場合、無音で埋める
+                if gap > 0.1:
+                    silence_frame = VowelFrame(
+                        timestamp=current_end,
+                        vowel='sil',
+                        intensity=0.0,
+                        duration=gap,
+                        is_ending=False
+                    )
+                    filled_frames.append(silence_frame)
+                    print(f"  🔇 無音追加: {current_end:.2f}s - {next_start:.2f}s ({gap:.2f}s)")
+        
+        # 最後のフレームの後に無音がある場合
+        last_frame = vowel_frames[-1]
+        last_end = last_frame.timestamp + last_frame.duration
+        if last_end < total_duration - 0.1:
+            silence_frame = VowelFrame(
+                timestamp=last_end,
+                vowel='sil',
+                intensity=0.0,
+                duration=total_duration - last_end,
+                is_ending=False
+            )
+            filled_frames.append(silence_frame)
+            print(f"  🔇 末尾無音追加: {last_end:.2f}s - {total_duration:.2f}s")
+        
+        return filled_frames
+
+
+    def _fallback_long_wav_analysis(self, audio_data: np.ndarray, sample_rate: int,
+                                    text: str = None) -> Optional[LipSyncData]:
+        """Whisper失敗時のフォールバック処理
+        
+        Args:
+            audio_data: 音声データ
+            sample_rate: サンプルレート
+            text: テキスト
+            
+        Returns:
+            LipSyncData
+        """
+        print("⚠️ フォールバックモード: 単純分割処理")
+        
+        if text is None:
+            text = "音声解析"
+        
+        # 全体を一度に処理（既存の方法）
+        return self.analyze_text_for_lipsync(text, audio_data, sample_rate)
