@@ -1,256 +1,94 @@
 {
   "version": "1.0",
   "metadata": {
-    "name": "preset_pv_sequence",
-    "description": "PV用アニメーション（胸揺れ→スカート揺れ→瞬き2回→笑顔）",
-    "duration": 6.0
+    "name": "preset_scared_shrink",
+    "description": "怖がりながら肩をすくめるモーション（Scene3表情と組み合わせて使用）",
+    "duration": 4.0
   },
   "model": {
     "model_id": "honoka_v1",
-    "required_parameters": ["ParamHairBack", "ParamHairSide", "ParamEyeLOpen", "ParamEyeROpen", "ParamMouthForm"]
+    "required_parameters": ["ParamBodyAngleY", "ParamAngleY"]
   },
   "keyframes": [
     {
       "time": 0.0,
       "parameters": {
-        "ParamHairBack": 0.0,
-        "ParamHairSide": 0.0,
-        "ParamEyeLOpen": 1.0,
-        "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "ParamBodyAngleY": 0.0,
+        "ParamAngleY": 0.0
       },
       "easing": "linear"
     },
     {
-      "time": 0.25,
+      "time": 0.4,
       "parameters": {
-        "ParamHairBack": 0.6,
-        "ParamHairSide": 0.0,
-        "ParamEyeLOpen": 1.0,
-        "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "ParamBodyAngleY": -8.0,
+        "ParamAngleY": -5.0
       },
-      "easing": "ease_in_out"
+      "easing": "ease_in"
     },
     {
-      "time": 0.5,
+      "time": 0.7,
       "parameters": {
-        "ParamHairBack": -0.6,
-        "ParamHairSide": 0.0,
-        "ParamEyeLOpen": 1.0,
-        "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
-      },
-      "easing": "ease_in_out"
-    },
-    {
-      "time": 0.75,
-      "parameters": {
-        "ParamHairBack": 0.6,
-        "ParamHairSide": 0.0,
-        "ParamEyeLOpen": 1.0,
-        "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
-      },
-      "easing": "ease_in_out"
-    },
-    {
-      "time": 1.0,
-      "parameters": {
-        "ParamHairBack": -0.6,
-        "ParamHairSide": 0.0,
-        "ParamEyeLOpen": 1.0,
-        "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
-      },
-      "easing": "ease_in_out"
-    },
-    {
-      "time": 1.25,
-      "parameters": {
-        "ParamHairBack": 0.6,
-        "ParamHairSide": 0.0,
-        "ParamEyeLOpen": 1.0,
-        "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
-      },
-      "easing": "ease_in_out"
-    },
-    {
-      "time": 1.5,
-      "parameters": {
-        "ParamHairBack": 0.0,
-        "ParamHairSide": 0.0,
-        "ParamEyeLOpen": 1.0,
-        "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "ParamBodyAngleY": -10.0,
+        "ParamAngleY": -7.0
       },
       "easing": "ease_out"
     },
     {
-      "time": 1.75,
+      "time": 1.0,
       "parameters": {
-        "ParamHairBack": 0.0,
-        "ParamHairSide": 0.7,
-        "ParamEyeLOpen": 1.0,
-        "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "ParamBodyAngleY": -9.0,
+        "ParamAngleY": -6.5
       },
       "easing": "ease_in_out"
     },
     {
-      "time": 2.0,
+      "time": 1.3,
       "parameters": {
-        "ParamHairBack": 0.0,
-        "ParamHairSide": -0.7,
-        "ParamEyeLOpen": 1.0,
-        "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "ParamBodyAngleY": -10.5,
+        "ParamAngleY": -7.5
       },
       "easing": "ease_in_out"
     },
     {
-      "time": 2.25,
+      "time": 1.6,
       "parameters": {
-        "ParamHairBack": 0.0,
-        "ParamHairSide": 0.7,
-        "ParamEyeLOpen": 1.0,
-        "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "ParamBodyAngleY": -9.5,
+        "ParamAngleY": -7.0
+      },
+      "easing": "ease_in_out"
+    },
+    {
+      "time": 1.9,
+      "parameters": {
+        "ParamBodyAngleY": -10.5,
+        "ParamAngleY": -7.5
       },
       "easing": "ease_in_out"
     },
     {
       "time": 2.5,
       "parameters": {
-        "ParamHairBack": 0.0,
-        "ParamHairSide": -0.7,
-        "ParamEyeLOpen": 1.0,
-        "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "ParamBodyAngleY": -10.0,
+        "ParamAngleY": -7.0
       },
       "easing": "ease_in_out"
     },
     {
-      "time": 2.75,
+      "time": 3.2,
       "parameters": {
-        "ParamHairBack": 0.0,
-        "ParamHairSide": 0.7,
-        "ParamEyeLOpen": 1.0,
-        "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
-      },
-      "easing": "ease_in_out"
-    },
-    {
-      "time": 3.0,
-      "parameters": {
-        "ParamHairBack": 0.0,
-        "ParamHairSide": 0.0,
-        "ParamEyeLOpen": 1.0,
-        "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "ParamBodyAngleY": -3.0,
+        "ParamAngleY": -2.0
       },
       "easing": "ease_out"
     },
     {
-      "time": 3.15,
+      "time": 4.0,
       "parameters": {
-        "ParamHairBack": 0.0,
-        "ParamHairSide": 0.0,
-        "ParamEyeLOpen": 0.0,
-        "ParamEyeROpen": 0.0,
-        "ParamMouthForm": 0.0
-      },
-      "easing": "linear"
-    },
-    {
-      "time": 3.35,
-      "parameters": {
-        "ParamHairBack": 0.0,
-        "ParamHairSide": 0.0,
-        "ParamEyeLOpen": 1.0,
-        "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
-      },
-      "easing": "linear"
-    },
-    {
-      "time": 3.5,
-      "parameters": {
-        "ParamHairBack": 0.0,
-        "ParamHairSide": 0.0,
-        "ParamEyeLOpen": 1.0,
-        "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
-      },
-      "easing": "linear"
-    },
-    {
-      "time": 3.65,
-      "parameters": {
-        "ParamHairBack": 0.0,
-        "ParamHairSide": 0.0,
-        "ParamEyeLOpen": 0.0,
-        "ParamEyeROpen": 0.0,
-        "ParamMouthForm": 0.0
-      },
-      "easing": "linear"
-    },
-    {
-      "time": 3.85,
-      "parameters": {
-        "ParamHairBack": 0.0,
-        "ParamHairSide": 0.0,
-        "ParamEyeLOpen": 1.0,
-        "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
-      },
-      "easing": "linear"
-    },
-    {
-      "time": 4.5,
-      "parameters": {
-        "ParamHairBack": 0.0,
-        "ParamHairSide": 0.0,
-        "ParamEyeLOpen": 1.0,
-        "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
-      },
-      "easing": "ease_in"
-    },
-    {
-      "time": 5.0,
-      "parameters": {
-        "ParamHairBack": 0.0,
-        "ParamHairSide": 0.0,
-        "ParamEyeLOpen": 1.0,
-        "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.8
+        "ParamBodyAngleY": 0.0,
+        "ParamAngleY": 0.0
       },
       "easing": "ease_out"
-    },
-    {
-      "time": 5.5,
-      "parameters": {
-        "ParamHairBack": 0.0,
-        "ParamHairSide": 0.0,
-        "ParamEyeLOpen": 1.0,
-        "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.8
-      },
-      "easing": "ease_in"
-    },
-    {
-      "time": 6.0,
-      "parameters": {
-        "ParamHairBack": 0.0,
-        "ParamHairSide": 0.0,
-        "ParamEyeLOpen": 1.0,
-        "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
-      },
-      "easing": "linear"
     }
   ],
   "loop": false,

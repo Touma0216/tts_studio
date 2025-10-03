@@ -74,6 +74,17 @@ if (this.loop === undefined) {
             }
         }
 
+        // 🔥 追加：全表情パラメータをリセット
+        if (window.currentModel) {
+            const expressionParams = ['Param1', 'Param2', 'Param3', 'Param4'];
+            expressionParams.forEach(paramId => {
+                if (window.setLive2DParameter) {
+                    window.setLive2DParameter(paramId, 0.0);
+                }
+            });
+            console.log('😐 アニメーション再生：全表情をリセット');
+        }
+
         this.isPlaying = true;
         this.startTime = Date.now() / 1000;
         this.currentTime = 0;

@@ -22,26 +22,12 @@
         "Param3": 0.0,
         "Param4": 0.0
       },
-      "easing": "linear"
+      "easing": "ease_in"
     },
     {
-      "time": 0.25,
+      "time": 0.4,
       "parameters": {
-        "ParamHairBack": 0.6,
-        "ParamHairSide": 0.0,
-        "ParamEyeLOpen": 1.0,
-        "ParamEyeROpen": 1.0,
-        "Param1": 0.0,
-        "Param2": 0.0,
-        "Param3": 0.0,
-        "Param4": 0.0
-      },
-      "easing": "ease_in_out"
-    },
-    {
-      "time": 0.5,
-      "parameters": {
-        "ParamHairBack": -0.6,
+        "ParamHairBack": 0.5,
         "ParamHairSide": 0.0,
         "ParamEyeLOpen": 1.0,
         "ParamEyeROpen": 1.0,
@@ -55,7 +41,7 @@
     {
       "time": 0.75,
       "parameters": {
-        "ParamHairBack": 0.6,
+        "ParamHairBack": 0.0,
         "ParamHairSide": 0.0,
         "ParamEyeLOpen": 1.0,
         "ParamEyeROpen": 1.0,
@@ -67,23 +53,9 @@
       "easing": "ease_in_out"
     },
     {
-      "time": 1.0,
+      "time": 1.1,
       "parameters": {
-        "ParamHairBack": -0.6,
-        "ParamHairSide": 0.0,
-        "ParamEyeLOpen": 1.0,
-        "ParamEyeROpen": 1.0,
-        "Param1": 0.0,
-        "Param2": 0.0,
-        "Param3": 0.0,
-        "Param4": 0.0
-      },
-      "easing": "ease_in_out"
-    },
-    {
-      "time": 1.25,
-      "parameters": {
-        "ParamHairBack": 0.6,
+        "ParamHairBack": -0.5,
         "ParamHairSide": 0.0,
         "ParamEyeLOpen": 1.0,
         "ParamEyeROpen": 1.0,
