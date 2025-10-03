@@ -65,6 +65,15 @@ if (this.loop === undefined) {
             return false;
         }
 
+        // 🔥 追加：物理演算を一時無効化
+        if (window.currentModel && window.currentModel.internalModel && window.currentModel.internalModel.physics) {
+            if (!window._animationPhysicsBackup) {
+                window._animationPhysicsBackup = window.currentModel.internalModel.physics;
+                window.currentModel.internalModel.physics = null;
+                console.log('🛡️ アニメーション再生：物理演算を一時無効化');
+            }
+        }
+
         this.isPlaying = true;
         this.startTime = Date.now() / 1000;
         this.currentTime = 0;
@@ -101,6 +110,13 @@ if (this.loop === undefined) {
         // 最初のキーフレームに戻す
         if (this.currentAnimation && this.currentAnimation.keyframes.length > 0) {
             this.applyKeyframe(this.currentAnimation.keyframes[0]);
+        }
+        
+        // 🔥 追加：物理演算を復元
+        if (window._animationPhysicsBackup) {
+            window.currentModel.internalModel.physics = window._animationPhysicsBackup;
+            delete window._animationPhysicsBackup;
+            console.log('♻️ アニメーション停止：物理演算を復元');
         }
         
         console.log('⏹️ アニメーション停止');
