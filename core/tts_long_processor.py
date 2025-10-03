@@ -7,7 +7,7 @@ from typing import List, Dict, Optional, Callable
 from datetime import datetime
 
 class LongTTSProcessor:
-    """大量テキストの連続TTS処理（無音なし連結版）"""
+    """大量テキストの連続TTS処理（無音区間挿入対応版）"""
     
     def __init__(self, tts_engine, checkpoint_dir: str = "checkpoints"):
         self.tts_engine = tts_engine
@@ -16,17 +16,17 @@ class LongTTSProcessor:
         
     def process_texts_to_wav(
         self, 
-        texts: List[str], 
+        texts_data: List[Dict],  # 🆕 テキスト+無音時間のデータ
         output_path: str,
         chunk_size: int = 100,
         resume: bool = True,
         progress_callback: Optional[Callable[[int, int], None]] = None
     ) -> Dict:
         """
-        複数テキストを連続TTS処理して1つのWAVに保存
+        複数テキストを連続TTS処理して1つのWAVに保存（無音区間挿入対応）
         
         Args:
-            texts: 処理するテキストのリスト
+            texts_data: [{'text': str, 'silence_after': float}, ...] のリスト
             output_path: 最終的なWAVファイルパス
             chunk_size: 一度に処理するテキスト数（メモリ管理用）
             resume: 中断から再開するか
@@ -49,28 +49,35 @@ class LongTTSProcessor:
             checkpoint = {
                 "session_id": session_id,
                 "output_path": output_path,
-                "total_texts": len(texts),
+                "total_texts": len(texts_data),
                 "completed_count": 0,
                 "temp_files": [],
                 "created_at": datetime.now().isoformat()
             }
             start_idx = 0
         
-        total_texts = len(texts)
+        total_texts = len(texts_data)
         
         try:
+            # サンプルレート取得（最初の音声生成で取得）
+            if total_texts > 0:
+                sr, _ = self.tts_engine.synthesize(texts_data[0]['text'])
+                self.sample_rate = sr
+            else:
+                self.sample_rate = 44100
+            
             # チャンクごとに処理（メモリ管理のため）
             for chunk_start in range(start_idx, total_texts, chunk_size):
                 chunk_end = min(chunk_start + chunk_size, total_texts)
-                chunk_texts = texts[chunk_start:chunk_end]
+                chunk_data = texts_data[chunk_start:chunk_end]
                 
                 temp_wav_path = temp_dir / f"chunk_{chunk_start:06d}.wav"
                 
-                print(f"🎵 処理中: {chunk_start + 1}～{chunk_end}/{total_texts} ({len(chunk_texts)}個)")
+                print(f"🎵 処理中: {chunk_start + 1}～{chunk_end}/{total_texts} ({len(chunk_data)}個)")
                 
-                # チャンク内のテキストを連続TTS処理
-                audio_data = self._generate_continuous_audio(
-                    chunk_texts, 
+                # チャンク内のテキストを連続TTS処理（無音区間挿入）
+                audio_data = self._generate_audio_with_silence(
+                    chunk_data, 
                     chunk_start,
                     total_texts,
                     progress_callback
@@ -110,18 +117,20 @@ class LongTTSProcessor:
                 "total": total_texts
             }
     
-    def _generate_continuous_audio(
+    def _generate_audio_with_silence(
         self, 
-        texts: List[str],
+        texts_data: List[Dict],
         start_idx: int,
         total_texts: int,
         progress_callback: Optional[Callable[[int, int], None]]
     ) -> np.ndarray:
-        """テキストを連続でTTS処理（無音なし）"""
+        """テキストを連続でTTS処理（無音区間挿入）"""
         audio_chunks = []
         
-        for i, text in enumerate(texts):
+        for i, data in enumerate(texts_data):
             current_idx = start_idx + i
+            text = data['text']
+            silence_after = data.get('silence_after', 0.0)
             
             # 進捗通知
             if progress_callback:
@@ -135,26 +144,23 @@ class LongTTSProcessor:
             audio_chunks.append(audio)
             
             print(f"  ✓ [{current_idx + 1}/{total_texts}] 生成完了: {text[:30]}...")
+            
+            # 🆕 無音区間を挿入
+            if silence_after > 0:
+                silence_samples = int(sr * silence_after)
+                silence = np.zeros(silence_samples, dtype=np.float32)
+                audio_chunks.append(silence)
+                print(f"    🔇 無音挿入: {silence_after}秒 ({silence_samples} samples)")
         
-        # そのまま連結（無音なし）
+        # 連結
         return np.concatenate(audio_chunks)
     
     def _save_wav(self, path: Path, audio_data: np.ndarray):
         """WAVファイルに保存"""
-        sample_rate = self.tts_engine.model_info.get('sample_rate', 44100)
-        
-        # TTSEngineからサンプルレートを取得できない場合は推論実行して取得
-        if sample_rate == 44100 and hasattr(self.tts_engine, 'synthesize'):
-            try:
-                sr, _ = self.tts_engine.synthesize("テスト")
-                sample_rate = sr
-            except:
-                sample_rate = 44100
-        
         with wave.open(str(path), 'wb') as wf:
             wf.setnchannels(1)  # モノラル
             wf.setsampwidth(2)  # 16bit
-            wf.setframerate(sample_rate)
+            wf.setframerate(self.sample_rate)
             
             # int16に変換
             audio_int16 = (audio_data * 32767).astype(np.int16)

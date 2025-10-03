@@ -1242,10 +1242,15 @@ class TTSStudioMainWindow(QMainWindow):
                 QMessageBox.warning(self, "エラー", "書き出すテキストがありません")
                 return
             
-            # テキストのみを抽出
-            texts = [data['text'] for data in texts_data if data['text'].strip()]
+            texts_with_silence = []
+            for data in texts_data:
+                if data['text'].strip():
+                    texts_with_silence.append({
+                        'text': data['text'],
+                        'silence_after': data.get('silence_after', 0.0)
+                    })
             
-            if not texts:
+            if not texts_with_silence:
                 QMessageBox.warning(self, "エラー", "有効なテキストがありません")
                 return
             
@@ -1264,10 +1269,10 @@ class TTSStudioMainWindow(QMainWindow):
                 self,
                 "確認",
                 f"以下の設定で書き出しを開始しますか？\n\n"
-                f"📝 テキスト数: {len(texts)}個\n"
+                f"📝 テキスト数: {len(texts_with_silence)}個\n"
                 f"📦 チャンクサイズ: {chunk_size}個ずつ\n"
                 f"📁 出力先: {output_path}\n"
-                f"⏱️ 推定時間: 約{len(texts) * 3}秒\n\n"
+                f"⏱️ 推定時間: 約{len(texts_with_silence) * 3}秒\n\n"
                 f"※処理中はアプリケーションが応答しなくなります",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
@@ -1283,7 +1288,7 @@ class TTSStudioMainWindow(QMainWindow):
             export_control = self.tabbed_audio_control.get_wav_export_control()
             export_control.set_processing_state(True)
             export_control.clear_log()
-            export_control.add_log(f"📼 書き出し開始: {len(texts)}個のテキスト")
+            export_control.add_log(f"📼 書き出し開始: {len(texts_with_silence)}個のテキスト")
             
             # 進捗コールバック
             def progress_callback(current, total):
@@ -1293,7 +1298,7 @@ class TTSStudioMainWindow(QMainWindow):
             
             # 書き出し実行
             result = self.tts_engine.generate_continuous_wav(
-                texts=texts,
+                texts_data=texts_with_silence,
                 output_path=output_path,
                 chunk_size=chunk_size,
                 resume=settings['resume'],

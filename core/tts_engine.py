@@ -658,7 +658,7 @@ class TTSEngine:
         
     def generate_continuous_wav(
         self, 
-        texts: List[str], 
+        texts_data: List[Dict],
         output_path: str,
         chunk_size: int = 100,
         resume: bool = True,
@@ -688,5 +688,5 @@ class TTSEngine:
             self.long_processor = LongTTSProcessor(self)
         
         return self.long_processor.process_texts_to_wav(
-            texts, output_path, chunk_size, resume, progress_callback
+            texts_data, output_path, chunk_size, resume, progress_callback
         )

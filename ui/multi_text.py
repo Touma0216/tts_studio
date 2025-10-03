@@ -1,17 +1,17 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, 
-                            QPushButton, QLabel, QFrame, QScrollArea)
+                            QPushButton, QLabel, QFrame, QScrollArea, QDoubleSpinBox)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 import uuid
 
 class TextRowWidget(QWidget):
-    """単一テキスト行ウィジェット"""
+    """単一テキスト行ウィジェット（無音区間対応版）"""
     
     delete_requested = pyqtSignal(str)  # row_id
     parameters_changed = pyqtSignal(str, dict)  # row_id, parameters
     play_requested = pyqtSignal(str)  # row_id
     
-    def __init__(self, row_id=None, text="", parameters=None, parent=None):
+    def __init__(self, row_id=None, text="", parameters=None, silence_after=0.0, parent=None):
         super().__init__(parent)
         
         self.row_id = row_id or str(uuid.uuid4())[:8]
@@ -26,6 +26,8 @@ class TextRowWidget(QWidget):
             'sdp_ratio': 0.25,
             'noise': 0.35
         }
+        
+        self.silence_after = silence_after  # 🆕 後の無音時間
         
         self.init_ui()
         
@@ -69,6 +71,35 @@ class TextRowWidget(QWidget):
         # カスタムキーイベント処理
         self.text_input.keyPressEvent = self.text_input_key_press
         
+        # 🆕 無音区間入力
+        silence_container = QWidget()
+        silence_layout = QVBoxLayout(silence_container)
+        silence_layout.setContentsMargins(0, 0, 0, 0)
+        silence_layout.setSpacing(2)
+        
+        silence_label = QLabel("後の無音:")
+        silence_label.setStyleSheet("font-size: 10px; color: #666;")
+        
+        self.silence_spin = QDoubleSpinBox()
+        self.silence_spin.setRange(0.0, 3600.0)  # 0秒～1時間
+        self.silence_spin.setValue(self.silence_after)
+        self.silence_spin.setSuffix(" 秒")
+        self.silence_spin.setDecimals(1)
+        self.silence_spin.setSingleStep(0.5)
+        self.silence_spin.setFixedWidth(80)
+        self.silence_spin.setToolTip("このテキストの後に挿入する無音時間")
+        self.silence_spin.setStyleSheet("""
+            QDoubleSpinBox {
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                padding: 2px;
+                font-size: 11px;
+            }
+        """)
+        
+        silence_layout.addWidget(silence_label)
+        silence_layout.addWidget(self.silence_spin)
+        
         # 再生ボタン
         self.play_btn = QPushButton("▶")
         self.play_btn.setFixedSize(30, 30)
@@ -110,6 +141,7 @@ class TextRowWidget(QWidget):
         # レイアウト配置
         layout.addWidget(self.row_label, 0)
         layout.addWidget(self.text_input, 1)  # 伸縮
+        layout.addWidget(silence_container, 0)  # 🆕 無音区間
         layout.addWidget(self.play_btn, 0)
         layout.addWidget(self.delete_btn, 0)
         
@@ -154,15 +186,22 @@ class TextRowWidget(QWidget):
     
     def set_parameters(self, parameters):
         """パラメータを設定"""
-        # 削除済みのUI要素への参照を除去
         self.parameters.update(parameters)
+    
+    def get_silence_after(self):
+        """後の無音時間を取得"""
+        return self.silence_spin.value()
+    
+    def set_silence_after(self, seconds):
+        """後の無音時間を設定"""
+        self.silence_spin.setValue(seconds)
     
     def update_row_number(self, number):
         """行番号を更新"""
         self.row_label.setText(f"{number}.")
 
 class MultiTextWidget(QWidget):
-    """複数テキスト管理ウィジェット"""
+    """複数テキスト管理ウィジェット（無音区間対応版）"""
     
     play_single_requested = pyqtSignal(str, str, dict)  # row_id, text, parameters
     play_all_requested = pyqtSignal(list)  # [(text, parameters), ...]
@@ -193,7 +232,12 @@ class MultiTextWidget(QWidget):
         header_label = QLabel("テキスト入力:")
         header_label.setFont(QFont("", 10, QFont.Weight.Bold))
         
+        # 🆕 説明追加
+        info_label = QLabel("💡 各行の後に挿入する無音時間を設定できます")
+        info_label.setStyleSheet("color: #666; font-size: 10px;")
+        
         header_layout.addWidget(header_label)
+        header_layout.addWidget(info_label)
         header_layout.addStretch()
         
         # スクロールエリア
@@ -233,13 +277,13 @@ class MultiTextWidget(QWidget):
         layout.addWidget(scroll_area, 1)  # 伸縮
         layout.addWidget(add_btn)
     
-    def add_text_row(self, text="", parameters=None):
+    def add_text_row(self, text="", parameters=None, silence_after=0.0):
         """テキスト行を追加"""
         # 9行制限
         if len(self.text_rows) >= 9:
             return None
             
-        row_widget = TextRowWidget(text=text, parameters=parameters)
+        row_widget = TextRowWidget(text=text, parameters=parameters, silence_after=silence_after)
         
         # シグナル接続
         row_widget.delete_requested.connect(self.delete_text_row)
@@ -259,9 +303,9 @@ class MultiTextWidget(QWidget):
         
         return row_widget.row_id
     
-    def add_text_row_with_id(self, row_id, text="", parameters=None):
+    def add_text_row_with_id(self, row_id, text="", parameters=None, silence_after=0.0):
         """指定IDでテキスト行を追加"""
-        row_widget = TextRowWidget(row_id=row_id, text=text, parameters=parameters)
+        row_widget = TextRowWidget(row_id=row_id, text=text, parameters=parameters, silence_after=silence_after)
         
         # シグナル接続
         row_widget.delete_requested.connect(self.delete_text_row)
@@ -323,16 +367,18 @@ class MultiTextWidget(QWidget):
                 self.play_single_requested.emit(row_id, text, parameters)
     
     def get_all_texts_and_parameters(self):
-        """全てのテキストとパラメータを取得"""
+        """全てのテキストとパラメータを取得（無音区間含む）"""
         result = []
         for row_id, widget in self.text_rows.items():
             text = widget.get_text()
             if text:
                 parameters = widget.get_parameters()
+                silence_after = widget.get_silence_after()
                 result.append({
                     'row_id': row_id,
                     'text': text,
-                    'parameters': parameters
+                    'parameters': parameters,
+                    'silence_after': silence_after  # 🆕 無音区間
                 })
         return result
     
@@ -345,3 +391,4 @@ class MultiTextWidget(QWidget):
         if self.text_rows:
             first_widget = next(iter(self.text_rows.values()))
             first_widget.set_text("")
+            first_widget.set_silence_after(0.0)
