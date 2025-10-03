@@ -7,7 +7,7 @@
   },
   "model": {
     "model_id": "honoka_v1",
-    "required_parameters": ["ParamHairBack", "ParamHairSide", "ParamEyeLOpen", "ParamEyeROpen", "ParamMouthForm"]
+    "required_parameters": ["ParamHairBack", "ParamHairSide", "ParamEyeLOpen", "ParamEyeROpen", "Param1", "Param2", "Param3", "Param4"]
   },
   "keyframes": [
     {
@@ -17,7 +17,10 @@
         "ParamHairSide": 0.0,
         "ParamEyeLOpen": 1.0,
         "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "Param1": 0.0,
+        "Param2": 0.0,
+        "Param3": 0.0,
+        "Param4": 0.0
       },
       "easing": "linear"
     },
@@ -28,7 +31,10 @@
         "ParamHairSide": 0.0,
         "ParamEyeLOpen": 1.0,
         "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "Param1": 0.0,
+        "Param2": 0.0,
+        "Param3": 0.0,
+        "Param4": 0.0
       },
       "easing": "ease_in_out"
     },
@@ -39,7 +45,10 @@
         "ParamHairSide": 0.0,
         "ParamEyeLOpen": 1.0,
         "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "Param1": 0.0,
+        "Param2": 0.0,
+        "Param3": 0.0,
+        "Param4": 0.0
       },
       "easing": "ease_in_out"
     },
@@ -50,7 +59,10 @@
         "ParamHairSide": 0.0,
         "ParamEyeLOpen": 1.0,
         "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "Param1": 0.0,
+        "Param2": 0.0,
+        "Param3": 0.0,
+        "Param4": 0.0
       },
       "easing": "ease_in_out"
     },
@@ -61,7 +73,10 @@
         "ParamHairSide": 0.0,
         "ParamEyeLOpen": 1.0,
         "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "Param1": 0.0,
+        "Param2": 0.0,
+        "Param3": 0.0,
+        "Param4": 0.0
       },
       "easing": "ease_in_out"
     },
@@ -72,7 +87,10 @@
         "ParamHairSide": 0.0,
         "ParamEyeLOpen": 1.0,
         "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "Param1": 0.0,
+        "Param2": 0.0,
+        "Param3": 0.0,
+        "Param4": 0.0
       },
       "easing": "ease_in_out"
     },
@@ -83,7 +101,10 @@
         "ParamHairSide": 0.0,
         "ParamEyeLOpen": 1.0,
         "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "Param1": 0.0,
+        "Param2": 0.0,
+        "Param3": 0.0,
+        "Param4": 0.0
       },
       "easing": "ease_out"
     },
@@ -94,7 +115,10 @@
         "ParamHairSide": 0.7,
         "ParamEyeLOpen": 1.0,
         "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "Param1": 0.0,
+        "Param2": 0.0,
+        "Param3": 0.0,
+        "Param4": 0.0
       },
       "easing": "ease_in_out"
     },
@@ -105,7 +129,10 @@
         "ParamHairSide": -0.7,
         "ParamEyeLOpen": 1.0,
         "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "Param1": 0.0,
+        "Param2": 0.0,
+        "Param3": 0.0,
+        "Param4": 0.0
       },
       "easing": "ease_in_out"
     },
@@ -116,7 +143,10 @@
         "ParamHairSide": 0.7,
         "ParamEyeLOpen": 1.0,
         "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "Param1": 0.0,
+        "Param2": 0.0,
+        "Param3": 0.0,
+        "Param4": 0.0
       },
       "easing": "ease_in_out"
     },
@@ -127,7 +157,10 @@
         "ParamHairSide": -0.7,
         "ParamEyeLOpen": 1.0,
         "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "Param1": 0.0,
+        "Param2": 0.0,
+        "Param3": 0.0,
+        "Param4": 0.0
       },
       "easing": "ease_in_out"
     },
@@ -138,7 +171,10 @@
         "ParamHairSide": 0.7,
         "ParamEyeLOpen": 1.0,
         "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "Param1": 0.0,
+        "Param2": 0.0,
+        "Param3": 0.0,
+        "Param4": 0.0
       },
       "easing": "ease_in_out"
     },
@@ -149,7 +185,10 @@
         "ParamHairSide": 0.0,
         "ParamEyeLOpen": 1.0,
         "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "Param1": 0.0,
+        "Param2": 0.0,
+        "Param3": 0.0,
+        "Param4": 0.0
       },
       "easing": "ease_out"
     },
@@ -160,7 +199,10 @@
         "ParamHairSide": 0.0,
         "ParamEyeLOpen": 0.0,
         "ParamEyeROpen": 0.0,
-        "ParamMouthForm": 0.0
+        "Param1": 0.0,
+        "Param2": 0.0,
+        "Param3": 0.0,
+        "Param4": 0.0
       },
       "easing": "linear"
     },
@@ -171,7 +213,10 @@
         "ParamHairSide": 0.0,
         "ParamEyeLOpen": 1.0,
         "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "Param1": 0.0,
+        "Param2": 0.0,
+        "Param3": 0.0,
+        "Param4": 0.0
       },
       "easing": "linear"
     },
@@ -182,7 +227,10 @@
         "ParamHairSide": 0.0,
         "ParamEyeLOpen": 1.0,
         "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "Param1": 0.0,
+        "Param2": 0.0,
+        "Param3": 0.0,
+        "Param4": 0.0
       },
       "easing": "linear"
     },
@@ -193,7 +241,10 @@
         "ParamHairSide": 0.0,
         "ParamEyeLOpen": 0.0,
         "ParamEyeROpen": 0.0,
-        "ParamMouthForm": 0.0
+        "Param1": 0.0,
+        "Param2": 0.0,
+        "Param3": 0.0,
+        "Param4": 0.0
       },
       "easing": "linear"
     },
@@ -204,7 +255,10 @@
         "ParamHairSide": 0.0,
         "ParamEyeLOpen": 1.0,
         "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "Param1": 0.0,
+        "Param2": 0.0,
+        "Param3": 0.0,
+        "Param4": 0.0
       },
       "easing": "linear"
     },
@@ -215,7 +269,10 @@
         "ParamHairSide": 0.0,
         "ParamEyeLOpen": 1.0,
         "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "Param1": 0.0,
+        "Param2": 0.0,
+        "Param3": 0.0,
+        "Param4": 0.0
       },
       "easing": "ease_in"
     },
@@ -226,7 +283,10 @@
         "ParamHairSide": 0.0,
         "ParamEyeLOpen": 1.0,
         "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.8
+        "Param1": 1.0,
+        "Param2": 0.0,
+        "Param3": 0.0,
+        "Param4": 0.0
       },
       "easing": "ease_out"
     },
@@ -237,7 +297,10 @@
         "ParamHairSide": 0.0,
         "ParamEyeLOpen": 1.0,
         "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.8
+        "Param1": 1.0,
+        "Param2": 0.0,
+        "Param3": 0.0,
+        "Param4": 0.0
       },
       "easing": "ease_in"
     },
@@ -248,7 +311,10 @@
         "ParamHairSide": 0.0,
         "ParamEyeLOpen": 1.0,
         "ParamEyeROpen": 1.0,
-        "ParamMouthForm": 0.0
+        "Param1": 0.0,
+        "Param2": 0.0,
+        "Param3": 0.0,
+        "Param4": 0.0
       },
       "easing": "linear"
     }

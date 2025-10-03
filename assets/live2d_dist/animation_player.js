@@ -34,8 +34,10 @@ class AnimationPlayer {
             animationData.keyframes.sort((a, b) => a.time - b.time);
 
             this.currentAnimation = animationData;
-            this.loop = animationData.loop || false;
-            
+// アニメーション読み込み時は、既存のループ設定を保持
+if (this.loop === undefined) {
+    this.loop = animationData.loop || false;
+}            
             console.log(`✅ アニメーション読み込み: ${animationData.metadata?.name || '無名'}`);
             console.log(`   - 時間: ${animationData.metadata?.duration || 0}秒`);
             console.log(`   - キーフレーム数: ${animationData.keyframes.length}`);
@@ -130,6 +132,7 @@ class AnimationPlayer {
                     return;
                 }
             }
+
 
             // 現在時刻のパラメータを計算して適用
             this.updateParameters(this.currentTime);
@@ -270,28 +273,27 @@ class AnimationPlayer {
         console.log(`⚡ 再生速度: ${this.speed.toFixed(1)}x`);
     }
 
+
     /**
-     * ループ設定
+     * ループ設定（修正版：即座に反映）
      * @param {boolean} enabled - ループ有効/無効
      */
     setLoop(enabled) {
         this.loop = enabled;
         console.log(`🔄 ループ: ${enabled ? 'ON' : 'OFF'}`);
-    }
-
-    /**
-     * 現在の状態を取得
-     * @returns {Object} 状態情報
-     */
-    getStatus() {
-        return {
-            isPlaying: this.isPlaying,
-            currentTime: this.currentTime,
-            duration: this.currentAnimation?.metadata?.duration || 0,
-            animationName: this.currentAnimation?.metadata?.name || null,
-            loop: this.loop,
-            speed: this.speed
-        };
+        
+        // 🔥 追加：再生中の場合、終了判定をスキップしてループ継続
+        if (this.isPlaying && enabled && this.currentAnimation) {
+            const duration = this.currentAnimation.metadata?.duration || 
+                        this.currentAnimation.keyframes[this.currentAnimation.keyframes.length - 1].time;
+            
+            // 既に終了時刻を過ぎていたら、ループを開始
+            if (this.currentTime >= duration) {
+                this.currentTime = 0;
+                this.startTime = Date.now() / 1000;
+                console.log('🔄 ループ再開');
+            }
+        }
     }
 
     /**

@@ -1,0 +1,21 @@
+{
+  "version": "1.0",
+  "metadata": {
+    "name": "preset_happy_sway",
+    "description": "首と体を軽く傾けてルンルン横揺れする動作",
+    "duration": 4.0
+  },
+  "model": {
+    "model_id": "honoka_v1",
+    "required_parameters": ["ParamAngleZ", "ParamBodyAngleZ"]
+  },
+  "keyframes": [
+    { "time": 0.0, "parameters": { "ParamAngleZ": 0.0, "ParamBodyAngleZ": 0.0 }, "easing": "linear" },
+    { "time": 1.0, "parameters": { "ParamAngleZ": 5.0, "ParamBodyAngleZ": 2.0 }, "easing": "ease_in_out" },
+    { "time": 2.0, "parameters": { "ParamAngleZ": -5.0, "ParamBodyAngleZ": -2.0 }, "easing": "ease_in_out" },
+    { "time": 3.0, "parameters": { "ParamAngleZ": 5.0, "ParamBodyAngleZ": 2.0 }, "easing": "ease_in_out" },
+    { "time": 4.0, "parameters": { "ParamAngleZ": 0.0, "ParamBodyAngleZ": 0.0 }, "easing": "ease_out" }
+  ],
+  "loop": true,
+  "auto_reset": false
+}
