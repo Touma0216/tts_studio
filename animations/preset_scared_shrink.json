@@ -1,0 +1,96 @@
+{
+  "version": "1.0",
+  "metadata": {
+    "name": "preset_scared_shrink",
+    "description": "怖がりながら肩をすくめるモーション（Scene3表情と組み合わせて使用）",
+    "duration": 4.0
+  },
+  "model": {
+    "model_id": "honoka_v1",
+    "required_parameters": ["ParamBodyAngleY", "ParamAngleY"]
+  },
+  "keyframes": [
+    {
+      "time": 0.0,
+      "parameters": {
+        "ParamBodyAngleY": 0.0,
+        "ParamAngleY": 0.0
+      },
+      "easing": "linear"
+    },
+    {
+      "time": 0.4,
+      "parameters": {
+        "ParamBodyAngleY": -8.0,
+        "ParamAngleY": -5.0
+      },
+      "easing": "ease_in"
+    },
+    {
+      "time": 0.7,
+      "parameters": {
+        "ParamBodyAngleY": -10.0,
+        "ParamAngleY": -7.0
+      },
+      "easing": "ease_out"
+    },
+    {
+      "time": 1.0,
+      "parameters": {
+        "ParamBodyAngleY": -9.0,
+        "ParamAngleY": -6.5
+      },
+      "easing": "ease_in_out"
+    },
+    {
+      "time": 1.3,
+      "parameters": {
+        "ParamBodyAngleY": -10.5,
+        "ParamAngleY": -7.5
+      },
+      "easing": "ease_in_out"
+    },
+    {
+      "time": 1.6,
+      "parameters": {
+        "ParamBodyAngleY": -9.5,
+        "ParamAngleY": -7.0
+      },
+      "easing": "ease_in_out"
+    },
+    {
+      "time": 1.9,
+      "parameters": {
+        "ParamBodyAngleY": -10.5,
+        "ParamAngleY": -7.5
+      },
+      "easing": "ease_in_out"
+    },
+    {
+      "time": 2.5,
+      "parameters": {
+        "ParamBodyAngleY": -10.0,
+        "ParamAngleY": -7.0
+      },
+      "easing": "ease_in_out"
+    },
+    {
+      "time": 3.2,
+      "parameters": {
+        "ParamBodyAngleY": -3.0,
+        "ParamAngleY": -2.0
+      },
+      "easing": "ease_out"
+    },
+    {
+      "time": 4.0,
+      "parameters": {
+        "ParamBodyAngleY": 0.0,
+        "ParamAngleY": 0.0
+      },
+      "easing": "ease_out"
+    }
+  ],
+  "loop": false,
+  "auto_reset": true
+}
