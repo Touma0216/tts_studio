@@ -202,10 +202,10 @@ class LipSyncEngine:
             'ending_protection': copy.deepcopy(self.ending_protection),
             'enabled': self.settings.get('enabled', True)
         }
-    
+        
     def analyze_text_for_lipsync(self, text: str, audio_data: np.ndarray = None, 
                                 sample_rate: int = None) -> Optional[LipSyncData]:
-        """テキストをリップシンク用に解析（音声対応統合版）
+        """テキストをリップシンク用に解析（音声対応統合版 + 無音検出）
         
         Args:
             text: 解析するテキスト
@@ -250,7 +250,6 @@ class LipSyncEngine:
                     time_scale = actual_duration / estimated_duration
                     print(f"⏱️ タイムスケール調整: {estimated_duration:.3f}s → {actual_duration:.3f}s (x{time_scale:.3f})")
                     
-                    # 全フレームをスケール
                     scaled_frames = []
                     current_time = 0.0
                     for frame in vowel_frames:
@@ -278,7 +277,6 @@ class LipSyncEngine:
                     time_scale = total_duration / estimated_duration
                     print(f"⏱️ テキストベース調整: {estimated_duration:.3f}s → {total_duration:.3f}s (x{time_scale:.3f})")
                     
-                    # 全フレームをスケール
                     scaled_frames = []
                     current_time = 0.0
                     for frame in vowel_frames:
@@ -295,6 +293,18 @@ class LipSyncEngine:
                     
                     vowel_frames = scaled_frames
             
+            # 🆕 無音区間検出と適用（音声データがある場合のみ）
+            if audio_data is not None and sample_rate is not None:
+                silence_regions = self._detect_silence_regions(
+                    audio_data, 
+                    sample_rate,
+                    min_silence_duration=0.2,  # 0.2秒以上の無音を検出
+                    adaptive_threshold=True
+                )
+                
+                if silence_regions:
+                    vowel_frames = self._apply_silence_regions_to_frames(vowel_frames, silence_regions)
+            
             # 語尾保護機能を適用
             vowel_frames = self._apply_ending_protection_to_frames(vowel_frames)
             
@@ -310,8 +320,11 @@ class LipSyncEngine:
             print(f"✅ リップシンク解析完了: {len(vowel_frames)}フレーム, {total_duration:.3f}秒")
             
             ending_count = sum(1 for f in vowel_frames if f.is_ending)
+            silence_count = sum(1 for f in vowel_frames if f.vowel == 'sil')
             if ending_count > 0:
                 print(f"🛡️ 語尾保護適用: {ending_count}個の語尾音素")
+            if silence_count > 0:
+                print(f"🔇 無音フレーム: {silence_count}個")
             
             return lipsync_data
             
@@ -854,3 +867,162 @@ class LipSyncEngine:
                 debug_info['error'] = str(e)
         
         return debug_info
+    
+    def _detect_silence_regions(self, audio_data: np.ndarray, sample_rate: int, 
+                            min_silence_duration: float = 0.2,
+                            adaptive_threshold: bool = True) -> List[Tuple[float, float]]:
+        """WAVデータから無音区間を検出（適応的閾値）
+        
+        Args:
+            audio_data: 音声データ（モノラル、float32）
+            sample_rate: サンプルレート
+            min_silence_duration: 無音として扱う最小時間（秒）
+            adaptive_threshold: 適応的閾値を使用するか
+            
+        Returns:
+            無音区間のリスト [(開始時間, 終了時間), ...]
+        """
+        try:
+            print(f"🔇 無音区間検出開始: {len(audio_data)/sample_rate:.2f}秒の音声")
+            
+            # 音声データの前処理
+            if audio_data.ndim > 1:
+                # ステレオの場合はモノラルに変換
+                audio_data = np.mean(audio_data, axis=1)
+            
+            # フレーム長（50ms = 0.05秒）
+            frame_length = int(sample_rate * 0.05)
+            hop_length = frame_length // 2  # 50%オーバーラップ
+            
+            # RMS（二乗平均平方根）を計算
+            num_frames = (len(audio_data) - frame_length) // hop_length + 1
+            rms_values = np.zeros(num_frames)
+            
+            for i in range(num_frames):
+                start_idx = i * hop_length
+                end_idx = start_idx + frame_length
+                frame = audio_data[start_idx:end_idx]
+                rms_values[i] = np.sqrt(np.mean(frame ** 2))
+            
+            # 🔥 適応的閾値の計算
+            if adaptive_threshold:
+                # 音量分布を解析
+                non_zero_rms = rms_values[rms_values > 1e-6]  # ほぼ0の値は除外
+                
+                if len(non_zero_rms) > 0:
+                    avg_rms = np.mean(non_zero_rms)
+                    std_rms = np.std(non_zero_rms)
+                    percentile_5 = np.percentile(non_zero_rms, 5)  # 下位5%
+                    
+                    # 閾値 = 平均の15% と 5パーセンタイル の大きい方
+                    threshold = max(avg_rms * 0.15, percentile_5)
+                    
+                    print(f"  📊 音量統計: 平均={avg_rms:.6f}, 標準偏差={std_rms:.6f}")
+                    print(f"  📊 下位5%={percentile_5:.6f}")
+                    print(f"  🎯 適応的閾値={threshold:.6f}")
+                else:
+                    # フォールバック
+                    threshold = 0.01
+                    print(f"  ⚠️ 音量データ不足、固定閾値使用={threshold}")
+            else:
+                # 固定閾値
+                threshold = self.settings.get('silence_threshold', 0.01)
+                print(f"  🎯 固定閾値={threshold}")
+            
+            # 無音フレームを検出（閾値以下）
+            is_silence = rms_values < threshold
+            
+            # フレームインデックスを時間に変換
+            frame_times = np.arange(num_frames) * hop_length / sample_rate
+            
+            # 連続する無音区間をグループ化
+            silence_regions = []
+            in_silence = False
+            silence_start = 0.0
+            
+            for i in range(len(is_silence)):
+                if is_silence[i] and not in_silence:
+                    # 無音開始
+                    in_silence = True
+                    silence_start = frame_times[i]
+                elif not is_silence[i] and in_silence:
+                    # 無音終了
+                    in_silence = False
+                    silence_end = frame_times[i]
+                    duration = silence_end - silence_start
+                    
+                    # 最小時間以上の無音のみ記録
+                    if duration >= min_silence_duration:
+                        silence_regions.append((silence_start, silence_end))
+                        print(f"    🔇 無音区間: {silence_start:.2f}s - {silence_end:.2f}s ({duration:.2f}s)")
+            
+            # 最後まで無音だった場合
+            if in_silence:
+                silence_end = frame_times[-1]
+                duration = silence_end - silence_start
+                if duration >= min_silence_duration:
+                    silence_regions.append((silence_start, silence_end))
+                    print(f"    🔇 無音区間: {silence_start:.2f}s - {silence_end:.2f}s ({duration:.2f}s)")
+            
+            print(f"✅ 無音区間検出完了: {len(silence_regions)}個の無音区間")
+            
+            return silence_regions
+            
+        except Exception as e:
+            print(f"❌ 無音検出エラー: {e}")
+            traceback.print_exc()
+            return []
+
+
+    def _apply_silence_regions_to_frames(self, vowel_frames: List[VowelFrame], 
+                                        silence_regions: List[Tuple[float, float]]) -> List[VowelFrame]:
+        """無音区間を母音フレームに適用
+        
+        Args:
+            vowel_frames: 元の母音フレームリスト
+            silence_regions: 無音区間のリスト [(開始, 終了), ...]
+            
+        Returns:
+            無音区間が適用された母音フレームリスト
+        """
+        if not silence_regions:
+            return vowel_frames
+        
+        print(f"🔇 無音区間適用開始: {len(vowel_frames)}フレーム, {len(silence_regions)}無音区間")
+        
+        corrected_frames = []
+        correction_count = 0
+        
+        for frame in vowel_frames:
+            frame_start = frame.timestamp
+            frame_end = frame.timestamp + frame.duration
+            frame_mid = (frame_start + frame_end) / 2
+            
+            # このフレームが無音区間内にあるかチェック
+            is_in_silence = False
+            for silence_start, silence_end in silence_regions:
+                # フレームの中心が無音区間内にあるか
+                if silence_start <= frame_mid <= silence_end:
+                    is_in_silence = True
+                    break
+            
+            if is_in_silence and frame.vowel != 'sil':
+                # 無音区間内 → 強制的にsilに変換
+                corrected_frame = VowelFrame(
+                    timestamp=frame.timestamp,
+                    vowel='sil',
+                    intensity=0.0,
+                    duration=frame.duration,
+                    is_ending=False  # 無音なので語尾フラグも解除
+                )
+                correction_count += 1
+                print(f"  🔇 修正: [{frame_start:.2f}s] {frame.vowel} → sil")
+            else:
+                # 無音区間外 → そのまま
+                corrected_frame = frame
+            
+            corrected_frames.append(corrected_frame)
+        
+        print(f"✅ 無音区間適用完了: {correction_count}フレームを修正")
+        
+        return corrected_frames
