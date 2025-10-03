@@ -4,17 +4,21 @@ tts_studio/
 ├── user_settings.json                # ユーザー設定ファイル
 ├── image_history.json                # 画像履歴データ
 ├── live2d_history.json               # Live2Dモデル履歴データ
+├── animations/                       # アニメーションJSONファイル
+│   ├── preset_look_around.json       # サンプルアニメーション
+│   └── (その他のアニメーションファイル)
 ├── assets/                           # 静的アセット
 │   └── live2d_dist/                  # Live2D環境
 │       ├── index.html                # Live2Dビューアー用HTML
 │       ├── main.js                   # Live2D制御JavaScript
+│       ├── animation_player.js       # アニメーション再生エンジン
 │       ├── lip_sync/                 # リップシンク専用ディレクトリ
 │       │   ├── phoneme_classifier.js # 音素分類・予測エンジン
 │       │   ├── audio_analyzer.js     # リアルタイム音声解析
 │       │   ├── lip_sync_controller.js# Live2D統合制御
 │       │   └── models/               # 音素マッピングデータ
 │       │       └── phoneme_model.json# 音素→Live2Dパラメータマッピング
-│       ├── modeling/                 # リップシンク専用ディレクトリ
+│       ├── modeling/                 # モデリング制御ディレクトリ
 │       │   ├── modeling_controller.js# メイン制御
 │       │   ├── drag_controller.js    # ドラッグ操作
 │       │   └── preset_manager.js     # モーション/表情管理
@@ -35,6 +39,7 @@ tts_studio/
 │   ├── tts_engine.py                 # Style-Bert-VITS2音声合成エンジン
 │   ├── image_manager.py              # 画像履歴・UI設定管理システム
 │   ├── live2d_manager.py             # Live2Dモデル管理システム
+│   ├── animation_manager.py          # アニメーション管理システム
 │   ├── lip_sync_engine.py            # メインリップシンクエンジン
 │   ├── phoneme_analyzer.py           # 音素解析・最適化エンジン
 │   ├── wav_player.py                 # WAV再生エンジン
