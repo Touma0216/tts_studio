@@ -542,6 +542,27 @@ class TTSStudioMainWindow(QMainWindow):
         self.setWindowTitle(f"{base_title} - {model_name} (Live2D)")
         # モデル読み込み直後にドラッグ制御の状態を同期
         QTimer.singleShot(100, self.sync_drag_control_state)
+        QTimer.singleShot(500, self._activate_idle_motions_after_load)
+
+    def _activate_idle_motions_after_load(self):
+        """モデル読み込み後にアイドルモーションを起動"""
+        try:
+            print("🌟 モデル読み込み後：アイドルモーション起動")
+            
+            # モデリングコントロールのチェックボックス状態を確認
+            modeling_control = self.tabbed_audio_control.modeling_control
+            
+            if hasattr(modeling_control, 'blink_checkbox') and modeling_control.blink_checkbox.isChecked():
+                print("  → 瞬きON")
+                self.on_idle_motion_toggled("blink", True)
+            
+            if hasattr(modeling_control, 'gaze_checkbox') and modeling_control.gaze_checkbox.isChecked():
+                print("  → 視線揺れON")
+                self.on_idle_motion_toggled("gaze", True)
+                
+        except Exception as e:
+            print(f"⚠️ アイドルモーション起動エラー: {e}")
+
 
     def setup_audio_processing_integration(self):
             self.tabbed_audio_control.cleaner_control.analyze_requested.connect(self.handle_cleaner_analysis_request)

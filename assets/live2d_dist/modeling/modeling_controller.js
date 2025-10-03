@@ -448,6 +448,8 @@ window.idleMotionManager = new IdleMotionManager();
  */
 window.toggleIdleMotion = function(motionType, enabled) {
     try {
+        console.log(`🌟 toggleIdleMotion呼び出し: type=${motionType}, enabled=${enabled}`);  // 🔥 追加
+        
         if (!window.idleMotionManager) {
             console.error('❌ idleMotionManager未初期化');
             return false;
@@ -482,65 +484,82 @@ window.setIdleMotionParam = function(paramName, value) {
 console.log('✅ アイドルモーション機能を追加しました');
 
 // =============================================================================
-// 物理演算制御機能（修正版）
+// 物理演算制御機能（最終修正版）
 // =============================================================================
 
 /**
- * 物理演算のON/OFF切り替え（デバッグ強化版）
+ * 物理演算のON/OFF切り替え
+ * @param {boolean} enabled - true: ON, false: OFF
  */
 window.togglePhysics = function(enabled) {
     try {
-        console.log('🔍 togglePhysics呼び出し:', enabled);
-        console.log('🔍 window.live2dModel:', window.live2dModel);
-        console.log('🔍 window.currentModel:', window.currentModel);
+        console.log('🔍 物理演算切り替え試行:', enabled);
         
-        // 複数の方法でモデルを探す
-        let model = window.live2dModel || window.currentModel;
+        // モデル取得（複数の方法を試す）
+        let model = window.currentModel || window.live2dModel;
         
-        if (!model) {
-            // app.stage.childrenから探す
-            if (window.app && window.app.stage && window.app.stage.children.length > 0) {
-                model = window.app.stage.children.find(child => 
-                    child.internalModel && child.internalModel.coreModel
-                );
-                console.log('🔍 app.stageから検索:', model);
-            }
+        if (!model && window.app && window.app.stage) {
+            model = window.app.stage.children[0];
         }
         
         if (!model) {
             console.warn('⚠️ モデルが見つかりません');
+            console.log('🔍 window.currentModel:', window.currentModel);
+            console.log('🔍 window.live2dModel:', window.live2dModel);
+            console.log('🔍 window.app:', window.app);
             return false;
         }
         
-        console.log('🔍 model.internalModel:', model.internalModel);
+        console.log('✅ モデル発見:', model);
         
-        // 物理演算の切り替えを試す
-        const internalModel = model.internalModel;
+        // 物理演算を制御（複数のアプローチ）
+        let success = false;
         
-        // 方法1: physicsRig
-        if (internalModel && internalModel.physicsRig) {
-            internalModel.physicsRig.enabled = enabled;
-            console.log(`✅ physicsRig.enabled = ${enabled}`);
-            return true;
+        // アプローチ1: 物理演算の時間スケールで制御
+        if (model.internalModel) {
+            try {
+                if (!enabled) {
+                    // 物理演算を無効化（時間を0にする）
+                    model.internalModel._physicsTimeScale = 0;
+                    console.log('✅ 物理演算OFF（timeScale=0）');
+                } else {
+                    // 物理演算を有効化（時間を1に戻す）
+                    model.internalModel._physicsTimeScale = 1;
+                    console.log('✅ 物理演算ON（timeScale=1）');
+                }
+                success = true;
+            } catch (e) {
+                console.warn('⚠️ timeScale制御失敗:', e);
+            }
         }
         
-        // 方法2: coreModel.physics
-        if (internalModel && internalModel.coreModel && internalModel.coreModel.physics) {
-            internalModel.coreModel.physics.enabled = enabled;
-            console.log(`✅ coreModel.physics.enabled = ${enabled}`);
-            return true;
+        // アプローチ2: update関数をオーバーライド
+        if (!success) {
+            try {
+                if (!enabled) {
+                    // 物理演算を含まないupdate関数に差し替え
+                    if (!model._originalUpdate) {
+                        model._originalUpdate = model.update;
+                    }
+                    model.update = function(dt) {
+                        // 物理演算をスキップ
+                    };
+                    console.log('✅ 物理演算OFF（update無効化）');
+                } else {
+                    // 元のupdate関数に戻す
+                    if (model._originalUpdate) {
+                        model.update = model._originalUpdate;
+                        delete model._originalUpdate;
+                    }
+                    console.log('✅ 物理演算ON（update復元）');
+                }
+                success = true;
+            } catch (e) {
+                console.warn('⚠️ update制御失敗:', e);
+            }
         }
         
-        // 方法3: physics直接
-        if (internalModel && internalModel.physics) {
-            internalModel.physics.enabled = enabled;
-            console.log(`✅ physics.enabled = ${enabled}`);
-            return true;
-        }
-        
-        console.warn('⚠️ 物理演算リグが見つかりません');
-        console.log('🔍 利用可能なプロパティ:', Object.keys(internalModel || {}));
-        return false;
+        return success;
         
     } catch (error) {
         console.error('❌ 物理演算切り替えエラー:', error);
@@ -549,36 +568,19 @@ window.togglePhysics = function(enabled) {
 };
 
 /**
- * 物理演算の強度設定
+ * 物理演算の強度設定（ダミー実装）
+ * ※pixi-live2d-displayでは直接制御できないため、パラメータ係数として使用
  * @param {number} weight - 強度（0.0-1.0）
  */
 window.setPhysicsWeight = function(weight) {
     try {
-        // 🔥 修正：正しいモデル取得方法
-        if (!window.live2dModel) {
-            console.warn('⚠️ モデル未読み込み：物理演算強度設定スキップ');
-            return false;
-        }
+        console.log(`💨 物理演算強度: ${weight.toFixed(2)}（注：直接制御不可）`);
         
-        const model = window.live2dModel.internalModel;
+        // グローバル変数に保存して、パラメータ設定時に使用
+        window._physicsWeight = weight;
         
-        // 物理演算の強度調整
-        if (model && model.coreModel && model.coreModel.physics) {
-            const physics = model.coreModel.physics;
-            
-            // 全ての物理演算パラメータに重みを適用
-            if (physics.settings) {
-                physics.settings.forEach(setting => {
-                    setting.weight = weight;
-                });
-            }
-            
-            console.log(`💨 物理演算強度: ${weight.toFixed(2)}`);
-            return true;
-        } else {
-            console.warn('⚠️ 物理演算リグが見つかりません');
-            return false;
-        }
+        return true;
+        
     } catch (error) {
         console.error('❌ 物理演算強度設定エラー:', error);
         return false;

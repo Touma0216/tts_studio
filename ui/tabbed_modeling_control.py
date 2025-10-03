@@ -47,19 +47,24 @@ class TabbedModelingControl(QWidget):
         QTimer.singleShot(300, self._activate_default_idle_motions)
 
     def _activate_default_idle_motions(self):
-        """デフォルトのアイドルモーションを起動"""
-        try:
-            # 瞬きON
-            if hasattr(self, 'blink_checkbox') and self.blink_checkbox.isChecked():
-                self.idle_motion_toggled.emit("blink", True)
-                print("✅ 起動時：瞬きON")
-            
-            # 視線揺れON
-            if hasattr(self, 'gaze_checkbox') and self.gaze_checkbox.isChecked():
-                self.idle_motion_toggled.emit("gaze", True)
-                print("✅ 起動時：視線揺れON")
-        except Exception as e:
-            print(f"⚠️ デフォルトモーション起動エラー: {e}")
+            """デフォルトのアイドルモーションを起動"""
+            try:
+                print("🌟 デフォルトアイドルモーション起動開始")
+                
+                # 瞬きON
+                if hasattr(self, 'blink_checkbox') and self.blink_checkbox.isChecked():
+                    print("  → 瞬きシグナル発火")
+                    self.idle_motion_toggled.emit("blink", True)
+                
+                # 視線揺れON
+                if hasattr(self, 'gaze_checkbox') and self.gaze_checkbox.isChecked():
+                    print("  → 視線揺れシグナル発火")
+                    self.idle_motion_toggled.emit("gaze", True)
+                    
+                print("✅ デフォルトアイドルモーション起動完了")
+                
+            except Exception as e:
+                print(f"⚠️ デフォルトモーション起動エラー: {e}")
 
     
     def init_ui(self):
