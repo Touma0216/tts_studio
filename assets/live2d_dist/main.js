@@ -1697,7 +1697,7 @@ window.getCurrentParameters = function() {
 // =============================================================================
 
 /**
- * スクショ連射を開始（背景透過PNG）
+ * スクショ連射を開始（背景透過PNG）- 修正版
  * @param {number} intervalMs - 撮影間隔（ミリ秒）
  * @param {number} totalFrames - 撮影枚数
  * @returns {boolean} 成功時true
@@ -1706,10 +1706,9 @@ window.startScreenshotBurst = function(intervalMs, totalFrames) {
     try {
         console.log(`📸 スクショ連射開始: ${totalFrames}枚、${intervalMs}ms間隔`);
         
-        // canvasを取得
-        const canvas = document.getElementById('live2d-canvas');
-        if (!canvas) {
-            console.error("❌ canvasが見つかりません");
+        // PIXIアプリが初期化されているか確認
+        if (!app || !app.renderer) {
+            console.error("❌ PIXIアプリが初期化されていません");
             return false;
         }
         
@@ -1730,8 +1729,16 @@ window.startScreenshotBurst = function(intervalMs, totalFrames) {
         // 連射タイマー
         window.screenshotBurstTimer = setInterval(() => {
             try {
-                // canvasから背景透過PNGを取得
-                const dataURL = canvas.toDataURL('image/png');
+                // 🔥 PIXIのextract APIを使用（背景透過対応）
+                const captureCanvas = app.renderer.extract.canvas(app.stage);
+                
+                if (!captureCanvas) {
+                    console.error("❌ canvasの抽出に失敗");
+                    return;
+                }
+                
+                // 背景透過PNGに変換
+                const dataURL = captureCanvas.toDataURL('image/png');
                 
                 // Python側に送信
                 if (window.recording_backend && typeof window.recording_backend.receiveFrame === 'function') {
@@ -1792,18 +1799,25 @@ window.stopScreenshotBurst = function() {
 };
 
 /**
- * 単発スクリーンショット（テスト用）
+ * 単発スクリーンショット（テスト用）- 修正版
  * @returns {string|null} DataURL形式の画像データ
  */
 window.takeScreenshot = function() {
     try {
-        const canvas = document.getElementById('live2d-canvas');
-        if (!canvas) {
-            console.error("❌ canvasが見つかりません");
+        if (!app || !app.renderer) {
+            console.error("❌ PIXIアプリが初期化されていません");
             return null;
         }
         
-        const dataURL = canvas.toDataURL('image/png');
+        // 🔥 PIXIのextract APIを使用
+        const captureCanvas = app.renderer.extract.canvas(app.stage);
+        
+        if (!captureCanvas) {
+            console.error("❌ canvasの抽出に失敗");
+            return null;
+        }
+        
+        const dataURL = captureCanvas.toDataURL('image/png');
         console.log("📸 スクショ取得成功");
         return dataURL;
         
@@ -1812,7 +1826,6 @@ window.takeScreenshot = function() {
         return null;
     }
 };
-
 // グローバル変数初期化
 window.screenshotBurstTimer = null;
 
