@@ -1691,3 +1691,129 @@ window.getCurrentParameters = function() {
         return {};
     }
 };
+
+// =============================================================================
+// 📸 スクリーンショット連射機能
+// =============================================================================
+
+/**
+ * スクショ連射を開始（背景透過PNG）
+ * @param {number} intervalMs - 撮影間隔（ミリ秒）
+ * @param {number} totalFrames - 撮影枚数
+ * @returns {boolean} 成功時true
+ */
+window.startScreenshotBurst = function(intervalMs, totalFrames) {
+    try {
+        console.log(`📸 スクショ連射開始: ${totalFrames}枚、${intervalMs}ms間隔`);
+        
+        // canvasを取得
+        const canvas = document.getElementById('live2d-canvas');
+        if (!canvas) {
+            console.error("❌ canvasが見つかりません");
+            return false;
+        }
+        
+        // QWebChannelが利用可能か確認
+        if (typeof qt === 'undefined' || !qt.webChannelTransport) {
+            console.error("❌ QWebChannelが初期化されていません");
+            return false;
+        }
+        
+        // 既存の連射を停止
+        if (window.screenshotBurstTimer) {
+            clearInterval(window.screenshotBurstTimer);
+            window.screenshotBurstTimer = null;
+        }
+        
+        let frameCount = 0;
+        
+        // 連射タイマー
+        window.screenshotBurstTimer = setInterval(() => {
+            try {
+                // canvasから背景透過PNGを取得
+                const dataURL = canvas.toDataURL('image/png');
+                
+                // Python側に送信
+                if (window.recording_backend && typeof window.recording_backend.receiveFrame === 'function') {
+                    window.recording_backend.receiveFrame(dataURL);
+                    frameCount++;
+                    
+                    // 進捗ログ（10枚ごと）
+                    if (frameCount % 10 === 0) {
+                        console.log(`  ✓ [${frameCount}/${totalFrames}] 送信完了`);
+                    }
+                } else {
+                    console.error("❌ recording_backendが見つかりません");
+                    clearInterval(window.screenshotBurstTimer);
+                    window.screenshotBurstTimer = null;
+                    return;
+                }
+                
+                // 完了判定
+                if (frameCount >= totalFrames) {
+                    console.log(`✅ スクショ連射完了: ${frameCount}枚送信`);
+                    clearInterval(window.screenshotBurstTimer);
+                    window.screenshotBurstTimer = null;
+                }
+                
+            } catch (error) {
+                console.error("❌ スクショ撮影エラー:", error);
+                clearInterval(window.screenshotBurstTimer);
+                window.screenshotBurstTimer = null;
+            }
+        }, intervalMs);
+        
+        console.log("✅ スクショ連射タイマー起動");
+        return true;
+        
+    } catch (error) {
+        console.error("❌ スクショ連射開始エラー:", error);
+        return false;
+    }
+};
+
+/**
+ * スクショ連射を停止
+ * @returns {boolean} 成功時true
+ */
+window.stopScreenshotBurst = function() {
+    try {
+        if (window.screenshotBurstTimer) {
+            clearInterval(window.screenshotBurstTimer);
+            window.screenshotBurstTimer = null;
+            console.log("⏹️ スクショ連射停止");
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error("❌ スクショ連射停止エラー:", error);
+        return false;
+    }
+};
+
+/**
+ * 単発スクリーンショット（テスト用）
+ * @returns {string|null} DataURL形式の画像データ
+ */
+window.takeScreenshot = function() {
+    try {
+        const canvas = document.getElementById('live2d-canvas');
+        if (!canvas) {
+            console.error("❌ canvasが見つかりません");
+            return null;
+        }
+        
+        const dataURL = canvas.toDataURL('image/png');
+        console.log("📸 スクショ取得成功");
+        return dataURL;
+        
+    } catch (error) {
+        console.error("❌ スクショ取得エラー:", error);
+        return null;
+    }
+};
+
+// グローバル変数初期化
+window.screenshotBurstTimer = null;
+
+console.log("✅ スクリーンショット連射機能を追加しました");

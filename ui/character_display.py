@@ -664,66 +664,7 @@ class CharacterDisplayWidget(QWidget):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(6)
         
-        # ヘッダー
-        header_layout = QHBoxLayout()
-        header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(8)
-        header_label = QLabel("キャラクター表示")
-        header_label.setFont(QFont("", 12, QFont.Weight.Bold))
-        header_label.setStyleSheet("color: #333; border: none; padding: 5px;")
-        header_layout.addWidget(header_label)
-        self.toggle_minimap_btn = QPushButton("🗺️ ミニマップ")
-        self.toggle_minimap_btn.setToolTip("ミニマップの表示/非表示")
-        self.toggle_minimap_btn.setEnabled(False)
-        self.toggle_minimap_btn.setCheckable(True)
-        self.toggle_minimap_btn.setStyleSheet(
-            "QPushButton { background-color: #f8f9fa; border: 1px solid #ccc; border-radius: 4px; "
-            "font-size: 11px; padding: 4px 8px; } "
-            "QPushButton:hover:enabled { background-color: #e9ecef; } "
-            "QPushButton:checked { background-color: #e0e6ef; border-color: #007bff; } "
-            "QPushButton:disabled { color: #ccc; }"
-        )
-        header_layout.addWidget(self.toggle_minimap_btn)
-        header_layout.addStretch()
-        # 背景切り替えボタン
-        self.live2d_background_btn = QPushButton("🎨 背景:標準")
-        self.live2d_background_btn.setToolTip("Live2D表示の背景を切り替え")
-        self.live2d_background_btn.setStyleSheet(
-            "QPushButton { background-color: #f8f9fa; border: 1px solid #ccc; border-radius: 4px; "
-            "font-size: 11px; padding: 4px 8px; } "
-            "QPushButton:hover:enabled { background-color: #e9ecef; } "
-            "QPushButton:disabled { color: #ccc; }"
-        )
-        self.live2d_background_btn.clicked.connect(self.show_live2d_background_menu)
-        self._create_live2d_background_menu()
-        self.update_live2d_background_button()
-
-        self.chroma_color_input = QLineEdit()
-        self.chroma_color_input.setPlaceholderText("#00ff00")
-        self.chroma_color_input.setMaxLength(7)
-        self.chroma_color_input.setText('#00ff00')
-        self.chroma_color_input.setToolTip("クロマキー背景に使用するカラーコードを入力 (#RRGGBB)")
-        self.chroma_color_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.chroma_color_input.setClearButtonEnabled(True)
-        self.chroma_color_input.setFixedWidth(90)
-        chroma_apply_btn = QPushButton("適用")
-        chroma_apply_btn.setToolTip("入力したカラーコードでクロマキー背景を適用")
-        chroma_apply_btn.setStyleSheet(
-            "QPushButton { background-color: #f8f9fa; border: 1px solid #ccc; border-radius: 4px; "
-            "font-size: 11px; padding: 4px 6px; } "
-            "QPushButton:hover:enabled { background-color: #e9ecef; } "
-            "QPushButton:disabled { color: #ccc; }"
-        )
-        chroma_apply_btn.clicked.connect(self.apply_chroma_color_from_input)
-        chroma_apply_btn.setFixedWidth(60)
-
-        if self.live2d_background_settings.get('mode') == 'chroma':
-            self._update_chroma_color_input(self.live2d_background_settings.get('color'))
-        header_layout.addWidget(self.live2d_background_btn)
-        header_layout.addWidget(self.chroma_color_input)
-        header_layout.addWidget(chroma_apply_btn)
-        
-        # タブウィジェット
+        # 🔥 タブウィジェットを一番上に配置
         self.mode_tab_widget = QTabWidget()
         self.mode_tab_widget.setStyleSheet("""
             QTabWidget::pane { border: 1px solid #ccc; border-radius: 4px; background-color: #f8f9fa; }
@@ -744,8 +685,85 @@ class CharacterDisplayWidget(QWidget):
         
         self.mode_tab_widget.currentChanged.connect(self.on_mode_tab_changed)
         
-        layout.addLayout(header_layout)
-        layout.addWidget(self.mode_tab_widget, 1)
+        # 🔥 ボタンエリア（タブの下）
+        button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.setSpacing(8)
+        
+        # スクショ連射ボタン
+        self.screenshot_burst_btn = QPushButton("📸 スクショ連射")
+        self.screenshot_burst_btn.setToolTip("3秒間連続でスクリーンショットを撮影（背景透過PNG）")
+        self.screenshot_burst_btn.setEnabled(False)
+        self.screenshot_burst_btn.setStyleSheet(
+            "QPushButton { background-color: #9c27b0; color: white; border: none; border-radius: 4px; "
+            "font-size: 11px; font-weight: bold; padding: 4px 12px; } "
+            "QPushButton:hover:enabled { background-color: #7b1fa2; } "
+            "QPushButton:pressed:enabled { background-color: #6a1b9a; } "
+            "QPushButton:disabled { color: #ccc; background-color: #f0f0f0; }"
+        )
+        self.screenshot_burst_btn.clicked.connect(self.start_screenshot_burst)
+        button_layout.addWidget(self.screenshot_burst_btn)
+        
+        # ミニマップボタン
+        self.toggle_minimap_btn = QPushButton("🗺️ ミニマップ")
+        self.toggle_minimap_btn.setToolTip("ミニマップの表示/非表示")
+        self.toggle_minimap_btn.setEnabled(False)
+        self.toggle_minimap_btn.setCheckable(True)
+        self.toggle_minimap_btn.setStyleSheet(
+            "QPushButton { background-color: #f8f9fa; border: 1px solid #ccc; border-radius: 4px; "
+            "font-size: 11px; padding: 4px 8px; } "
+            "QPushButton:hover:enabled { background-color: #e9ecef; } "
+            "QPushButton:checked { background-color: #e0e6ef; border-color: #007bff; } "
+            "QPushButton:disabled { color: #ccc; }"
+        )
+        button_layout.addWidget(self.toggle_minimap_btn)
+        
+        button_layout.addStretch()
+        
+        # 背景切り替えボタン
+        self.live2d_background_btn = QPushButton("🎨 背景:標準")
+        self.live2d_background_btn.setToolTip("Live2D表示の背景を切り替え")
+        self.live2d_background_btn.setStyleSheet(
+            "QPushButton { background-color: #f8f9fa; border: 1px solid #ccc; border-radius: 4px; "
+            "font-size: 11px; padding: 4px 8px; } "
+            "QPushButton:hover:enabled { background-color: #e9ecef; } "
+            "QPushButton:disabled { color: #ccc; }"
+        )
+        self.live2d_background_btn.clicked.connect(self.show_live2d_background_menu)
+        self._create_live2d_background_menu()
+        self.update_live2d_background_button()
+        
+        # カラーコード入力（Enter対応、適用ボタンなし）
+        self.chroma_color_input = QLineEdit()
+        self.chroma_color_input.setPlaceholderText("#00ff00")
+        self.chroma_color_input.setMaxLength(7)
+        self.chroma_color_input.setText('#00ff00')
+        self.chroma_color_input.setToolTip("クロマキー背景に使用するカラーコード (Enterで適用)")
+        self.chroma_color_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.chroma_color_input.setClearButtonEnabled(True)
+        self.chroma_color_input.setFixedWidth(90)
+        self.chroma_color_input.returnPressed.connect(self.apply_chroma_color_from_input)
+        
+        if self.live2d_background_settings.get('mode') == 'chroma':
+            self._update_chroma_color_input(self.live2d_background_settings.get('color'))
+        
+        button_layout.addWidget(self.live2d_background_btn)
+        button_layout.addWidget(self.chroma_color_input)
+        
+        # レイアウト組み立て
+        layout.addWidget(self.mode_tab_widget)
+        layout.addLayout(button_layout)
+
+    # 🔥 シグナル接続（全てのウィジェット作成後）
+        self.zoom_slider.valueChanged.connect(self.on_zoom_slider_changed)
+        self.h_position_slider.valueChanged.connect(self.on_position_slider_changed)
+        self.v_position_slider.valueChanged.connect(self.on_position_slider_changed)
+        self.toggle_minimap_btn.toggled.connect(self.toggle_minimap)
+        
+        self.live2d_zoom_slider.valueChanged.connect(self.on_live2d_zoom_changed)
+        self.live2d_h_position_slider.valueChanged.connect(self.on_live2d_position_changed)
+        self.live2d_v_position_slider.valueChanged.connect(self.on_live2d_position_changed)
+
     def _create_live2d_background_menu(self):
         self.live2d_background_menu = QMenu(self)
         self.live2d_background_menu.setStyleSheet(
@@ -1054,8 +1072,10 @@ class CharacterDisplayWidget(QWidget):
         self.live2d_webview.page().runJavaScript(script, handle_result)
 
     def setup_image_tab(self):
+        """画像タブの中身（ズーム＋画像表示エリアのみ）"""
         layout = QVBoxLayout(self.image_tab)
         layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(5)
         
         # ズームコントロール
         zoom_layout = QVBoxLayout()
@@ -1134,18 +1154,13 @@ class CharacterDisplayWidget(QWidget):
         image_main_layout.addLayout(v_slider_layout)
         
         layout.addLayout(zoom_layout)
-        layout.addWidget(image_container, 1)
-        
-        # シグナル接続
-        self.zoom_slider.valueChanged.connect(self.on_zoom_slider_changed)
-        self.h_position_slider.valueChanged.connect(self.on_position_slider_changed)
-        self.v_position_slider.valueChanged.connect(self.on_position_slider_changed)
-        self.toggle_minimap_btn.toggled.connect(self.toggle_minimap)
+        layout.addWidget(image_container, 1)  # 🔥 stretch=1で縦に伸ばす
 
     def setup_live2d_tab(self):
-        """Live2Dタブ（500%ズーム・直感的操作対応）"""
+        """Live2Dタブの中身（ズーム＋Live2D表示エリアのみ）"""
         layout = QVBoxLayout(self.live2d_tab)
         layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(5)
         
         # ズームコントロール（500%対応）
         zoom_layout = QVBoxLayout()
@@ -1155,7 +1170,7 @@ class CharacterDisplayWidget(QWidget):
         
         slider_layout = QHBoxLayout()
         self.live2d_zoom_slider = QSlider(Qt.Orientation.Horizontal)
-        self.live2d_zoom_slider.setRange(80, 500)  # 80%〜500%に調整（適切な範囲）
+        self.live2d_zoom_slider.setRange(80, 500)
         self.live2d_zoom_slider.setValue(100)
         self.live2d_zoom_slider.setEnabled(False)
         slider_style = "QSlider::groove:horizontal { border: 1px solid #bbb; background: white; height: 4px; border-radius: 2px; } QSlider::sub-page:horizontal { background: #66e; } QSlider::handle:horizontal { background: #eee; border: 1px solid #777; width: 14px; margin: -6px 0; border-radius: 7px; }"
@@ -1177,7 +1192,7 @@ class CharacterDisplayWidget(QWidget):
         self.live2d_webview.setMinimumHeight(300)
         self.live2d_webview.set_character_display_widget(self)
         
-        # Live2D用ミニマップ（500%対応）
+        # Live2D用ミニマップ
         self.live2d_minimap = Live2DMiniMapWidget(self.live2d_webview)
         self.live2d_minimap.set_character_display_widget(self)
         self.live2d_minimap.hide()
@@ -1194,7 +1209,7 @@ class CharacterDisplayWidget(QWidget):
         h_slider_layout.addWidget(h_label)
         h_slider_layout.addWidget(self.live2d_h_position_slider)
         
-        left_side_layout.addWidget(self.live2d_webview, 1)
+        left_side_layout.addWidget(self.live2d_webview, 1)  # 🔥 stretch=1で縦に伸ばす
         left_side_layout.addLayout(h_slider_layout)
         
         # 右側：縦位置調整スライダー
@@ -1215,7 +1230,7 @@ class CharacterDisplayWidget(QWidget):
         
         # レイアウト組み立て
         layout.addLayout(zoom_layout)
-        layout.addWidget(live2d_container, 1)
+        layout.addWidget(live2d_container, 1)  # 🔥 stretch=1で縦に伸ばす
         
         # シグナル接続
         self.live2d_zoom_slider.valueChanged.connect(self.on_live2d_zoom_changed)
@@ -1710,6 +1725,9 @@ class CharacterDisplayWidget(QWidget):
             self.live2d_v_position_slider
         ]:
             control.setEnabled(True)
+
+        self.screenshot_burst_btn.setEnabled(True)
+
         
         if self.current_display_mode == "live2d":
             self.toggle_minimap_btn.setEnabled(True)
@@ -2216,3 +2234,168 @@ class CharacterDisplayWidget(QWidget):
             self.live2d_webview.page().runJavaScript(script)
         except Exception as e:
             print(f"❌ 物理演算強度設定エラー: {e}")
+
+    # ================================
+    # スクリーンショット連射機能
+    # ================================
+
+    def start_screenshot_burst(self):
+        """スクショ連射開始（3秒間、背景透過PNG）"""
+        if not hasattr(self, 'live2d_webview') or not self.live2d_webview.is_model_loaded:
+            QMessageBox.warning(self, "エラー", "Live2Dモデルが読み込まれていません")
+            return
+        
+        # 保存先フォルダを選択
+        save_dir = QFileDialog.getExistingDirectory(
+            self,
+            "スクショ保存先フォルダを選択",
+            str(Path.home())
+        )
+        
+        if not save_dir:
+            return
+        
+        try:
+            # 連射パラメータ
+            duration = 3.0  # 3秒間
+            interval = 0.1  # 100msごと（1秒間に10枚）
+            total_frames = int(duration / interval)
+            
+            print(f"📸 スクショ連射開始: {total_frames}枚、{interval*1000}ms間隔")
+            
+            # ボタン無効化
+            self.screenshot_burst_btn.setEnabled(False)
+            self.screenshot_burst_btn.setText("📸 撮影中...")
+            
+            # 保存先ディレクトリ準備
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            burst_dir = Path(save_dir) / f"screenshots_{timestamp}"
+            burst_dir.mkdir(parents=True, exist_ok=True)
+            
+            # JavaScript側に連射開始命令
+            script = f"""
+            (function() {{
+                try {{
+                    if (typeof window.startScreenshotBurst === 'function') {{
+                        window.startScreenshotBurst({interval * 1000}, {total_frames});
+                        return true;
+                    }} else {{
+                        console.error('❌ startScreenshotBurst関数が見つかりません');
+                        return false;
+                    }}
+                }} catch (error) {{
+                    console.error('❌ スクショ連射エラー:', error);
+                    return false;
+                }}
+            }})()
+            """
+            
+            # 受信準備
+            self._burst_save_dir = burst_dir
+            self._burst_frame_count = 0
+            self._burst_total_frames = total_frames
+            
+            # RecordingBackendのシグナルに接続
+            if hasattr(self.live2d_webview, 'recording_backend'):
+                self.live2d_webview.recording_backend.frame_received.connect(
+                    self.on_screenshot_frame_received
+                )
+            
+            # JavaScript実行
+            self.live2d_webview.page().runJavaScript(script, self._on_burst_started)
+            
+        except Exception as e:
+            print(f"❌ スクショ連射開始エラー: {e}")
+            import traceback
+            traceback.print_exc()
+            self._reset_screenshot_button()
+            QMessageBox.critical(self, "エラー", f"スクショ連射でエラーが発生しました:\n{str(e)}")
+
+    def _on_burst_started(self, result):
+        """連射開始結果"""
+        if result:
+            print("✅ JavaScript側で連射開始")
+        else:
+            print("⚠️ JavaScript側で連射開始失敗")
+            self._reset_screenshot_button()
+            QMessageBox.warning(self, "エラー", 
+                "スクショ連射の開始に失敗しました。\n"
+                "JavaScript側の実装を確認してください。")
+
+    def on_screenshot_frame_received(self, dataURL: str):
+        """JavaScript側からフレームを受信して保存"""
+        try:
+            if not hasattr(self, '_burst_save_dir'):
+                return
+            
+            # DataURLからPNGを抽出
+            if not dataURL.startswith('data:image/png;base64,'):
+                print(f"⚠️ 不正なDataURL形式: {dataURL[:50]}...")
+                return
+            
+            # Base64デコード
+            base64_data = dataURL.split(',', 1)[1]
+            image_data = base64.b64decode(base64_data)
+            
+            # ファイル保存
+            self._burst_frame_count += 1
+            filename = f"frame_{self._burst_frame_count:04d}.png"
+            filepath = self._burst_save_dir / filename
+            
+            with open(filepath, 'wb') as f:
+                f.write(image_data)
+            
+            # 進捗表示
+            if self._burst_frame_count % 5 == 0:
+                print(f"  ✓ [{self._burst_frame_count}/{self._burst_total_frames}] 保存完了")
+            
+            self.screenshot_burst_btn.setText(f"📸 撮影中... ({self._burst_frame_count}/{self._burst_total_frames})")
+            
+            # 完了チェック
+            if self._burst_frame_count >= self._burst_total_frames:
+                self._finish_screenshot_burst()
+            
+        except Exception as e:
+            print(f"❌ フレーム保存エラー: {e}")
+
+    def _finish_screenshot_burst(self):
+        """連射完了処理"""
+        try:
+            print(f"✅ スクショ連射完了: {self._burst_frame_count}枚")
+            
+            # シグナル切断
+            if hasattr(self.live2d_webview, 'recording_backend'):
+                try:
+                    self.live2d_webview.recording_backend.frame_received.disconnect(
+                        self.on_screenshot_frame_received
+                    )
+                except:
+                    pass
+            
+            # 完了通知
+            QMessageBox.information(
+                self,
+                "完了",
+                f"スクショ連射が完了しました！\n\n"
+                f"📸 撮影枚数: {self._burst_frame_count}枚\n"
+                f"📁 保存先:\n{self._burst_save_dir}"
+            )
+            
+            # クリーンアップ
+            if hasattr(self, '_burst_save_dir'):
+                delattr(self, '_burst_save_dir')
+            if hasattr(self, '_burst_frame_count'):
+                delattr(self, '_burst_frame_count')
+            if hasattr(self, '_burst_total_frames'):
+                delattr(self, '_burst_total_frames')
+            
+            self._reset_screenshot_button()
+            
+        except Exception as e:
+            print(f"❌ 連射完了処理エラー: {e}")
+            self._reset_screenshot_button()
+
+    def _reset_screenshot_button(self):
+        """スクショボタンをリセット"""
+        self.screenshot_burst_btn.setEnabled(True)
+        self.screenshot_burst_btn.setText("📸 スクショ連射")
