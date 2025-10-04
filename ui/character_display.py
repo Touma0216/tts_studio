@@ -2245,21 +2245,11 @@ class CharacterDisplayWidget(QWidget):
             QMessageBox.warning(self, "エラー", "Live2Dモデルが読み込まれていません")
             return
         
-        # 保存先フォルダを選択
-        save_dir = QFileDialog.getExistingDirectory(
-            self,
-            "スクショ保存先フォルダを選択",
-            str(Path.home())
-        )
-        
-        if not save_dir:
-            return
-        
         try:
-            # 連射パラメータ
+            # 🔥 連射パラメータ（10枚に変更）
             duration = 3.0  # 3秒間
-            interval = 0.1  # 100msごと（1秒間に10枚）
-            total_frames = int(duration / interval)
+            total_frames = 10  # 10枚固定
+            interval = duration / total_frames  # 300msごと
             
             print(f"📸 スクショ連射開始: {total_frames}枚、{interval*1000}ms間隔")
             
@@ -2267,12 +2257,27 @@ class CharacterDisplayWidget(QWidget):
             self.screenshot_burst_btn.setEnabled(False)
             self.screenshot_burst_btn.setText("📸 撮影中...")
             
-            # 保存先ディレクトリ準備
+            # デフォルト保存先（tts_studio/screenShot/タイムスタンプ/）
             timestamp = time.strftime("%Y%m%d_%H%M%S")
-            burst_dir = Path(save_dir) / f"screenshots_{timestamp}"
-            burst_dir.mkdir(parents=True, exist_ok=True)
+            default_dir = Path("screenShot") / timestamp
+            default_dir.mkdir(parents=True, exist_ok=True)
             
-            # JavaScript側に連射開始命令
+            burst_dir = default_dir
+            
+            print(f"📁 保存先: {burst_dir.absolute()}")
+            
+            # 受信準備
+            self._burst_save_dir = burst_dir
+            self._burst_frame_count = 0
+            self._burst_total_frames = total_frames
+            
+            # RecordingBackendのシグナルに接続
+            if hasattr(self.live2d_webview, 'recording_backend'):
+                self.live2d_webview.recording_backend.frame_received.connect(
+                    self.on_screenshot_frame_received
+                )
+            
+            # JavaScript実行
             script = f"""
             (function() {{
                 try {{
@@ -2290,18 +2295,6 @@ class CharacterDisplayWidget(QWidget):
             }})()
             """
             
-            # 受信準備
-            self._burst_save_dir = burst_dir
-            self._burst_frame_count = 0
-            self._burst_total_frames = total_frames
-            
-            # RecordingBackendのシグナルに接続
-            if hasattr(self.live2d_webview, 'recording_backend'):
-                self.live2d_webview.recording_backend.frame_received.connect(
-                    self.on_screenshot_frame_received
-                )
-            
-            # JavaScript実行
             self.live2d_webview.page().runJavaScript(script, self._on_burst_started)
             
         except Exception as e:
@@ -2372,14 +2365,23 @@ class CharacterDisplayWidget(QWidget):
                 except:
                     pass
             
-            # 完了通知
-            QMessageBox.information(
-                self,
-                "完了",
-                f"スクショ連射が完了しました！\n\n"
-                f"📸 撮影枚数: {self._burst_frame_count}枚\n"
-                f"📁 保存先:\n{self._burst_save_dir}"
-            )
+            # 🔥 保存先の絶対パスを取得
+            save_path = self._burst_save_dir.absolute()
+            
+            # 🔥 フォルダを開く（通知なし）
+            import os
+            import subprocess
+            import platform
+            
+            system = platform.system()
+            if system == "Windows":
+                os.startfile(save_path)
+            elif system == "Darwin":  # macOS
+                subprocess.run(["open", str(save_path)])
+            else:  # Linux
+                subprocess.run(["xdg-open", str(save_path)])
+            
+            print(f"📁 保存先を開きました: {save_path}")
             
             # クリーンアップ
             if hasattr(self, '_burst_save_dir'):

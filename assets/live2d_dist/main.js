@@ -178,6 +178,10 @@ async function initialize() {
         autoStart: true,
         backgroundAlpha: 0,
         resizeTo: window,
+        // 🔥 高画質設定を追加
+        resolution: window.devicePixelRatio || 2,  // デバイス解像度に対応（最低2倍）
+        antialias: true,  // アンチエイリアス有効化
+        autoDensity: true  // CSS解像度を自動調整
     });
     
     // リップシンクコントローラー初期化
@@ -1691,13 +1695,12 @@ window.getCurrentParameters = function() {
         return {};
     }
 };
-
 // =============================================================================
 // 📸 スクリーンショット連射機能
 // =============================================================================
 
 /**
- * スクショ連射を開始（背景透過PNG）- 修正版
+ * スクショ連射を開始（Live2Dモデル全身・高解像度・背景透過PNG）
  * @param {number} intervalMs - 撮影間隔（ミリ秒）
  * @param {number} totalFrames - 撮影枚数
  * @returns {boolean} 成功時true
@@ -1706,19 +1709,16 @@ window.startScreenshotBurst = function(intervalMs, totalFrames) {
     try {
         console.log(`📸 スクショ連射開始: ${totalFrames}枚、${intervalMs}ms間隔`);
         
-        // PIXIアプリが初期化されているか確認
-        if (!app || !app.renderer) {
-            console.error("❌ PIXIアプリが初期化されていません");
+        if (!currentModel) {
+            console.error("❌ Live2Dモデルが読み込まれていません");
             return false;
         }
         
-        // QWebChannelが利用可能か確認
         if (typeof qt === 'undefined' || !qt.webChannelTransport) {
             console.error("❌ QWebChannelが初期化されていません");
             return false;
         }
         
-        // 既存の連射を停止
         if (window.screenshotBurstTimer) {
             clearInterval(window.screenshotBurstTimer);
             window.screenshotBurstTimer = null;
@@ -1726,28 +1726,95 @@ window.startScreenshotBurst = function(intervalMs, totalFrames) {
         
         let frameCount = 0;
         
+        // 🔥 現在のモデル設定を保存
+        const originalParent = currentModel.parent;
+        const originalX = currentModel.x;
+        const originalY = currentModel.y;
+        const originalScaleX = currentModel.scale.x;
+        const originalScaleY = currentModel.scale.y;
+        const originalAnchorX = currentModel.anchor.x;
+        const originalAnchorY = currentModel.anchor.y;
+        
+        // 🔥 モデルのバウンディングボックスを取得（現在のスケール含む）
+        const bounds = currentModel.getBounds();
+        
+        // 🔥 出力サイズを決定（4000px基準）
+        const targetSize = 4000;
+        const aspectRatio = bounds.width / bounds.height;
+        let outputWidth, outputHeight;
+        
+        if (aspectRatio > 1) {
+            outputWidth = targetSize;
+            outputHeight = Math.ceil(targetSize / aspectRatio);
+        } else {
+            outputHeight = targetSize;
+            outputWidth = Math.ceil(targetSize * aspectRatio);
+        }
+        
+        console.log(`📏 モデルサイズ: ${Math.ceil(bounds.width)}x${Math.ceil(bounds.height)}px`);
+        console.log(`📏 出力サイズ: ${outputWidth}x${outputHeight}px`);
+        
         // 連射タイマー
         window.screenshotBurstTimer = setInterval(() => {
             try {
-                // 🔥 PIXIのextract APIを使用（背景透過対応）
-                const captureCanvas = app.renderer.extract.canvas(app.stage);
+                // 🔥 高解像度の一時canvasを作成
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = outputWidth;
+                tempCanvas.height = outputHeight;
                 
-                if (!captureCanvas) {
-                    console.error("❌ canvasの抽出に失敗");
-                    return;
+                // 🔥 一時レンダラーを作成
+                const tempRenderer = new PIXI.Renderer({
+                    width: outputWidth,
+                    height: outputHeight,
+                    backgroundAlpha: 0,
+                    antialias: true,
+                    resolution: 1,
+                    view: tempCanvas
+                });
+                
+                // 🔥 一時ステージを作成
+                const tempStage = new PIXI.Container();
+                
+                // 🔥 モデルを一時ステージに移動
+                tempStage.addChild(currentModel);
+                
+                // 🔥 モデルを中央配置
+                currentModel.anchor.set(0.5, 0.5);
+                currentModel.x = outputWidth / 2;
+                currentModel.y = outputHeight / 2;
+                
+                // 🔥 モデルサイズに合わせてスケール調整
+                const scaleX = (outputWidth * 0.95) / bounds.width;
+                const scaleY = (outputHeight * 0.95) / bounds.height;
+                const scale = Math.min(scaleX, scaleY);
+                
+                currentModel.scale.set(originalScaleX * scale, originalScaleY * scale);
+                
+                // レンダリング
+                tempRenderer.render(tempStage);
+                
+                // 🔥 元の状態に戻す
+                if (originalParent) {
+                    originalParent.addChild(currentModel);
                 }
+                currentModel.x = originalX;
+                currentModel.y = originalY;
+                currentModel.scale.set(originalScaleX, originalScaleY);
+                currentModel.anchor.set(originalAnchorX, originalAnchorY);
                 
-                // 背景透過PNGに変換
-                const dataURL = captureCanvas.toDataURL('image/png');
+                // PNG変換
+                const dataURL = tempCanvas.toDataURL('image/png');
+                
+                // 🔥 一時レンダラーを破棄
+                tempRenderer.destroy(true);
                 
                 // Python側に送信
                 if (window.recording_backend && typeof window.recording_backend.receiveFrame === 'function') {
                     window.recording_backend.receiveFrame(dataURL);
                     frameCount++;
                     
-                    // 進捗ログ（10枚ごと）
                     if (frameCount % 10 === 0) {
-                        console.log(`  ✓ [${frameCount}/${totalFrames}] 送信完了`);
+                        console.log(`  ✓ [${frameCount}/${totalFrames}] 送信完了 (${outputWidth}x${outputHeight}px)`);
                     }
                 } else {
                     console.error("❌ recording_backendが見つかりません");
@@ -1756,15 +1823,24 @@ window.startScreenshotBurst = function(intervalMs, totalFrames) {
                     return;
                 }
                 
-                // 完了判定
                 if (frameCount >= totalFrames) {
-                    console.log(`✅ スクショ連射完了: ${frameCount}枚送信`);
+                    console.log(`✅ スクショ連射完了: ${frameCount}枚送信 (${outputWidth}x${outputHeight}px)`);
                     clearInterval(window.screenshotBurstTimer);
                     window.screenshotBurstTimer = null;
                 }
                 
             } catch (error) {
                 console.error("❌ スクショ撮影エラー:", error);
+                
+                // エラー時も元に戻す
+                if (originalParent) {
+                    originalParent.addChild(currentModel);
+                }
+                currentModel.x = originalX;
+                currentModel.y = originalY;
+                currentModel.scale.set(originalScaleX, originalScaleY);
+                currentModel.anchor.set(originalAnchorX, originalAnchorY);
+                
                 clearInterval(window.screenshotBurstTimer);
                 window.screenshotBurstTimer = null;
             }
@@ -1779,10 +1855,6 @@ window.startScreenshotBurst = function(intervalMs, totalFrames) {
     }
 };
 
-/**
- * スクショ連射を停止
- * @returns {boolean} 成功時true
- */
 window.stopScreenshotBurst = function() {
     try {
         if (window.screenshotBurstTimer) {
@@ -1798,10 +1870,6 @@ window.stopScreenshotBurst = function() {
     }
 };
 
-/**
- * 単発スクリーンショット（テスト用）- 修正版
- * @returns {string|null} DataURL形式の画像データ
- */
 window.takeScreenshot = function() {
     try {
         if (!app || !app.renderer) {
@@ -1809,7 +1877,6 @@ window.takeScreenshot = function() {
             return null;
         }
         
-        // 🔥 PIXIのextract APIを使用
         const captureCanvas = app.renderer.extract.canvas(app.stage);
         
         if (!captureCanvas) {
@@ -1826,7 +1893,7 @@ window.takeScreenshot = function() {
         return null;
     }
 };
-// グローバル変数初期化
+
 window.screenshotBurstTimer = null;
 
 console.log("✅ スクリーンショット連射機能を追加しました");
