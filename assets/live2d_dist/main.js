@@ -19,10 +19,10 @@ let isPositionProtected = false;
 
 // 背景制御関連
 let backgroundSettings = {
-    mode: 'transparent',
+    mode: 'default',
     color: '#000000',
-    alpha: 0,
-    previewAlpha: 0,
+    alpha: 1,
+    previewAlpha: 1,
     imageFit: 'contain',
     imageRepeat: 'no-repeat'
 };
@@ -59,14 +59,14 @@ function colorToCss(color, alpha) {
 
 function resetBackgroundStyles(body, canvas) {
     body.style.background = '';
-    body.style.backgroundColor = 'transparent';
+    body.style.backgroundColor = '';
     body.style.backgroundImage = '';
     body.style.backgroundSize = '';
     body.style.backgroundRepeat = '';
     body.style.backgroundPosition = '';
 
-    canvas.style.background = 'transparent';
-    canvas.style.backgroundColor = 'transparent';
+    canvas.style.background = '';
+    canvas.style.backgroundColor = '';
     canvas.style.backgroundImage = '';
     canvas.style.backgroundSize = '';
     canvas.style.backgroundRepeat = '';
@@ -112,6 +112,11 @@ function applyBackgroundSettings() {
         body.style.backgroundRepeat = backgroundSettings.imageRepeat || 'no-repeat';
         body.style.backgroundPosition = 'center center';
         canvas.style.backgroundColor = 'rgba(0,0,0,0)';
+    } else if (mode === 'default') {
+        const effectiveAlpha = previewAlpha !== undefined ? previewAlpha : 1;
+        const cssColor = colorToCss(backgroundSettings.color || '#000000', effectiveAlpha);
+        body.style.backgroundColor = cssColor;
+        canvas.style.backgroundColor = cssColor;
     } else if (mode === 'transparent') {
         const cssColor = colorToCss(backgroundSettings.color || '#000000', previewAlpha);
         body.style.backgroundColor = cssColor;
@@ -121,8 +126,9 @@ function applyBackgroundSettings() {
         body.style.backgroundColor = cssColor;
         canvas.style.backgroundColor = cssColor;
     } else {
-        body.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-        canvas.style.backgroundColor = colorToCss('#000000', 0);
+        const cssColor = colorToCss('#000000', 1);
+        body.style.backgroundColor = cssColor;
+        canvas.style.backgroundColor = cssColor;
     }
 
     backgroundApplyPending = false;

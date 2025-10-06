@@ -463,7 +463,7 @@ class Live2DWebView(QWebEngineView):
         <head>
             <title>Live2D Server Error</title>
             <style>
-                body { background: linear-gradient(135deg, #5b6a82 0%, #2f374e 100%); color: white; text-align: center; padding: 40px; font-family: sans-serif; }
+                body { background: #000000; color: white; text-align: center; padding: 40px; font-family: sans-serif; }
                 .container { background: rgba(0,0,0,0.7); padding: 30px; border-radius: 10px; }
                 h2 { font-size: 22px; }
             </style>
