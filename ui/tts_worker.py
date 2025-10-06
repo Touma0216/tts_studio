@@ -96,6 +96,7 @@ class SequentialTTSWorker(QObject):
                     continue
 
                 params = (entry or {}).get('parameters') or {}
+                silence_after = float((entry or {}).get('silence_after', 0.0) or 0.0)
 
                 sr, audio = self._tts_engine.synthesize(text, **params)
                 if sample_rate is None:
@@ -139,6 +140,25 @@ class SequentialTTSWorker(QObject):
                 audio_offset += segment_duration
                 combined_texts.append(text)
                 all_audio.append(processed_audio)
+
+                if silence_after > 0 and sr:
+                    silence_samples = int(sr * silence_after)
+                    if silence_samples > 0:
+                        silence = np.zeros(silence_samples, dtype=np.float32)
+                        all_audio.append(silence)
+
+                        if enable_lipsync and self._lip_sync_engine and self._lip_sync_engine.is_available():
+                            combined_frames.append(
+                                VowelFrame(
+                                    timestamp=audio_offset,
+                                    vowel='sil',
+                                    intensity=0.0,
+                                    duration=silence_samples / sr,
+                                    is_ending=True,
+                                )
+                            )
+
+                        audio_offset += silence_samples / sr
 
             if not all_audio or sample_rate is None:
                 self.sequence_finished.emit(None, None, None, None)

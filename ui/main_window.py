@@ -861,11 +861,16 @@ class TTSStudioMainWindow(QMainWindow):
             print(f"🎬 連続再生開始: {len(texts_data)}個のテキスト")
             if enable_lipsync:
                 print("🎭 リップシンク有効")
+
+            from core.lip_sync_engine import VowelFrame  # 循環参照を避けるためローカルインポート
+
             
             # 各テキストを処理
             for i, data in enumerate(texts_data, 1):
                 text = data['text']
                 params = self.tabbed_audio_control.get_parameters(data['row_id']) or data['parameters']
+                silence_after = float(data.get('silence_after', 0.0) or 0.0)
+
                 
                 # TTS生成
                 sr, audio = self.tts_engine.synthesize(text, **params)
@@ -888,7 +893,6 @@ class TTSStudioMainWindow(QMainWindow):
                     if lipsync_data:
                         # タイムスタンプをオフセット調整
                         for frame in lipsync_data.vowel_frames:
-                            from core.lip_sync_engine import VowelFrame
                             adjusted_frame = VowelFrame(
                                 timestamp=frame.timestamp + audio_offset,
                                 vowel=frame.vowel,
@@ -902,7 +906,29 @@ class TTSStudioMainWindow(QMainWindow):
                 
                 # 音声を追加
                 all_audio.append(audio)
-                audio_offset += len(audio) / sr
+                audio_duration = len(audio) / sr
+                audio_offset += audio_duration
+
+                # 🆕 無音区間を挿入
+                if silence_after > 0:
+                    silence_samples = int(sr * silence_after)
+                    if silence_samples > 0:
+                        silence_audio = np.zeros(silence_samples, dtype=np.float32)
+                        all_audio.append(silence_audio)
+
+                        if enable_lipsync:
+                            all_lipsync_frames.append(
+                                VowelFrame(
+                                    timestamp=audio_offset,
+                                    vowel='sil',
+                                    intensity=0.0,
+                                    duration=silence_samples / sr,
+                                    is_ending=True
+                                )
+                            )
+
+                        audio_offset += silence_samples / sr
+                        print(f"    🔇 無音挿入: {silence_after:.2f}秒 ({silence_samples} samples)")
                 
                 print(f"  ✓ [{i}/{len(texts_data)}] 音声生成完了: {text[:30]}...")
             
