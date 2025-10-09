@@ -588,7 +588,7 @@ class TTSStudioMainWindow(QMainWindow):
         try:
             print("🎵 WAV再生機能統合中...")
             
-            # 既存のシグナル接続...
+            # 既存のシグナル接続
             self.tabbed_audio_control.wav_file_loaded.connect(self.on_wav_file_loaded)
             self.tabbed_audio_control.wav_playback_started.connect(self.on_wav_playback_started)
             self.tabbed_audio_control.wav_playback_paused.connect(self.on_wav_playback_paused)
@@ -600,10 +600,17 @@ class TTSStudioMainWindow(QMainWindow):
             self.wav_player.playback_position_changed.connect(self.on_wav_player_position_update)
             self.wav_player.playback_finished.connect(self.on_wav_player_finished)
             
-            # 🆕 文字起こし関連シグナル接続
+            # 文字起こし関連シグナル接続
             wav_control = self.tabbed_audio_control.get_wav_playback_control()
             wav_control.re_analyze_requested.connect(self.on_wav_reanalyze_requested)
-            wav_control.save_transcription_requested.connect(self.on_save_transcription_requested)  # 🆕 追加
+            wav_control.save_transcription_requested.connect(self.on_save_transcription_requested)
+            
+            # 🆕 アニメーション連動シグナル接続
+            wav_control.animation_sync_toggled.connect(self.on_animation_sync_toggled)
+            wav_control.animation_selected.connect(self.on_animation_selected)
+            
+            # 🆕 アニメーション一覧をUIに設定
+            self._load_animation_list_to_wav_control()
             
             print("✅ WAV再生機能統合完了")
             
@@ -1481,7 +1488,7 @@ class TTSStudioMainWindow(QMainWindow):
             QMessageBox.critical(self, "エラー", f"予期しないエラーが発生しました:\n{str(e)}")
     
     def on_wav_playback_started(self, start_position: float):
-        """WAV再生開始"""
+        """WAV再生開始（アニメーション連動対応版）"""
         try:
             print(f"▶️ WAV再生開始: {start_position:.2f}秒から")
             
@@ -1493,8 +1500,70 @@ class TTSStudioMainWindow(QMainWindow):
             if wav_control.is_lipsync_enabled() and self._wav_lipsync_data:
                 self._start_wav_lipsync(start_position)
             
+            # 🆕 アニメーション連動開始
+            if hasattr(self, '_animation_sync_enabled') and self._animation_sync_enabled:
+                if hasattr(self, '_selected_animation_file') and self._selected_animation_file:
+                    self._play_animation_with_wav(self._selected_animation_file)
+            
         except Exception as e:
             print(f"❌ WAV再生開始エラー: {e}")
+
+    def _play_animation_with_wav(self, animation_file_name: str):
+        """WAV再生と同時にアニメーションを再生
+        
+        Args:
+            animation_file_name: アニメーションファイル名
+        """
+        try:
+            print(f"🎬 WAV連動アニメーション再生: {animation_file_name}")
+            
+            # アニメーションマネージャーでアニメーションを読み込み
+            from core.animation_manager import AnimationManager
+            animation_manager = AnimationManager("animations")
+            
+            animation_data = animation_manager.load_animation_by_name(animation_file_name)
+            
+            if not animation_data:
+                print(f"⚠️ アニメーションデータ読み込み失敗: {animation_file_name}")
+                return
+            
+            # Live2Dに送信
+            if (hasattr(self.character_display, 'live2d_webview') and 
+                self.character_display.live2d_webview.is_model_loaded):
+                
+                import json
+                animation_json = json.dumps(animation_data, ensure_ascii=False)
+                
+                script = f"""
+                (function() {{
+                    try {{
+                        const animData = {animation_json};
+                        const success = window.loadAnimation(animData);
+                        
+                        if (success) {{
+                            window.playAnimation();
+                            console.log('✅ WAV連動アニメーション再生開始');
+                            return true;
+                        }} else {{
+                            console.error('❌ アニメーション読み込み失敗');
+                            return false;
+                        }}
+                    }} catch (error) {{
+                        console.error('❌ WAV連動アニメーションエラー:', error);
+                        return false;
+                    }}
+                }})();
+                """
+                
+                self.character_display.live2d_webview.page().runJavaScript(script)
+                print(f"✅ WAV連動アニメーション送信完了: {animation_file_name}")
+            else:
+                print("⚠️ Live2Dモデルが読み込まれていません")
+            
+        except Exception as e:
+            print(f"❌ WAV連動アニメーション再生エラー: {e}")
+            import traceback
+            traceback.print_exc()
     
     def on_wav_playback_paused(self):
         """WAV再生一時停止"""
@@ -1684,3 +1753,35 @@ class TTSStudioMainWindow(QMainWindow):
             
         except Exception as e:
             print(f"❌ WAVリップシンク停止エラー: {e}")
+
+    # ========================================
+    # 🆕 WAVアニメーション連動関連
+    # ========================================
+
+    def _load_animation_list_to_wav_control(self):
+        """アニメーション一覧をWAV再生UIに読み込み"""
+        try:
+            from core.animation_manager import AnimationManager
+            animation_manager = AnimationManager("animations")
+            
+            animations = animation_manager.get_animation_list()
+            
+            wav_control = self.tabbed_audio_control.get_wav_playback_control()
+            wav_control.set_animation_list(animations)
+            
+            print(f"✅ WAV用アニメーション一覧読み込み: {len(animations)}件")
+            
+        except Exception as e:
+            print(f"⚠️ アニメーション一覧読み込みエラー: {e}")
+
+    def on_animation_sync_toggled(self, enabled: bool):
+        """アニメーション連動ON/OFF切り替え"""
+        print(f"🎬 アニメーション連動: {'有効' if enabled else '無効'}")
+        # 状態を保持（実際の再生時に使用）
+        self._animation_sync_enabled = enabled
+
+    def on_animation_selected(self, animation_file_name: str):
+        """アニメーション選択変更"""
+        print(f"🎬 選択アニメーション: {animation_file_name}")
+        # 選択されたアニメーション名を保持
+        self._selected_animation_file = animation_file_name

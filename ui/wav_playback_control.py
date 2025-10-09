@@ -1,13 +1,13 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                              QLabel, QSlider, QFileDialog, QCheckBox, QGroupBox,
-                             QMessageBox, QPlainTextEdit, QProgressBar)
+                             QMessageBox, QPlainTextEdit, QProgressBar, QComboBox)
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont
 from pathlib import Path
 from typing import Optional
 
 class WAVPlaybackControl(QWidget):
-    """WAV音声再生制御UI（リップシンク連動 + 文字起こし対応）"""
+    """WAV音声再生制御UI（リップシンク連動 + 文字起こし + アニメーション連動対応）"""
     
     # シグナル定義
     wav_loaded = pyqtSignal(str)  # ファイルパス
@@ -21,7 +21,11 @@ class WAVPlaybackControl(QWidget):
     # 🆕 文字起こし関連シグナル
     transcription_text_edited = pyqtSignal(str)  # テキスト編集
     re_analyze_requested = pyqtSignal(str)  # 再解析リクエスト
-    save_transcription_requested = pyqtSignal()  # 🆕 保存リクエスト
+    save_transcription_requested = pyqtSignal()  # 保存リクエスト
+    
+    # 🆕 アニメーション連動シグナル
+    animation_sync_toggled = pyqtSignal(bool)  # アニメーション連動ON/OFF
+    animation_selected = pyqtSignal(str)  # 選択されたアニメーション名
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -33,12 +37,15 @@ class WAVPlaybackControl(QWidget):
         self.current_file_path = ""
         self.duration = 0.0
         self.current_position = 0.0
-        self.transcribed_text = ""  # 🆕
-        self.transcription_segments = []  # 🆕 タイムスタンプ付きセグメント
+        self.transcribed_text = ""
+        self.transcription_segments = []
         self._typing_timer = QTimer()
         self._typing_timer.timeout.connect(self._on_typing_timer)
         self._typing_text = ""
         self._typing_index = 0
+        
+        # 🆕 アニメーション連動用
+        self.selected_animation_name = ""
         
         self.init_ui()
     
@@ -314,12 +321,60 @@ class WAVPlaybackControl(QWidget):
         """)
         self.lipsync_checkbox.stateChanged.connect(self.on_lipsync_changed)
         
+        # 🆕 アニメーション連動
+        self.animation_sync_checkbox = QCheckBox("🎬 アニメーション連動")
+        self.animation_sync_checkbox.setChecked(False)
+        self.animation_sync_checkbox.setStyleSheet("""
+            QCheckBox {
+                font-size: 12px;
+                font-weight: bold;
+                color: #333;
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+            }
+        """)
+        self.animation_sync_checkbox.stateChanged.connect(self.on_animation_sync_changed)
+        
+        # 🆕 アニメーション選択ドロップダウン
+        animation_select_layout = QHBoxLayout()
+        animation_select_layout.addWidget(QLabel("  使用アニメーション:"))
+        
+        self.animation_combo = QComboBox()
+        self.animation_combo.setEnabled(False)
+        self.animation_combo.setStyleSheet("""
+            QComboBox {
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                padding: 4px 8px;
+                font-size: 11px;
+                background-color: white;
+            }
+            QComboBox:disabled {
+                background-color: #f0f0f0;
+                color: #999;
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+            QComboBox::down-arrow {
+                image: url(down_arrow.png);
+                width: 12px;
+                height: 12px;
+            }
+        """)
+        self.animation_combo.currentTextChanged.connect(self.on_animation_combo_changed)
+        animation_select_layout.addWidget(self.animation_combo, 1)
+        
         options_layout.addLayout(volume_layout)
         options_layout.addWidget(self.lipsync_checkbox)
+        options_layout.addWidget(self.animation_sync_checkbox)
+        options_layout.addLayout(animation_select_layout)
         options_group.setLayout(options_layout)
         
         # ========================================
-        # 🆕 4. 文字起こしエリア
+        # 4. 文字起こしエリア
         # ========================================
         transcription_group = QGroupBox("📝 文字起こし")
         transcription_group.setStyleSheet("""
@@ -414,7 +469,6 @@ class WAVPlaybackControl(QWidget):
         """)
         self.reanalyze_btn.clicked.connect(self.on_reanalyze_clicked)
         
-        # 🆕 保存ボタン
         self.save_transcription_btn = QPushButton("💾 タイムスタンプ付きで保存")
         self.save_transcription_btn.setEnabled(False)
         self.save_transcription_btn.setStyleSheet("""
@@ -441,28 +495,76 @@ class WAVPlaybackControl(QWidget):
         self.save_transcription_btn.clicked.connect(self.on_save_transcription_clicked)
         
         button_layout.addWidget(self.reanalyze_btn)
-        button_layout.addWidget(self.save_transcription_btn)  # 🆕
+        button_layout.addWidget(self.save_transcription_btn)
         button_layout.addStretch()
         
         transcription_layout.addLayout(status_layout)
         transcription_layout.addWidget(self.transcription_progress)
         transcription_layout.addWidget(text_label)
         transcription_layout.addWidget(self.transcription_text_edit)
-        transcription_layout.addLayout(button_layout)  # 🆕 reanalyze_layout → button_layout
+        transcription_layout.addLayout(button_layout)
         transcription_group.setLayout(transcription_layout)
         
         # レイアウト組み立て
         layout.addWidget(file_group)
         layout.addWidget(control_group)
         layout.addWidget(options_group)
-        layout.addWidget(transcription_group)  # 🆕
+        layout.addWidget(transcription_group)
         layout.addStretch()
         
         # 内部状態
         self._seek_dragging = False
     
     # ========================================
-    # 🆕 文字起こし関連メソッド
+    # 🆕 アニメーション連動関連メソッド
+    # ========================================
+    
+    def set_animation_list(self, animations: list):
+        """アニメーション一覧を設定
+        
+        Args:
+            animations: [{'name': ..., 'file_name': ...}, ...]形式のリスト
+        """
+        self.animation_combo.clear()
+        self.animation_combo.addItem("（選択してください）")
+        
+        for anim in animations:
+            display_name = f"{anim['name']} ({anim.get('duration', 0):.1f}秒)"
+            self.animation_combo.addItem(display_name, anim['file_name'])
+        
+        print(f"✅ アニメーション一覧設定: {len(animations)}件")
+    
+    def on_animation_sync_changed(self, state):
+        """アニメーション連動チェックボックス変更"""
+        enabled = (state == Qt.CheckState.Checked.value)
+        self.animation_combo.setEnabled(enabled)
+        
+        self.animation_sync_toggled.emit(enabled)
+        print(f"🎬 アニメーション連動: {'有効' if enabled else '無効'}")
+    
+    def on_animation_combo_changed(self, text: str):
+        """アニメーション選択変更"""
+        if text == "（選択してください）":
+            self.selected_animation_name = ""
+            return
+        
+        # file_nameを取得
+        file_name = self.animation_combo.currentData()
+        if file_name:
+            self.selected_animation_name = file_name
+            self.animation_selected.emit(file_name)
+            print(f"🎬 アニメーション選択: {file_name}")
+    
+    def is_animation_sync_enabled(self) -> bool:
+        """アニメーション連動が有効か"""
+        return self.animation_sync_checkbox.isChecked()
+    
+    def get_selected_animation(self) -> str:
+        """選択されているアニメーション名を取得"""
+        return self.selected_animation_name
+    
+    # ========================================
+    # 文字起こし関連メソッド
     # ========================================
     
     def set_transcription_status(self, status: str, is_processing: bool = False):
@@ -471,33 +573,23 @@ class WAVPlaybackControl(QWidget):
         self.transcription_progress.setVisible(is_processing)
         
         if is_processing:
-            # 不確定プログレスバー（処理中アニメーション）
             self.transcription_progress.setRange(0, 0)
         else:
             self.transcription_progress.setRange(0, 100)
             self.transcription_progress.setValue(100 if "完了" in status else 0)
     
     def set_transcription_text(self, text: str, segments: list = None, animated: bool = True):
-        """文字起こし結果をセット
-        
-        Args:
-            text: 全文テキスト
-            segments: タイムスタンプ付きセグメントリスト（オプション）
-            animated: タイピングアニメーション有効/無効
-        """
+        """文字起こし結果をセット"""
         self.transcribed_text = text
         self.transcription_segments = segments or []
         
         if animated and text:
-            # タイピングアニメーションで表示
             self._start_typing_animation(text)
         else:
-            # 一気に表示
             self.transcription_text_edit.blockSignals(True)
             self.transcription_text_edit.setPlainText(text)
             self.transcription_text_edit.blockSignals(False)
         
-        # ボタンを有効化
         self.reanalyze_btn.setEnabled(True)
         self.save_transcription_btn.setEnabled(len(self.transcription_segments) > 0)
 
@@ -560,7 +652,7 @@ class WAVPlaybackControl(QWidget):
         print("💾 文字起こし保存リクエスト")
     
     # ========================================
-    # 既存メソッド（元のまま）
+    # 既存メソッド
     # ========================================
     
     def select_wav_file(self):
@@ -576,7 +668,7 @@ class WAVPlaybackControl(QWidget):
             self.load_wav_file(file_path)
     
     def load_wav_file(self, file_path: str):
-        """WAVファイルを読み込み（外部から呼ばれる）"""
+        """WAVファイルを読み込み"""
         try:
             path = Path(file_path)
             if not path.exists():
@@ -586,19 +678,15 @@ class WAVPlaybackControl(QWidget):
             self.current_file_path = file_path
             self.is_wav_loaded = True
             
-            # UIを有効化
             self.play_btn.setEnabled(True)
             self.seek_slider.setEnabled(True)
             
-            # ファイル情報を更新（後で外部から設定される）
             self.file_info_label.setText(f"📁 {path.name}\n読み込み完了")
             
-            # 🆕 文字起こしステータスをリセット
             self.set_transcription_status("🎤 文字起こし処理中...", is_processing=True)
             self.transcription_text_edit.clear()
             self.reanalyze_btn.setEnabled(False)
             
-            # シグナル発火
             self.wav_loaded.emit(file_path)
             
             print(f"✅ WAVファイル選択: {path.name}")
@@ -612,7 +700,6 @@ class WAVPlaybackControl(QWidget):
         self.duration = duration
         self.total_time_label.setText(self._format_time(duration))
         
-        # ファイル情報更新
         if self.current_file_path:
             path = Path(self.current_file_path)
             self.file_info_label.setText(
@@ -626,7 +713,6 @@ class WAVPlaybackControl(QWidget):
             return
         
         if self.is_playing:
-            # 一時停止
             self.is_playing = False
             self.is_paused = True
             self.play_btn.setText("▶️ 再生")
@@ -634,7 +720,6 @@ class WAVPlaybackControl(QWidget):
             self.playback_paused.emit()
             print("⏸️ 一時停止")
         else:
-            # 再生開始
             self.is_playing = True
             self.is_paused = False
             self.play_btn.setText("⏸️ 一時停止")
@@ -662,17 +747,15 @@ class WAVPlaybackControl(QWidget):
         print("⏹️ 停止")
     
     def update_position(self, position: float):
-        """再生位置を更新（外部から呼ばれる）"""
+        """再生位置を更新"""
         self.current_position = position
         
-        # シークバー更新（ドラッグ中は更新しない）
         if not self._seek_dragging and self.duration > 0:
             slider_value = int((position / self.duration) * 1000)
             self.seek_slider.blockSignals(True)
             self.seek_slider.setValue(slider_value)
             self.seek_slider.blockSignals(False)
         
-        # 時間表示更新
         self.current_time_label.setText(self._format_time(position))
     
     def on_seek_pressed(self):
@@ -709,7 +792,7 @@ class WAVPlaybackControl(QWidget):
         print(f"💋 リップシンク連動: {'有効' if enabled else '無効'}")
     
     def on_playback_finished(self):
-        """再生終了時（外部から呼ばれる）"""
+        """再生終了時"""
         self.stop_playback()
         print("✅ 再生完了")
     
