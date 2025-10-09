@@ -1,6 +1,7 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                              QLabel, QSlider, QFileDialog, QCheckBox, QGroupBox,
-                             QMessageBox, QPlainTextEdit, QProgressBar, QComboBox)
+                             QMessageBox, QPlainTextEdit, QProgressBar, QComboBox,
+                             QScrollArea)
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont
 from pathlib import Path
@@ -51,7 +52,15 @@ class WAVPlaybackControl(QWidget):
     
     def init_ui(self):
         """UIを初期化"""
-        layout = QVBoxLayout(self)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: none; }")
+        
+        scroll_widget = QWidget()
+        layout = QVBoxLayout(scroll_widget)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
         
@@ -512,9 +521,12 @@ class WAVPlaybackControl(QWidget):
         layout.addWidget(transcription_group)
         layout.addStretch()
         
+        scroll.setWidget(scroll_widget)
+        main_layout.addWidget(scroll)
+        
         # 内部状態
         self._seek_dragging = False
-    
+
     # ========================================
     # 🆕 アニメーション連動関連メソッド
     # ========================================
