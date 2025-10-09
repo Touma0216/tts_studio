@@ -6,66 +6,8 @@ from PyQt6.QtGui import QFont
 import json
 import os
 from pathlib import Path
+from .history_manager import ParameterHistory
 
-class ParameterHistory:
-    """改良版パラメータ履歴管理クラス（複数回Undo対応）"""
-    
-    def __init__(self, max_history=20):
-        self.history_stack = []  # 履歴スタック
-        self.current_index = -1  # 現在位置
-        self.max_history = max_history  # 最大履歴数
-        self.is_undoing = False  # Undo/Redo実行中フラグ
-    
-    def save_current_state(self, parameters):
-        """現在の状態を履歴に保存"""
-        if not parameters or self.is_undoing:
-            return
-        
-        # 新しい状態を保存する前に、現在位置以降の履歴を削除
-        if self.current_index < len(self.history_stack) - 1:
-            self.history_stack = self.history_stack[:self.current_index + 1]
-        
-        # 新しい状態を追加
-        self.history_stack.append(parameters.copy())
-        self.current_index = len(self.history_stack) - 1
-        
-        # 最大履歴数を超えた場合、古い履歴を削除
-        if len(self.history_stack) > self.max_history:
-            self.history_stack.pop(0)
-            self.current_index -= 1
-    
-    def get_previous_state(self):
-        """前の状態を取得してポインタを移動"""
-        if not self.has_undo_available():
-            return None
-        
-        self.current_index -= 1
-        return self.history_stack[self.current_index].copy()
-    
-    def get_next_state(self):
-        """次の状態を取得してポインタを移動"""
-        if not self.has_redo_available():
-            return None
-        
-        self.current_index += 1
-        return self.history_stack[self.current_index].copy()
-    
-    def has_undo_available(self):
-        """Undoが可能かどうか"""
-        return self.current_index > 0
-    
-    def has_redo_available(self):
-        """Redoが可能かどうか"""
-        return self.current_index < len(self.history_stack) - 1
-    
-    def clear_history(self):
-        """履歴をクリア"""
-        self.history_stack.clear()
-        self.current_index = -1
-    
-    def set_undoing_flag(self, flag):
-        """Undo/Redo実行中フラグを設定"""
-        self.is_undoing = flag
 
 class EmotionPresetManager:
     """感情パラメータプリセット管理クラス（統一版）"""

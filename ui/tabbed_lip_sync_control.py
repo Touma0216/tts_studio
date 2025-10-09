@@ -1,10 +1,13 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, 
                              QGroupBox, QSlider, QLabel, QCheckBox, QPushButton,
                              QComboBox, QDoubleSpinBox, QSpinBox, QFrame, QGridLayout)
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont
 from typing import Dict, Any
 import traceback
+from copy import deepcopy
+
+from .history_manager import ParameterHistory
 
 class BasicLipSyncWidget(QWidget):
     """基本リップシンク設定"""
@@ -802,6 +805,22 @@ class AdvancedLipSyncWidget(QWidget):
             self.settings_changed.emit(self.advanced_settings)
         except Exception as e:
             print(f"❌ 高度設定エラー: {e}")
+
+    def set_settings(self, settings: Dict[str, Any]):
+        try:
+            self.advanced_settings.update(settings)
+            self.delay_spinbox.setValue(self.advanced_settings.get('delay_compensation', 0))
+            self.smoothing_slider.setValue(self.advanced_settings.get('smoothing_factor', 60))
+            self.prediction_checkbox.setChecked(self.advanced_settings.get('prediction_enabled', True))
+            self.consonant_checkbox.setChecked(self.advanced_settings.get('consonant_detection', True))
+            self.volume_spinbox.setValue(self.advanced_settings.get('volume_threshold', 3))
+
+            quality_mode = self.advanced_settings.get('quality_mode', 'balanced')
+            quality_map = {'fast': 0, 'balanced': 1, 'high_quality': 2}
+            self.quality_combo.setCurrentIndex(quality_map.get(quality_mode, 1))
+        except Exception as e:
+            print(f"❌ 高度設定適用エラー: {e}")
+
         
     def get_settings(self) -> Dict[str, Any]:
         return self.advanced_settings.copy()
@@ -814,6 +833,15 @@ class TabbedLipSyncControl(QWidget):
         super().__init__(parent)
         self.all_settings = {}
         self.init_ui()
+
+        self.history = ParameterHistory(max_history=20)
+        self._history_timer = QTimer(self)
+        self._history_timer.setSingleShot(True)
+        self._history_timer.timeout.connect(self._commit_pending_history)
+        self._pending_before_state: Dict[str, Any] | None = None
+        self._applying_history = False
+        self._last_committed_state = self.get_all_settings()
+        self.history.save_current_state(self._last_committed_state)
         
     def init_ui(self):
         layout = QVBoxLayout(self)
@@ -903,22 +931,28 @@ class TabbedLipSyncControl(QWidget):
         
     def on_basic_settings_changed(self, settings):
         try:
-            self.all_settings['basic'] = settings
-            self.settings_changed.emit(self.all_settings)
+            self.all_settings['basic'] = settings.copy()
+            if not self._applying_history:
+                self._schedule_history_capture()            
+                self.settings_changed.emit(self.all_settings)
         except Exception as e:
             print(f"❌ 基本設定変更エラー: {e}")
         
     def on_phoneme_settings_changed(self, settings):
         try:
-            self.all_settings['phoneme'] = settings
-            self.settings_changed.emit(self.all_settings)
+            self.all_settings['phoneme'] = settings.copy()
+            if not self._applying_history:
+                self._schedule_history_capture()
+                self.settings_changed.emit(self.all_settings)
         except Exception as e:
             print(f"❌ 音素設定変更エラー: {e}")
         
     def on_advanced_settings_changed(self, settings):
         try:
-            self.all_settings['advanced'] = settings
-            self.settings_changed.emit(self.all_settings)
+            self.all_settings['advanced'] = settings.copy()
+            if not self._applying_history:
+                self._schedule_history_capture()
+                self.settings_changed.emit(self.all_settings)
         except Exception as e:
             print(f"❌ 高度設定変更エラー: {e}")
         
@@ -934,6 +968,91 @@ class TabbedLipSyncControl(QWidget):
             print(f"❌ 設定取得エラー: {e}")
             return {'basic': {}, 'phoneme': {}, 'advanced': {}}
         
+
+    def undo(self) -> bool:
+        if self._history_timer.isActive():
+            self._history_timer.stop()
+            self._commit_pending_history()
+
+        if not self.history.has_undo_available():
+            return False
+
+        self.history.set_undoing_flag(True)
+        try:
+            previous_state = self.history.get_previous_state()
+            if previous_state is None:
+                return False
+            self._apply_history_state(previous_state)
+            return True
+        finally:
+            self.history.set_undoing_flag(False)
+
+    def redo(self) -> bool:
+        if self._history_timer.isActive():
+            self._history_timer.stop()
+            self._commit_pending_history()
+
+        if not self.history.has_redo_available():
+            return False
+
+        self.history.set_undoing_flag(True)
+        try:
+            next_state = self.history.get_next_state()
+            if next_state is None:
+                return False
+            self._apply_history_state(next_state)
+            return True
+        finally:
+            self.history.set_undoing_flag(False)
+
+    def has_undo_available(self) -> bool:
+        return self.history.has_undo_available()
+
+    def has_redo_available(self) -> bool:
+        return self.history.has_redo_available()
+
+    def _schedule_history_capture(self) -> None:
+        if self._applying_history or self.history.is_undoing:
+            return
+
+        if self._pending_before_state is None:
+            self._pending_before_state = deepcopy(self._last_committed_state)
+
+        self._history_timer.start(250)
+
+    def _commit_pending_history(self) -> None:
+        if self._pending_before_state is None:
+            return
+
+        after_state = self.get_all_settings()
+        if after_state != self._pending_before_state:
+            self.history.save_current_state(after_state)
+            self._last_committed_state = deepcopy(after_state)
+
+        self._pending_before_state = None
+
+    def _apply_history_state(self, state: Dict[str, Any]) -> None:
+        if not state:
+            return
+
+        self._history_timer.stop()
+        self._pending_before_state = None
+        self._applying_history = True
+
+        try:
+            if 'basic' in state and hasattr(self, 'basic_widget'):
+                self.basic_widget.set_settings(state['basic'])
+            if 'phoneme' in state and hasattr(self, 'phoneme_widget'):
+                self.phoneme_widget.apply_settings(state['phoneme'])
+            if 'advanced' in state and hasattr(self, 'advanced_widget'):
+                self.advanced_widget.set_settings(state['advanced'])
+
+            self.all_settings = self.get_all_settings()
+            self.settings_changed.emit(self.all_settings)
+        finally:
+            self._applying_history = False
+            self._last_committed_state = deepcopy(self.all_settings)
+
     def is_enabled(self) -> bool:
         """リップシンクが有効かどうか - エラー対策版"""
         try:

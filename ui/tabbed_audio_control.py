@@ -178,7 +178,11 @@ class TabbedAudioControl(QWidget):
         elif current_index == 3:  # リップシンクタブ
             # リップシンクタブにはUndo機能なし（今後の拡張で追加可能）
             return False
-        
+        elif current_index == 5:  # リップシンクタブ
+            return self.lip_sync_control.undo()
+        elif current_index == 6:  # モデリングタブ
+            return self.modeling_control.undo()
+
         return False
     
     def redo_current_tab(self):
@@ -216,7 +220,11 @@ class TabbedAudioControl(QWidget):
         elif current_index == 3:  # リップシンクタブ
             # リップシンクタブにはRedo機能なし（今後の拡張で追加可能）
             return False
-        
+        elif current_index == 5:  # リップシンクタブ
+            return self.lip_sync_control.redo()
+        elif current_index == 6:  # モデリングタブ
+            return self.modeling_control.redo()
+
         return False
     
     def has_current_tab_undo_available(self):
@@ -231,6 +239,10 @@ class TabbedAudioControl(QWidget):
             return self.effects_control.has_undo_available()
         elif current_index == 3:  # リップシンクタブ
             return False
+        elif current_index == 5:  # リップシンクタブ
+            return self.lip_sync_control.has_undo_available()
+        elif current_index == 6:  # モデリングタブ
+            return self.modeling_control.has_undo_available()
         
         return False
     
@@ -251,7 +263,11 @@ class TabbedAudioControl(QWidget):
             return False
         elif current_index == 3:  # リップシンクタブ
             return False
-        
+        elif current_index == 5:  # リップシンクタブ
+            return self.lip_sync_control.has_redo_available()
+        elif current_index == 6:  # モデリングタブ
+            return self.modeling_control.has_redo_available()
+
         return False
     
     # ================================

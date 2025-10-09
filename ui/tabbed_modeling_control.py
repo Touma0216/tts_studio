@@ -4,8 +4,10 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QScrollArea,
                              QGridLayout, QDoubleSpinBox, QMessageBox, QCheckBox)
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont
+from copy import deepcopy
 from typing import Dict, List, Any
 
+from .history_manager import ParameterHistory
 
 class TabbedModelingControl(QWidget):
     """零音ほのか専用モデリング制御（物理演算対応版）"""
@@ -39,6 +41,16 @@ class TabbedModelingControl(QWidget):
         self.update_timer.timeout.connect(self.emit_all_parameters)
         
         self.init_ui()
+
+        # Undo/Redo 用履歴初期化
+        self.history = ParameterHistory(max_history=20)
+        self._history_timer = QTimer(self)
+        self._history_timer.setSingleShot(True)
+        self._history_timer.timeout.connect(self._commit_pending_history)
+        self._pending_before_state: Dict[str, Any] | None = None
+        self._applying_history = False
+        self._last_committed_state = self._capture_state()
+        self.history.save_current_state(self._last_committed_state)
 
         # 🔥 追加：瞬きと視線をデフォルトでON
         QTimer.singleShot(200, lambda: self.idle_motion_toggled.emit("blink", True))
@@ -611,7 +623,7 @@ class TabbedModelingControl(QWidget):
         self.blink_checkbox = QCheckBox("👁️ 瞬き")
         self.blink_checkbox.setStyleSheet("font-size: 13px; font-weight: bold;")
         self.blink_checkbox.setChecked(True)
-        self.blink_checkbox.toggled.connect(lambda checked: self.idle_motion_toggled.emit("blink", checked))
+        self.blink_checkbox.toggled.connect(lambda checked: self._emit_idle_motion_toggle("blink", checked))
         idle_layout.addWidget(self.blink_checkbox)
         
         blink_param_layout = QHBoxLayout()
@@ -620,7 +632,7 @@ class TabbedModelingControl(QWidget):
         self.blink_period_slider.setRange(10, 100)
         self.blink_period_slider.setValue(30)
         self.blink_period_slider.valueChanged.connect(
-            lambda v: self.idle_motion_param_changed.emit("blink_period", v / 10.0)
+            lambda v: self._emit_idle_motion_param("blink_period", v / 10.0)
         )
         blink_param_layout.addWidget(self.blink_period_slider)
         self.blink_period_label = QLabel("3.0秒")
@@ -631,7 +643,7 @@ class TabbedModelingControl(QWidget):
         self.gaze_checkbox = QCheckBox("👀 視線揺れ")
         self.gaze_checkbox.setStyleSheet("font-size: 13px; font-weight: bold;")
         self.gaze_checkbox.setChecked(True)
-        self.gaze_checkbox.toggled.connect(lambda checked: self.idle_motion_toggled.emit("gaze", checked))
+        self.gaze_checkbox.toggled.connect(lambda checked: self._emit_idle_motion_toggle("gaze", checked))
         idle_layout.addWidget(self.gaze_checkbox)
         
         gaze_param_layout = QHBoxLayout()
@@ -640,7 +652,7 @@ class TabbedModelingControl(QWidget):
         self.gaze_range_slider.setRange(10, 100)
         self.gaze_range_slider.setValue(50)
         self.gaze_range_slider.valueChanged.connect(
-            lambda v: self.idle_motion_param_changed.emit("gaze_range", v / 100.0)
+            lambda v: self._emit_idle_motion_param("gaze_range", v / 100.0)
         )
         gaze_param_layout.addWidget(self.gaze_range_slider)
         self.gaze_range_label = QLabel("0.50")
@@ -651,7 +663,7 @@ class TabbedModelingControl(QWidget):
         self.wind_checkbox = QCheckBox("💨 風揺れ")
         self.wind_checkbox.setStyleSheet("font-size: 13px; font-weight: bold;")
         self.wind_checkbox.setChecked(True)
-        self.wind_checkbox.toggled.connect(lambda checked: self.idle_motion_toggled.emit("wind", checked))
+        self.wind_checkbox.toggled.connect(lambda checked: self._emit_idle_motion_toggle("wind", checked))
         idle_layout.addWidget(self.wind_checkbox)
         
         wind_param_layout = QHBoxLayout()
@@ -674,11 +686,21 @@ class TabbedModelingControl(QWidget):
         
         return widget
     
+    def _emit_idle_motion_toggle(self, motion_type: str, enabled: bool) -> None:
+        self.idle_motion_toggled.emit(motion_type, enabled)
+        self._schedule_state_snapshot()
+
+    def _emit_idle_motion_param(self, param_name: str, value: float) -> None:
+        self.idle_motion_param_changed.emit(param_name, value)
+        self._schedule_state_snapshot()
+    
     def on_wind_strength_slider_changed(self, value: int):
         strength = value / 100.0
         if hasattr(self, 'wind_strength_label'):
             self.wind_strength_label.setText(f"{strength:.2f}")
         self.idle_motion_param_changed.emit("wind_strength", strength)
+        self._schedule_state_snapshot()
+
     # ================================
     # 🆕 物理演算制御ハンドラー
     # ================================
@@ -698,6 +720,7 @@ class TabbedModelingControl(QWidget):
         
         self.physics_toggled.emit(checked)
         print(f"💨 物理演算: {'ON' if checked else 'OFF'}")
+        self._schedule_state_snapshot()
     
     def on_physics_weight_changed(self, value: int):
         """物理演算強度変更"""
@@ -706,6 +729,8 @@ class TabbedModelingControl(QWidget):
         
         if self.physics_enabled:
             self.physics_weight_changed.emit(weight)
+        self._schedule_state_snapshot()
+
     
     # ================================
     # 物理演算用パラメータグループ作成
@@ -790,6 +815,7 @@ class TabbedModelingControl(QWidget):
         spinbox.setValue(val)
         spinbox.blockSignals(False)
         self.parameter_changed.emit(param_id, val)
+        self._schedule_state_snapshot()
     
     def on_physics_spinbox_changed(self, param_id: str, value: float):
         """物理演算スピンボックス変更"""
@@ -800,6 +826,8 @@ class TabbedModelingControl(QWidget):
         slider.setValue(int(value * 100))
         slider.blockSignals(False)
         self.parameter_changed.emit(param_id, value)
+        self._schedule_state_snapshot()
+
     
     # ================================
     # ドラッグ制御ハンドラー
@@ -817,6 +845,7 @@ class TabbedModelingControl(QWidget):
             self.drag_reset_btn.setEnabled(False)
         
         self.drag_control_toggled.emit(checked)
+        self._schedule_state_snapshot()
     
     def on_sensitivity_changed(self, value: int):
         """感度変更"""
@@ -825,6 +854,8 @@ class TabbedModelingControl(QWidget):
         
         if self.drag_toggle_btn.isChecked():
             self.drag_sensitivity_changed.emit(sensitivity)
+        self._schedule_state_snapshot()
+
     
     def on_drag_reset(self):
         """ドラッグ角度リセット"""
@@ -1064,6 +1095,7 @@ class TabbedModelingControl(QWidget):
         
         self.parameter_changed.emit(param_id, val)
         self.update_timer.start(100)
+        self._schedule_state_snapshot()
     
     def on_spinbox_changed(self, param_id: str, value: float):
         if self.is_loading:
@@ -1074,6 +1106,8 @@ class TabbedModelingControl(QWidget):
         slider.blockSignals(False)
         self.parameter_changed.emit(param_id, value)
         self.update_timer.start(100)
+        if not slider.isSliderDown():
+            self._schedule_state_snapshot()
     
     def reset_param(self, param_id: str):
         slider, spinbox, default = self.parameter_sliders[param_id]
@@ -1089,6 +1123,7 @@ class TabbedModelingControl(QWidget):
         if not self.is_loading:
             self.parameter_changed.emit(param_id, default)
             self.update_timer.start(100)
+            self._schedule_state_snapshot()
     
     def reset_all(self):
         self.is_loading = True
@@ -1100,6 +1135,173 @@ class TabbedModelingControl(QWidget):
             spinbox.setValue(default)
         self.is_loading = False
         self.emit_all_parameters()
+
+        self._schedule_state_snapshot()
+
+    # ================================
+    # Undo/Redo 履歴管理
+    # ================================
+
+    def undo(self) -> bool:
+        if self._history_timer.isActive():
+            self._history_timer.stop()
+            self._commit_pending_history()
+
+        if not self.history.has_undo_available():
+            return False
+
+        self.history.set_undoing_flag(True)
+        try:
+            previous_state = self.history.get_previous_state()
+            if previous_state is None:
+                return False
+            self._apply_state(previous_state)
+            return True
+        finally:
+            self.history.set_undoing_flag(False)
+
+    def redo(self) -> bool:
+        if self._history_timer.isActive():
+            self._history_timer.stop()
+            self._commit_pending_history()
+
+        if not self.history.has_redo_available():
+            return False
+
+        self.history.set_undoing_flag(True)
+        try:
+            next_state = self.history.get_next_state()
+            if next_state is None:
+                return False
+            self._apply_state(next_state)
+            return True
+        finally:
+            self.history.set_undoing_flag(False)
+
+    def has_undo_available(self) -> bool:
+        return self.history.has_undo_available()
+
+    def has_redo_available(self) -> bool:
+        return self.history.has_redo_available()
+
+    def _capture_state(self) -> Dict[str, Any]:
+        state: Dict[str, Any] = {
+            "parameters": {pid: round(spinbox.value(), 4) for pid, (_, spinbox, _) in self.parameter_sliders.items()},
+            "physics": {pid: round(spinbox.value(), 4) for pid, (_, spinbox, _) in self.physics_sliders.items()},
+            "physics_enabled": bool(getattr(self, "physics_enabled", True)),
+        }
+
+        if hasattr(self, "drag_toggle_btn"):
+            state["drag_enabled"] = self.drag_toggle_btn.isChecked()
+        if hasattr(self, "drag_sensitivity_slider"):
+            state["drag_sensitivity"] = int(self.drag_sensitivity_slider.value())
+
+        idle_state: Dict[str, Any] = {}
+        if hasattr(self, "blink_checkbox"):
+            idle_state["blink"] = self.blink_checkbox.isChecked()
+        if hasattr(self, "blink_period_slider"):
+            idle_state["blink_period"] = int(self.blink_period_slider.value())
+        if hasattr(self, "gaze_checkbox"):
+            idle_state["gaze"] = self.gaze_checkbox.isChecked()
+        if hasattr(self, "gaze_range_slider"):
+            idle_state["gaze_range"] = int(self.gaze_range_slider.value())
+        if hasattr(self, "wind_checkbox"):
+            idle_state["wind"] = self.wind_checkbox.isChecked()
+        if hasattr(self, "wind_strength_slider"):
+            idle_state["wind_strength"] = int(self.wind_strength_slider.value())
+        state["idle"] = idle_state
+
+        if hasattr(self, "physics_weight_slider"):
+            state["physics_weight"] = int(self.physics_weight_slider.value())
+        if hasattr(self, "loop_checkbox"):
+            state["loop"] = self.loop_checkbox.isChecked()
+        if hasattr(self, "speed_slider"):
+            state["speed"] = int(self.speed_slider.value())
+
+        return state
+
+    def _apply_state(self, state: Dict[str, Any]) -> None:
+        if not state:
+            return
+
+        self._history_timer.stop()
+        self._pending_before_state = None
+        self._applying_history = True
+
+        try:
+            for pid, value in state.get("parameters", {}).items():
+                if pid in self.parameter_sliders:
+                    slider, spinbox, _ = self.parameter_sliders[pid]
+                    slider.setValue(int(round(value * 100)))
+                    spinbox.setValue(value)
+
+            for pid, value in state.get("physics", {}).items():
+                if pid in self.physics_sliders:
+                    slider, spinbox, _ = self.physics_sliders[pid]
+                    slider.setValue(int(round(value * 100)))
+                    spinbox.setValue(value)
+
+            if "drag_enabled" in state and hasattr(self, "drag_toggle_btn"):
+                self.drag_toggle_btn.setChecked(bool(state["drag_enabled"]))
+            if "drag_sensitivity" in state and hasattr(self, "drag_sensitivity_slider"):
+                self.drag_sensitivity_slider.setValue(int(state["drag_sensitivity"]))
+
+            idle_state = state.get("idle", {})
+            if "blink" in idle_state and hasattr(self, "blink_checkbox"):
+                self.blink_checkbox.setChecked(bool(idle_state["blink"]))
+            if "blink_period" in idle_state and hasattr(self, "blink_period_slider"):
+                self.blink_period_slider.setValue(int(idle_state["blink_period"]))
+            if "gaze" in idle_state and hasattr(self, "gaze_checkbox"):
+                self.gaze_checkbox.setChecked(bool(idle_state["gaze"]))
+            if "gaze_range" in idle_state and hasattr(self, "gaze_range_slider"):
+                self.gaze_range_slider.setValue(int(idle_state["gaze_range"]))
+            if "wind" in idle_state and hasattr(self, "wind_checkbox"):
+                self.wind_checkbox.setChecked(bool(idle_state["wind"]))
+            if "wind_strength" in idle_state and hasattr(self, "wind_strength_slider"):
+                self.wind_strength_slider.setValue(int(idle_state["wind_strength"]))
+
+            if "physics_enabled" in state and hasattr(self, "physics_toggle_btn"):
+                self.physics_toggle_btn.setChecked(bool(state["physics_enabled"]))
+            if "physics_weight" in state and hasattr(self, "physics_weight_slider"):
+                self.physics_weight_slider.setValue(int(state["physics_weight"]))
+
+            if "loop" in state and hasattr(self, "loop_checkbox"):
+                self.loop_checkbox.setChecked(bool(state["loop"]))
+            if "speed" in state and hasattr(self, "speed_slider"):
+                self.speed_slider.setValue(int(state["speed"]))
+
+        finally:
+            self._applying_history = False
+            self._last_committed_state = deepcopy(state)
+            self.emit_all_parameters()
+
+    def _schedule_state_snapshot(self) -> None:
+        if self.history.is_undoing or self._applying_history or self.is_loading:
+            return
+
+        if self._pending_before_state is None:
+            self._pending_before_state = deepcopy(self._last_committed_state)
+
+        self._history_timer.start(250)
+
+    def _commit_pending_history(self) -> None:
+        if self._pending_before_state is None:
+            return
+
+        after_state = self._capture_state()
+        if after_state != self._pending_before_state:
+            self.history.save_current_state(after_state)
+            self._last_committed_state = deepcopy(after_state)
+
+        self._pending_before_state = None
+
+    def _reset_history_to_current_state(self) -> None:
+        self._history_timer.stop()
+        self._pending_before_state = None
+        current_state = self._capture_state()
+        self.history.clear_history()
+        self.history.save_current_state(current_state)
+        self._last_committed_state = deepcopy(current_state)
     
     def emit_all_parameters(self):
         self.parameters_changed.emit(self.get_all_parameters())
@@ -1141,6 +1343,8 @@ class TabbedModelingControl(QWidget):
                 spinbox.setValue(val)
         self.is_loading = False
         
+        self._reset_history_to_current_state()
+
         print(f"✅ モデリング：{len(parameters)}個のパラメータ反映完了")
     
     # ================================
@@ -1395,6 +1599,8 @@ class TabbedModelingControl(QWidget):
             )
             print(f"🔄 ループ: {'ON' if enabled else 'OFF'}")
 
+        self._schedule_state_snapshot()
+
     def on_speed_changed(self, value: int):
         """再生速度変更"""
         speed = value / 100.0
@@ -1409,3 +1615,5 @@ class TabbedModelingControl(QWidget):
             char_display.live2d_webview.page().runJavaScript(
                 f"window.setAnimationSpeed({speed});"
             )
+
+        self._schedule_state_snapshot()

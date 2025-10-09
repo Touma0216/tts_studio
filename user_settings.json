@@ -1,7 +1,7 @@
 {
   "audio_cleaner": {
     "enabled": true,
-    "last_preset": "light_processing"
+    "last_preset": "standard_processing"
   },
   "ui_preferences": {
     "window_geometry": null,
