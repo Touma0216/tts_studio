@@ -37,12 +37,16 @@ class AnimationManager:
                 try:
                     animation_data = self.load_animation_file(json_file)
                     if animation_data:
+                        metadata = animation_data.get('metadata', {})
+                        description = metadata.get('description', '')
+                        # 表示名はdescriptionを優先し、なければname、さらにファイル名（拡張子除く）
+                        display_name = description or metadata.get('name') or json_file.stem
                         self.animation_list.append({
                             'file_path': str(json_file),
                             'file_name': json_file.name,
-                            'name': animation_data.get('metadata', {}).get('name', json_file.stem),
-                            'description': animation_data.get('metadata', {}).get('description', ''),
-                            'duration': animation_data.get('metadata', {}).get('duration', 0),
+                            'name': display_name,
+                            'description': description,
+                            'duration': metadata.get('duration', 0),
                             'keyframe_count': len(animation_data.get('keyframes', []))
                         })
                 except Exception as e:
