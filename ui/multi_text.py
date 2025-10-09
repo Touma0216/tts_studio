@@ -383,12 +383,24 @@ class MultiTextWidget(QWidget):
         return result
     
     def clear_all_rows(self):
-        """全行をクリア（1行だけ残す）"""
-        for row_id in list(self.text_rows.keys())[1:]:  # 最初の1行以外削除
+        """全行をクリアし、1行だけを残して初期化"""
+        remaining_ids = list(self.text_rows.keys())
+
+        # 最初の1行以外を削除
+        for row_id in remaining_ids[1:]:
             self.delete_text_row(row_id)
         
-        # 残った1行をクリア
+        first_row_id = None
         if self.text_rows:
-            first_widget = next(iter(self.text_rows.values()))
+            # 残った最初の行をクリア
+            first_row_id, first_widget = next(iter(self.text_rows.items()))
             first_widget.set_text("")
             first_widget.set_silence_after(0.0)
+        else:
+            # すべて削除された場合は初期行を再生成
+            first_row_id = self.add_text_row_with_id("initial")
+
+        # 行番号をリフレッシュ
+        self.update_row_numbers()
+
+        return first_row_id

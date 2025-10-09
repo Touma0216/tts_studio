@@ -49,6 +49,11 @@ class TTSStudioMainWindow(QMainWindow):
         self.last_generated_audio = None
         self.last_sample_rate = None
         self._tts_busy = False
+        self._tts_playing = False
+        self._tts_playback_context = None
+        self._tts_playback_timer = QTimer(self)
+        self._tts_playback_timer.setSingleShot(True)
+        self._tts_playback_timer.timeout.connect(self._handle_tts_playback_timeout)
         
         self.init_ui()
         self.help_dialog = HelpDialog(self)
@@ -139,6 +144,20 @@ class TTSStudioMainWindow(QMainWindow):
         
         controls = QHBoxLayout()
         controls.addStretch()
+
+        self.reset_text_btn = QPushButton("🧹 テキストリセット")
+        self.reset_text_btn.setStyleSheet(self._gray_btn_css())
+        self.reset_text_btn.setMinimumHeight(35)
+        self.reset_text_btn.clicked.connect(self.reset_text_inputs)
+        controls.addWidget(self.reset_text_btn)
+
+        self.stop_audio_btn = QPushButton("⏹ 音声停止")
+        self.stop_audio_btn.setStyleSheet(self._red_btn_css())
+        self.stop_audio_btn.setMinimumHeight(35)
+        self.stop_audio_btn.setEnabled(False)
+        self.stop_audio_btn.clicked.connect(self.stop_tts_audio)
+        controls.addWidget(self.stop_audio_btn)
+
         self.sequential_play_btn = QPushButton("連続して再生(Ctrl + R)")
         self.sequential_play_btn.setStyleSheet(self._blue_btn_css())
         self.save_individual_btn = QPushButton("個別保存(Ctrl + S)")
@@ -211,6 +230,76 @@ class TTSStudioMainWindow(QMainWindow):
             QPushButton:pressed:enabled { background-color: #e65100; }
             QPushButton:disabled { background-color: #f0f0f0; color: #aaaaaa; }
         """
+    def _red_btn_css(self) -> str:
+        return """
+            QPushButton { background-color: #e53935; color: white; border: none; border-radius: 4px; font-size: 13px; font-weight: bold; padding: 6px 16px; }
+            QPushButton:hover:enabled { background-color: #c62828; }
+            QPushButton:pressed:enabled { background-color: #b71c1c; }
+            QPushButton:disabled { background-color: #f0f0f0; color: #aaaaaa; }
+        """
+
+    def _gray_btn_css(self) -> str:
+        return """
+            QPushButton { background-color: #607d8b; color: white; border: none; border-radius: 4px; font-size: 13px; font-weight: bold; padding: 6px 16px; }
+            QPushButton:hover:enabled { background-color: #546e7a; }
+            QPushButton:pressed:enabled { background-color: #455a64; }
+            QPushButton:disabled { background-color: #f0f0f0; color: #aaaaaa; }
+        """
+
+    def _handle_tts_playback_timeout(self):
+        self._on_tts_playback_finished()
+
+    def _on_tts_playback_started(self, duration_sec: float | None, context: str | None = None):
+        self._tts_playback_timer.stop()
+        self._tts_playing = True
+        self._tts_playback_context = context
+
+        if duration_sec and duration_sec > 0:
+            timeout_ms = int(duration_sec * 1000) + 300
+            self._tts_playback_timer.start(timeout_ms)
+
+        if hasattr(self, 'stop_audio_btn') and self.stop_audio_btn:
+            self.stop_audio_btn.setEnabled(True)
+
+    def _on_tts_playback_finished(self):
+        if self._tts_playback_timer.isActive():
+            self._tts_playback_timer.stop()
+
+        self._tts_playing = False
+
+        context = self._tts_playback_context
+
+        if hasattr(self, 'stop_audio_btn') and self.stop_audio_btn:
+            self.stop_audio_btn.setEnabled(False)
+
+        if self._tts_playback_context == "test":
+            self._reset_test_button()
+
+        self._tts_playback_context = None
+
+        # Live2Dのリップシンクを停止（TTS再生時のみ）
+        if context in {"single", "sequential", "test"}:
+            self._stop_wav_lipsync()
+
+    def stop_tts_audio(self):
+        try:
+            if self._tts_playing:
+                import sounddevice as sd
+                sd.stop()
+        except Exception as e:
+            print(f"❌ 音声停止エラー: {e}")
+        finally:
+            self._on_tts_playback_finished()
+
+    def reset_text_inputs(self):
+        """テキスト入力を初期状態に戻す"""
+        # 進行中の音声があれば停止
+        self.stop_tts_audio()
+
+        first_row_id = self.multi_text.clear_all_rows()
+
+        if first_row_id:
+            self.tabbed_audio_control.set_current_row(first_row_id)
 
     def setup_lipsync_integration(self):
         """リップシンク機能の統合設定"""
@@ -392,6 +481,9 @@ class TTSStudioMainWindow(QMainWindow):
                 # 音声を再生
                 import sounddevice as sd
                 sd.play(audio, sr, blocking=False)
+
+                test_duration = lipsync_data.total_duration if lipsync_data else (len(audio) / sr if sr else None)
+                self._on_tts_playback_started(test_duration, context="test")
                 
                 # リップシンクを送信
                 self.send_lipsync_to_live2d(lipsync_data)
@@ -801,6 +893,9 @@ class TTSStudioMainWindow(QMainWindow):
             import sounddevice as sd
             sd.play(audio, sample_rate, blocking=False)
 
+            playback_duration = len(audio) / sample_rate if sample_rate else None
+            self._on_tts_playback_started(playback_duration, context="single")
+
             # リップシンク送信
             if (lipsync_data and
                 self.tabbed_audio_control.is_lip_sync_enabled() and
@@ -968,6 +1063,9 @@ class TTSStudioMainWindow(QMainWindow):
             import sounddevice as sd
             sd.play(final_audio, sample_rate, blocking=False)
             print("▶️ 音声再生開始")
+
+            total_duration = len(final_audio) / sample_rate if sample_rate else audio_offset
+            self._on_tts_playback_started(total_duration, context="sequential")
             
             # 🆕 リップシンク送信
             if combined_lipsync:
