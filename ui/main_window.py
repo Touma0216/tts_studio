@@ -41,7 +41,7 @@ class TTSStudioMainWindow(QMainWindow):
         self.wav_player = WAVPlayer()
         self._wav_lipsync_timer = None
         self._wav_lipsync_data = None
-        self.whisper_transcriber = WhisperTranscriber(model_size="small", device="cuda")
+        self.whisper_transcriber = WhisperTranscriber(model_size="large", device="cuda")
 
         
         self.setup_tts_worker()
