@@ -101,7 +101,7 @@ class LipSyncEngine:
             # 🆕 WhisperTranscriberを初期化（長時間WAV対応用）
             try:
                 from .whisper_transcriber import WhisperTranscriber
-                self.whisper_transcriber = WhisperTranscriber(model_size="medium", device="cuda")
+                self.whisper_transcriber = WhisperTranscriber(model_size="large", device="cuda")
                 print("✅ WhisperTranscriber初期化完了")
             except Exception as e:
                 print(f"⚠️ WhisperTranscriber初期化エラー: {e}")
