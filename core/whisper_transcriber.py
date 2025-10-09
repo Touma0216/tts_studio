@@ -17,7 +17,7 @@ class WhisperTranscriber:
     WAVファイルから日本語テキストを自動抽出（精度改善版）
     """
     
-    def __init__(self, model_size: str = "medium", device: str = "cuda"):
+    def __init__(self, model_size: str = "large", device: str = "cuda"):
         """初期化
         
         Args:
@@ -351,7 +351,7 @@ class WhisperTranscriber:
 if __name__ == "__main__":
     print("=== WhisperTranscriber テスト ===")
     
-    transcriber = WhisperTranscriber(model_size="small", device="cuda")
+    transcriber = WhisperTranscriber(model_size="large", device="cuda")
     
     if transcriber.is_ready():
         print("✅ 初期化成功")
