@@ -91,7 +91,7 @@
       "easing": "ease_out"
     },
     {
-      "time": 6.5,
+      "time": 6.4,
       "parameters": {
         "ParamMouthForm": 1.0,
         "ParamBrowLY": 0.0,
@@ -107,7 +107,7 @@
       "easing": "ease_in"
     },
     {
-      "time": 7.0,
+      "time": 6.9,
       "parameters": {
         "ParamMouthForm": 0.0,
         "ParamBrowLY": 0.0,
@@ -139,7 +139,7 @@
       "easing": "ease_in"
     },
     {
-      "time": 8.8,
+      "time": 8.7,
       "parameters": {
         "ParamMouthForm": -1.0,
         "ParamBrowLY": 0.0,
@@ -155,7 +155,7 @@
       "easing": "ease_in_out"
     },
     {
-      "time": 9.8,
+      "time": 9.7,
       "parameters": {
         "ParamMouthForm": -1.0,
         "ParamBrowLY": 0.0,
@@ -171,7 +171,7 @@
       "easing": "ease_in_out"
     },
     {
-      "time": 10.8,
+      "time": 10.7,
       "parameters": {
         "ParamMouthForm": -1.0,
         "ParamBrowLY": 0.0,
@@ -187,7 +187,7 @@
       "easing": "ease_in_out"
     },
     {
-      "time": 11.8,
+      "time": 11.7,
       "parameters": {
         "ParamMouthForm": -1.0,
         "ParamBrowLY": 0.0,
@@ -235,7 +235,7 @@
       "easing": "linear"
     },
     {
-      "time": 17.0,
+      "time": 16.8,
       "parameters": {
         "ParamMouthForm": 0.0,
         "ParamBrowLY": 0.0,
@@ -251,7 +251,7 @@
       "easing": "ease_in"
     },
     {
-      "time": 17.5,
+      "time": 17.3,
       "parameters": {
         "ParamMouthForm": 1.0,
         "ParamBrowLY": 0.0,
