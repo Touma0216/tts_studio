@@ -3,7 +3,7 @@
   "metadata": {
     "name": "preset_intro_honoka",
     "description": "零音ほのか自己紹介アニメーション",
-    "duration": 19.5
+    "duration": 18.0
   },
   "model": {
     "model_id": "honoka_v1",
@@ -27,7 +27,7 @@
       "easing": "linear"
     },
     {
-      "time": 5.0,
+      "time": 4.5,
       "parameters": {
         "ParamMouthForm": -1.0,
         "ParamBrowLY": 1.0,
@@ -43,7 +43,7 @@
       "easing": "ease_in"
     },
     {
-      "time": 5.25,
+      "time": 5.0,
       "parameters": {
         "ParamMouthForm": 0.0,
         "ParamBrowLY": 0.0,
@@ -123,23 +123,7 @@
       "easing": "linear"
     },
     {
-      "time": 9.5,
-      "parameters": {
-        "ParamMouthForm": 0.0,
-        "ParamBrowLY": 0.0,
-        "ParamBrowRY": 0.0,
-        "ParamEyeLOpen": 1.0,
-        "ParamEyeROpen": 1.0,
-        "ParamEyeBallX": 0.0,
-        "Param1": 0.0,
-        "Param2": 0.0,
-        "Param3": 0.0,
-        "Param4": 0.0
-      },
-      "easing": "linear"
-    },
-    {
-      "time": 10.5,
+      "time": 8.5,
       "parameters": {
         "ParamMouthForm": 0.0,
         "ParamBrowLY": 0.0,
@@ -155,7 +139,7 @@
       "easing": "ease_in"
     },
     {
-      "time": 11.0,
+      "time": 8.8,
       "parameters": {
         "ParamMouthForm": -1.0,
         "ParamBrowLY": 0.0,
@@ -171,7 +155,7 @@
       "easing": "ease_in_out"
     },
     {
-      "time": 12.0,
+      "time": 9.8,
       "parameters": {
         "ParamMouthForm": -1.0,
         "ParamBrowLY": 0.0,
@@ -187,7 +171,7 @@
       "easing": "ease_in_out"
     },
     {
-      "time": 13.0,
+      "time": 10.8,
       "parameters": {
         "ParamMouthForm": -1.0,
         "ParamBrowLY": 0.0,
@@ -203,7 +187,7 @@
       "easing": "ease_in_out"
     },
     {
-      "time": 14.0,
+      "time": 11.8,
       "parameters": {
         "ParamMouthForm": -1.0,
         "ParamBrowLY": 0.0,
@@ -219,7 +203,7 @@
       "easing": "ease_in_out"
     },
     {
-      "time": 14.5,
+      "time": 13.2,
       "parameters": {
         "ParamMouthForm": -1.0,
         "ParamBrowLY": 0.0,
@@ -235,7 +219,7 @@
       "easing": "ease_in"
     },
     {
-      "time": 15.0,
+      "time": 13.7,
       "parameters": {
         "ParamMouthForm": 0.0,
         "ParamBrowLY": 0.0,
@@ -251,7 +235,7 @@
       "easing": "linear"
     },
     {
-      "time": 17.5,
+      "time": 17.0,
       "parameters": {
         "ParamMouthForm": 0.0,
         "ParamBrowLY": 0.0,
@@ -267,7 +251,7 @@
       "easing": "ease_in"
     },
     {
-      "time": 18.0,
+      "time": 17.5,
       "parameters": {
         "ParamMouthForm": 1.0,
         "ParamBrowLY": 0.0,
@@ -283,7 +267,7 @@
       "easing": "ease_out"
     },
     {
-      "time": 19.5,
+      "time": 18.0,
       "parameters": {
         "ParamMouthForm": 1.0,
         "ParamBrowLY": 0.0,

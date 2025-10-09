@@ -2,7 +2,7 @@
   "version": "1.0",
   "metadata": {
     "name": "preset_scared_shrink",
-    "description": "怖がりながら肩をすくめるモーション（Scene3表情と組み合わせて使用）",
+    "description": "怖がりながら肩をすくめるモーション",
     "duration": 4.0
   },
   "model": {

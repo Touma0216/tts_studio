@@ -2,7 +2,7 @@
   "version": "1.0",
   "metadata": {
     "name": "preset_look_around",
-    "description": "左右を見渡すモーション（首＋視線）",
+    "description": "左右を見渡すモーション",
     "duration": 4.0
   },
   "model": {
