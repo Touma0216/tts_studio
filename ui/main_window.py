@@ -195,7 +195,7 @@ class TTSStudioMainWindow(QMainWindow):
         )
         self.main_splitter.addWidget(left_widget)
         self.main_splitter.addWidget(self.character_display)
-        preferred_left_ratio = 0.7
+        preferred_left_ratio = 0.42
         total_width = max(self.width(), 1000)
         preferred_left_width = int(total_width * preferred_left_ratio)
         preferred_right_width = max(total_width - preferred_left_width, 300)

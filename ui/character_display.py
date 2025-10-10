@@ -638,6 +638,22 @@ class CharacterDisplayWidget(QWidget):
         button_layout = QHBoxLayout()
         button_layout.setContentsMargins(0, 0, 0, 0)
         button_layout.setSpacing(8)
+
+        # 🆕 停止ボタン（ミニマップの左）
+        self.pause_model_btn = QPushButton("⏸ 停止")
+        self.pause_model_btn.setToolTip("Live2Dアニメーションの一時停止/再開")
+        self.pause_model_btn.setCheckable(True)
+        self.pause_model_btn.setChecked(False)
+        self.pause_model_btn.setStyleSheet(
+            "QPushButton { background-color: #f8f9fa; border: 1px solid #ccc; border-radius: 4px; "
+            "font-size: 11px; padding: 4px 8px; } "
+            "QPushButton:hover:enabled { background-color: #e9ecef; } "
+            "QPushButton:checked { background-color: #ffc107; border-color: #ff9800; color: white; font-weight: bold; } "
+            "QPushButton:disabled { color: #ccc; }"
+        )
+        self.pause_model_btn.setEnabled(False)  # Live2D読み込み時に有効化
+        self.pause_model_btn.toggled.connect(self.on_pause_model_toggled)
+        button_layout.addWidget(self.pause_model_btn)
         
         # ミニマップボタン
         self.toggle_minimap_btn = QPushButton("🗺️ ミニマップ")
@@ -1661,6 +1677,10 @@ class CharacterDisplayWidget(QWidget):
         ]:
             control.setEnabled(True)
         
+        # 🆕 停止ボタンも有効化
+        if hasattr(self, 'pause_model_btn'):
+            self.pause_model_btn.setEnabled(True)
+        
         if self.current_display_mode == "live2d":
             self.toggle_minimap_btn.setEnabled(True)
 
@@ -2166,3 +2186,36 @@ class CharacterDisplayWidget(QWidget):
             self.live2d_webview.page().runJavaScript(script)
         except Exception as e:
             print(f"❌ 物理演算強度設定エラー: {e}")
+
+    def on_pause_model_toggled(self, checked):
+        """Live2Dモデルの停止/再開切り替え"""
+        try:
+            if not hasattr(self, 'live2d_webview') or not self.live2d_webview.is_model_loaded:
+                self.pause_model_btn.setChecked(False)
+                return
+            
+            script = """
+            (function() {
+                if (typeof window.toggleLive2DModelPause === 'function') {
+                    return window.toggleLive2DModelPause();
+                }
+                return false;
+            })()
+            """
+            
+            def on_result(result):
+                if result:
+                    # JavaScript側の結果に応じてボタン表示を更新
+                    is_paused = self.pause_model_btn.isChecked()
+                    if is_paused:
+                        self.pause_model_btn.setText("▶ 再生")
+                        print("⏸️ Live2D静止")
+                    else:
+                        self.pause_model_btn.setText("⏸ 停止")
+                        print("▶️ Live2D再生")
+            
+            self.live2d_webview.page().runJavaScript(script, on_result)
+            
+        except Exception as e:
+            print(f"❌ モデル停止/再開エラー: {e}")
+            self.pause_model_btn.setChecked(False)

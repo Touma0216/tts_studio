@@ -1701,3 +1701,131 @@ window.getCurrentParameters = function() {
         return {};
     }
 };
+
+// =============================================================================
+// モデル静止機能（アニメーション完全停止）
+// =============================================================================
+
+let isModelPaused = false;
+let savedAutoUpdate = true;
+
+/**
+ * モデルを完全に静止させる（修正版）
+ */
+window.pauseLive2DModel = function() {
+    try {
+        if (!currentModel) {
+            console.warn('⚠️ モデル未読み込み');
+            return false;
+        }
+        
+        if (isModelPaused) {
+            console.log('ℹ️ 既に停止中');
+            return true;
+        }
+        
+        // 1. PIXI Tickerを完全停止
+        if (app && app.ticker) {
+            app.ticker.stop();
+            console.log('⏸️ PIXI Ticker停止');
+        }
+        
+        // 2. 自動更新を停止
+        savedAutoUpdate = currentModel.autoUpdate;
+        currentModel.autoUpdate = false;
+        
+        // 3. アイドルモーションを停止
+        if (window.idleMotionManager) {
+            window.idleMotionManager.stop();
+        }
+        
+        // 4. リップシンクを停止
+        if (window.stopLipSync) {
+            window.stopLipSync();
+        }
+        if (window.stopSimpleLipSync) {
+            window.stopSimpleLipSync();
+        }
+        
+        // 5. 物理演算を一時無効化
+        if (currentModel.internalModel && currentModel.internalModel.physics) {
+            window._pausedPhysics = currentModel.internalModel.physics;
+            currentModel.internalModel.physics = null;
+            console.log('💨 物理演算停止');
+        }
+        
+        // 6. モーションマネージャーを停止
+        if (currentModel.internalModel && currentModel.internalModel.motionManager) {
+            currentModel.internalModel.motionManager.stopAllMotions();
+        }
+        
+        isModelPaused = true;
+        console.log('⏸️ モデル完全静止');
+        return true;
+        
+    } catch (error) {
+        console.error('❌ モデル静止エラー:', error);
+        return false;
+    }
+};
+
+/**
+ * モデルのアニメーションを再開（修正版）
+ */
+window.resumeLive2DModel = function() {
+    try {
+        if (!currentModel) {
+            console.warn('⚠️ モデル未読み込み');
+            return false;
+        }
+        
+        if (!isModelPaused) {
+            console.log('ℹ️ 既に再生中');
+            return true;
+        }
+        
+        // 1. PIXI Tickerを再開
+        if (app && app.ticker) {
+            app.ticker.start();
+            console.log('▶️ PIXI Ticker再開');
+        }
+        
+        // 2. 自動更新を再開
+        currentModel.autoUpdate = savedAutoUpdate;
+        
+        // 3. 物理演算を復元
+        if (window._pausedPhysics) {
+            currentModel.internalModel.physics = window._pausedPhysics;
+            delete window._pausedPhysics;
+            console.log('♻️ 物理演算復元');
+        }
+        
+        isModelPaused = false;
+        console.log('▶️ モデル再生再開');
+        return true;
+        
+    } catch (error) {
+        console.error('❌ モデル再開エラー:', error);
+        return false;
+    }
+};
+
+/**
+ * モデルの静止状態を取得
+ */
+window.isLive2DModelPaused = function() {
+    return isModelPaused;
+};
+
+/**
+ * モデルの静止状態をトグル
+ */
+window.toggleLive2DModelPause = function() {
+    if (isModelPaused) {
+        return window.resumeLive2DModel();
+    } else {
+        return window.pauseLive2DModel();
+    }
+};
+
+console.log('✅ モデル静止機能を追加');
