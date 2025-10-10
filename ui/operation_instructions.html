@@ -90,31 +90,29 @@
         
         <table class="shortcut-table">
             <tr>
-                <th colspan="2">ファイル・ウィンドウ操作</th>
+                <th colspan="2">単体キー（テキスト入力中は無効）</th>
             </tr>
             <tr>
-                <td><span class="key">Ctrl + F</span></td>
+                <td><span class="key">F</span></td>
                 <td>ファイルメニューを開く</td>
             </tr>
             <tr>
-                <td><span class="key">Ctrl + H</span></td>
+                <td><span class="key">H</span></td>
                 <td>操作説明を表示/非表示</td>
             </tr>
-            
+
             <tr>
-                <th colspan="2">編集操作</th>
-            </tr>
-            <tr>
-                <td><span class="key new">Ctrl + Z</span></td>
-                <td>前の設定に戻す（パラメータ・テキストUndo）</td>
+                <th colspan="2">Ctrl + キー操作</th>
             </tr>
             
             <tr>
-                <th colspan="2">音声再生</th>
+                <td><span class="key">Ctrl + D</span></td>
+                <td>テキストをすべてリセット</td>
             </tr>
+
             <tr>
                 <td><span class="key">Ctrl + P</span></td>
-                <td>現在フォーカス中の行を再生</td>
+                <td>選択中のテキストを再生</td>
             </tr>
             <tr>
                 <td><span class="key">Ctrl + R</span></td>
@@ -122,47 +120,37 @@
             </tr>
 
             <tr>
-                <th colspan="2">テキスト・タブ操作</th>
-            </tr>
-            <tr>
-                <td><span class="key">Ctrl + N</span></td>
-                <td>新しいテキスト行を追加</td>
-            </tr>
-            <tr>
-                <td><span class="key special">Ctrl + Tab</span></td>
-                <td>★マスタータブへ移動</td>
-            </tr>
-            <tr>
-                <td><span class="key">Ctrl + E</span></td>
-                <td>感情選択コンボボックスを開く</td>
-            </tr>
-            <tr>
-                <td><span class="key">Ctrl + 1</span> - <span class="key">9</span></td>
-                <td>指定のテキスト行にフォーカス</td>
-            </tr>
-
-            <tr>
-                <th colspan="2">ファイル保存</th>
-            </tr>
-            <tr>
                 <td><span class="key">Ctrl + S</span></td>
-                <td>現在行を個別ファイルとして保存</td>
+                <td>現在行を個別保存</td>
             </tr>
             <tr>
                 <td><span class="key">Ctrl + Shift + S</span></td>
-                <td>全テキストを1つのファイルに連続保存</td>
+                <td>全テキストを連続保存</td>
+            </tr>
+
+            <tr>
+                <td><span class="key">Ctrl + T</span></td>
+                <td>リップシンクテストを開始</td>
+            </tr>
+            <tr>
+                <td><span class="key">Ctrl + Z</span></td>
+                <td>設定/テキストのUndo</td>
+            </tr>
+            <tr>
+                <td><span class="key">Ctrl + Y</span></td>
+                <td>設定/テキストのRedo</td>
             </tr>
         </table>
         
         <div style="margin-top: 30px; padding: 15px; background: #e8f5e8; border-radius: 6px; border-left: 4px solid #4caf50;">
-            <h3 style="margin-top: 0; color: #2e7d32;">💡 Undo機能について</h3>
-            <p><strong>Ctrl + Z</strong> は状況に応じて動作が変わります：</p>
+            <h3 style="margin-top: 0; color: #2e7d32;">💡 Undo / Redo について</h3>
+            <p><strong>Ctrl + Z</strong> と <strong>Ctrl + Y</strong> は状況に応じて動作が変わります：</p>
             <ul>
-                <li><strong>テキスト入力中</strong>：テキストの変更を取り消し</li>
-                <li><strong>音声パラメータタブ</strong>：感情・話速・ピッチなどの前の設定に戻す</li>
-                <li><strong>その他のタブ</strong>：動作しません</li>
+                <li><strong>テキスト入力中</strong>：テキストの変更を取り消し / やり直し</li>
+                <li><strong>音声パラメータ・エフェクトタブ</strong>：パラメータの変更を戻す / やり直す</li>
+                <li><strong>その他のタブ</strong>：動作しない場合があります</li>
             </ul>
-            <p style="margin-bottom: 0;">※ 1回だけ前の状態に戻せます</p>
+            <p style="margin-bottom: 0;">※ 複数回の戻る / やり直しに対応しています</p>
         </div>
     </div>
 </body>

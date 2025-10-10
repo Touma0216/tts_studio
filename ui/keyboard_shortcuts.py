@@ -1,5 +1,6 @@
 from PyQt6.QtGui import QShortcut, QKeySequence
 from PyQt6.QtCore import Qt, QObject
+from PyQt6.QtWidgets import QLineEdit, QTextEdit, QPlainTextEdit
 
 class KeyboardShortcutManager(QObject):
     """キーボードショートカット管理クラス（Undo/Redo機能対応）"""
@@ -13,42 +14,33 @@ class KeyboardShortcutManager(QObject):
     def setup_shortcuts(self):
         """全ショートカットを設定（Undo/Redo機能追加）"""
         
-        # ファイル操作
-        self.add_shortcut("Ctrl+F", self.open_file_menu)
-        
-        # ヘルプ機能
-        self.add_shortcut("Ctrl+H", self.toggle_help_dialog)
-        
-        # Undo/Redo機能（改良版）
-        self.add_shortcut("Ctrl+Z", self.undo_parameters)
-        self.add_shortcut("Ctrl+Y", self.redo_parameters)  # ← 新規追加
-        self.add_shortcut("Ctrl+Shift+Z", self.redo_parameters)  # ← 新規追加（代替）
+        # ファイル操作（テキスト入力時は無効）
+        self.add_shortcut("F", self.open_file_menu)
+
+        # ヘルプ機能（テキスト入力時は無効）
+        self.add_shortcut("H", self.toggle_help_dialog)
+
+        # テキスト操作
+        self.add_shortcut("Ctrl+D", self.reset_text_inputs)
+
         
         # 再生系
-        self.add_shortcut("Ctrl+R", self.play_sequential)
         self.add_shortcut("Ctrl+P", self.play_current_row)
-        
-        # テキスト操作
-        self.add_shortcut("Ctrl+N", self.add_text_row)
-        
-        # タブ切り替え
-        self.add_shortcut("Ctrl+Tab", self.focus_master_tab)
-        self.add_shortcut("Ctrl+1", lambda: self.focus_text_row(1))
-        self.add_shortcut("Ctrl+2", lambda: self.focus_text_row(2))
-        self.add_shortcut("Ctrl+3", lambda: self.focus_text_row(3))
-        self.add_shortcut("Ctrl+4", lambda: self.focus_text_row(4))
-        self.add_shortcut("Ctrl+5", lambda: self.focus_text_row(5))
-        self.add_shortcut("Ctrl+6", lambda: self.focus_text_row(6))
-        self.add_shortcut("Ctrl+7", lambda: self.focus_text_row(7))
-        self.add_shortcut("Ctrl+8", lambda: self.focus_text_row(8))
-        self.add_shortcut("Ctrl+9", lambda: self.focus_text_row(9))
-        
+        self.add_shortcut("Ctrl+R", self.play_sequential)
+
         # 感情選択
         self.add_shortcut("Ctrl+E", self.open_emotion_combo)
         
         # 保存系
         self.add_shortcut("Ctrl+S", self.save_individual)
         self.add_shortcut("Ctrl+Shift+S", self.save_continuous)
+
+        # リップシンク
+        self.add_shortcut("Ctrl+T", self.test_lipsync)
+
+        # Undo/Redo機能
+        self.add_shortcut("Ctrl+Z", self.undo_parameters)
+        self.add_shortcut("Ctrl+Y", self.redo_parameters)
     
     def add_shortcut(self, key_sequence, callback):
         """ショートカットを追加（ApplicationShortcut で全画面有効）"""
@@ -56,6 +48,8 @@ class KeyboardShortcutManager(QObject):
         shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
         shortcut.activated.connect(callback)
         self.shortcuts[key_sequence] = shortcut
+
+
     
     # ========================
     # Undo/Redo関連機能（改良版）
@@ -161,12 +155,21 @@ class KeyboardShortcutManager(QObject):
     # 既存のショートカット実行関数
     # ========================
     
+    def _is_text_input_focused(self) -> bool:
+        """テキスト入力系ウィジェットにフォーカスがあるか判定"""
+        focused_widget = self.main_window.focusWidget()
+        return isinstance(focused_widget, (QLineEdit, QTextEdit, QPlainTextEdit))
+
     def open_file_menu(self):
         """ファイルメニューを開く"""
+        if self._is_text_input_focused():
+            return
         self.main_window.toggle_file_menu()
     
     def toggle_help_dialog(self):
         """ヘルプダイアログを表示/非表示"""
+        if self._is_text_input_focused():
+            return
         if hasattr(self.main_window, 'help_dialog'):
             if self.main_window.help_dialog.isVisible():
                 self.main_window.help_dialog.close()
@@ -174,6 +177,12 @@ class KeyboardShortcutManager(QObject):
                 self.main_window.help_dialog.show()
                 self.main_window.help_dialog.raise_()
                 self.main_window.help_dialog.activateWindow()
+
+
+    def reset_text_inputs(self):
+        """テキストリセット"""
+        if hasattr(self.main_window, 'reset_text_btn'):
+            self.main_window.reset_text_btn.click()
     
     def play_current_row(self):
         """現在フォーカス中の行を再生"""
@@ -197,6 +206,21 @@ class KeyboardShortcutManager(QObject):
     def play_sequential(self):
         """連続再生"""
         self.main_window.sequential_play_btn.click()
+
+    def save_individual(self):
+        """個別保存"""
+        if hasattr(self.main_window, 'save_individual_btn'):
+            self.main_window.save_individual_btn.click()
+
+    def save_continuous(self):
+        """連続保存"""
+        if hasattr(self.main_window, 'save_continuous_btn'):
+            self.main_window.save_continuous_btn.click()
+
+    def test_lipsync(self):
+        """リップシンクテスト"""
+        if hasattr(self.main_window, 'test_lipsync_btn'):
+            self.main_window.test_lipsync_btn.click()
     
     def add_text_row(self):
         """テキスト行を追加"""
@@ -235,8 +259,10 @@ class KeyboardShortcutManager(QObject):
     
     def save_individual(self):
         """個別保存"""
-        self.main_window.save_individual_btn.click()
+        if hasattr(self.main_window, 'save_individual_btn'):
+            self.main_window.save_individual_btn.click()
     
     def save_continuous(self):
         """連続保存"""
-        self.main_window.save_continuous_btn.click()
+        if hasattr(self.main_window, 'save_continuous_btn'):
+            self.main_window.save_continuous_btn.click()

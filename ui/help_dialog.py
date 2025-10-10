@@ -51,7 +51,7 @@ class HelpDialog(QDialog):
         footer_layout = QHBoxLayout()
         footer_layout.setContentsMargins(15, 10, 15, 15)
         
-        footer_info = QLabel("Ctrl+H で表示/非表示の切り替えができます")
+        footer_info = QLabel("H で表示/非表示の切り替えができます")
         footer_info.setStyleSheet("color: #7f8c8d; font-size: 12px;")
         
         footer_layout.addWidget(footer_info)
@@ -133,13 +133,16 @@ class HelpDialog(QDialog):
             <h2>基本ショートカット</h2>
             <table>
                 <tr><th>ショートカット</th><th>機能</th></tr>
-                <tr><td><span class="key">Ctrl+H</span></td><td>この説明を表示/非表示</td></tr>
-                <tr><td><span class="key">Ctrl+Tab</span></td><td>マスタータブに移動</td></tr>
-                <tr><td><span class="key">Ctrl+1-9</span></td><td>各テキスト行に移動</td></tr>
-                <tr><td><span class="key">Ctrl+P</span></td><td>現在行を再生</td></tr>
-                <tr><td><span class="key">Ctrl+R</span></td><td>連続再生</td></tr>
+                <tr><td><span class="key">F</span></td><td>ファイルメニューを開く</td></tr>
+                <tr><td><span class="key">H</span></td><td>この説明を表示/非表示</td></tr>
+                <tr><td><span class="key">Ctrl+D</span></td><td>テキストをリセット</td></tr>
+                <tr><td><span class="key">Ctrl+P</span></td><td>選択中のテキストを再生</td></tr>
+                <tr><td><span class="key">Ctrl+R</span></td><td>テキストを連続再生</td></tr>
                 <tr><td><span class="key">Ctrl+S</span></td><td>個別保存</td></tr>
                 <tr><td><span class="key">Ctrl+Shift+S</span></td><td>連続保存</td></tr>
+                <tr><td><span class="key">Ctrl+T</span></td><td>リップシンクテストを開始</td></tr>
+                <tr><td><span class="key">Ctrl+Z</span></td><td>設定/テキストのUndo</td></tr>
+                <tr><td><span class="key">Ctrl+Y</span></td><td>設定/テキストのRedo</td></tr>
             </table>
             
             <h2>基本的な使い方</h2>
@@ -156,9 +159,9 @@ class HelpDialog(QDialog):
     
     def keyPressEvent(self, event):
         """キー押下イベント"""
-        # Ctrl+H で閉じる
-        if (event.key() == Qt.Key.Key_H and 
-            event.modifiers() == Qt.KeyboardModifier.ControlModifier):
+        # H で閉じる
+        if (event.key() == Qt.Key.Key_H and
+            event.modifiers() == Qt.KeyboardModifier.NoModifier):
             self.close()
         # Escape でも閉じる
         elif event.key() == Qt.Key.Key_Escape:
