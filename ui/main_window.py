@@ -145,13 +145,13 @@ class TTSStudioMainWindow(QMainWindow):
         controls = QHBoxLayout()
         controls.addStretch()
 
-        self.reset_text_btn = QPushButton("🧹 テキストリセット")
+        self.reset_text_btn = QPushButton("🧹 テキストリセット(Ctrl + D)")
         self.reset_text_btn.setStyleSheet(self._gray_btn_css())
         self.reset_text_btn.setMinimumHeight(35)
         self.reset_text_btn.clicked.connect(self.reset_text_inputs)
         controls.addWidget(self.reset_text_btn)
 
-        self.stop_audio_btn = QPushButton("⏹ 音声停止")
+        self.stop_audio_btn = QPushButton("⏹ 音声停止(Ctrl + P)")
         self.stop_audio_btn.setStyleSheet(self._red_btn_css())
         self.stop_audio_btn.setMinimumHeight(35)
         self.stop_audio_btn.setEnabled(False)
@@ -166,7 +166,7 @@ class TTSStudioMainWindow(QMainWindow):
         self.save_continuous_btn.setStyleSheet(self._orange_btn_css())
         
         # リップシンクテストボタン追加
-        self.test_lipsync_btn = QPushButton("🎭 リップシンクテスト")
+        self.test_lipsync_btn = QPushButton("🎭 リップシンクテスト(Ctrl + T)")
         self.test_lipsync_btn.setStyleSheet("""
             QPushButton { background-color: #6f42c1; color: white; border: none; border-radius: 4px; font-size: 13px; font-weight: bold; padding: 6px 16px; }
             QPushButton:hover:enabled { background-color: #5a359b; }
