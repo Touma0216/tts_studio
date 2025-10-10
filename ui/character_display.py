@@ -6,7 +6,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
                              QFileDialog, QMessageBox, QLineEdit,
                              QScrollArea, QSlider, QDialog, QTabWidget, QMenu)
-from PyQt6.QtCore import Qt, QRect, QPoint, QTimer, QUrl, pyqtSignal, QObject, pyqtSlot
+from PyQt6.QtCore import Qt, QRect, QPoint, QTimer, QUrl, pyqtSignal
 from PyQt6.QtGui import QFont, QPixmap, QPainter, QPen, QColor
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebChannel import QWebChannel
@@ -300,35 +300,6 @@ class DraggableImageLabel(QLabel):
             self.setCursor(Qt.CursorShape.ArrowCursor)
         super().leaveEvent(event)
 
-class RecordingBackend(QObject):
-    """JavaScript→Python ブリッジ（録画用）"""
-    
-    frame_received = pyqtSignal(str)  # DataURL形式のフレームを受信
-    
-    def __init__(self):
-        super().__init__()
-        self.frame_count = 0
-    
-    @pyqtSlot(str)
-    def receiveFrame(self, dataURL: str):
-        """JavaScriptからフレームを受信"""
-        try:
-            self.frame_count += 1
-            
-            # 100フレームごとにログ
-            if self.frame_count % 100 == 0:
-                print(f"📹 受信: {self.frame_count}フレーム")
-            
-            # シグナルで通知（後でVideoRecorderに接続）
-            self.frame_received.emit(dataURL)
-            
-        except Exception as e:
-            print(f"❌ フレーム受信エラー: {e}")
-    
-    def reset_count(self):
-        """フレームカウントリセット"""
-        self.frame_count = 0
-
 class Live2DWebView(QWebEngineView):
     """Live2D表示用WebEngineView（デバッグ版）"""
     model_loaded = pyqtSignal(str)
@@ -352,13 +323,6 @@ class Live2DWebView(QWebEngineView):
         self.page().javaScriptConsoleMessage = self.on_js_console_message
         
         self.page().loadFinished.connect(self.on_page_loaded)
-        
-        # 🎥 追加：QWebChannel初期化（録画用）
-        self.recording_backend = RecordingBackend()
-        self.web_channel = QWebChannel(self.page())
-        self.web_channel.registerObject('recording_backend', self.recording_backend)
-        self.page().setWebChannel(self.web_channel)
-        print("✅ QWebChannel（録画用）初期化完了")
         
         self.load_initial_page()
     
@@ -481,21 +445,6 @@ class Live2DWebView(QWebEngineView):
     def on_page_loaded(self, success):
         if success and self.live2d_url and self.page().url().toString() == self.live2d_url:
             print("✅ Live2D viewer page loaded successfully")
-            
-            # 🎥 追加：JavaScript側のQWebChannel初期化を呼び出し
-            script = """
-            (function() {
-                if (typeof window.initializeRecordingChannel === 'function') {
-                    window.initializeRecordingChannel();
-                    console.log('✅ JavaScript側QWebChannel初期化完了');
-                    return true;
-                } else {
-                    console.warn('⚠️ initializeRecordingChannel関数が見つかりません');
-                    return false;
-                }
-            })()
-            """
-            self.page().runJavaScript(script)
 
             if self.character_display:
                 QTimer.singleShot(200, self.character_display.apply_live2d_background)
@@ -689,20 +638,6 @@ class CharacterDisplayWidget(QWidget):
         button_layout = QHBoxLayout()
         button_layout.setContentsMargins(0, 0, 0, 0)
         button_layout.setSpacing(8)
-        
-        # スクショ連射ボタン
-        self.screenshot_burst_btn = QPushButton("📸 スクショ連射")
-        self.screenshot_burst_btn.setToolTip("3秒間連続でスクリーンショットを撮影（背景透過PNG）")
-        self.screenshot_burst_btn.setEnabled(False)
-        self.screenshot_burst_btn.setStyleSheet(
-            "QPushButton { background-color: #9c27b0; color: white; border: none; border-radius: 4px; "
-            "font-size: 11px; font-weight: bold; padding: 4px 12px; } "
-            "QPushButton:hover:enabled { background-color: #7b1fa2; } "
-            "QPushButton:pressed:enabled { background-color: #6a1b9a; } "
-            "QPushButton:disabled { color: #ccc; background-color: #f0f0f0; }"
-        )
-        self.screenshot_burst_btn.clicked.connect(self.start_screenshot_burst)
-        button_layout.addWidget(self.screenshot_burst_btn)
         
         # ミニマップボタン
         self.toggle_minimap_btn = QPushButton("🗺️ ミニマップ")
@@ -1725,9 +1660,6 @@ class CharacterDisplayWidget(QWidget):
             self.live2d_v_position_slider
         ]:
             control.setEnabled(True)
-
-        self.screenshot_burst_btn.setEnabled(True)
-
         
         if self.current_display_mode == "live2d":
             self.toggle_minimap_btn.setEnabled(True)
@@ -2234,170 +2166,3 @@ class CharacterDisplayWidget(QWidget):
             self.live2d_webview.page().runJavaScript(script)
         except Exception as e:
             print(f"❌ 物理演算強度設定エラー: {e}")
-
-    # ================================
-    # スクリーンショット連射機能
-    # ================================
-
-    def start_screenshot_burst(self):
-        """スクショ連射開始（3秒間、背景透過PNG）"""
-        if not hasattr(self, 'live2d_webview') or not self.live2d_webview.is_model_loaded:
-            QMessageBox.warning(self, "エラー", "Live2Dモデルが読み込まれていません")
-            return
-        
-        try:
-            # 🔥 連射パラメータ（10枚に変更）
-            duration = 3.0  # 3秒間
-            total_frames = 10  # 10枚固定
-            interval = duration / total_frames  # 300msごと
-            
-            print(f"📸 スクショ連射開始: {total_frames}枚、{interval*1000}ms間隔")
-            
-            # ボタン無効化
-            self.screenshot_burst_btn.setEnabled(False)
-            self.screenshot_burst_btn.setText("📸 撮影中...")
-            
-            # デフォルト保存先（tts_studio/screenShot/タイムスタンプ/）
-            timestamp = time.strftime("%Y%m%d_%H%M%S")
-            default_dir = Path("screenShot") / timestamp
-            default_dir.mkdir(parents=True, exist_ok=True)
-            
-            burst_dir = default_dir
-            
-            print(f"📁 保存先: {burst_dir.absolute()}")
-            
-            # 受信準備
-            self._burst_save_dir = burst_dir
-            self._burst_frame_count = 0
-            self._burst_total_frames = total_frames
-            
-            # RecordingBackendのシグナルに接続
-            if hasattr(self.live2d_webview, 'recording_backend'):
-                self.live2d_webview.recording_backend.frame_received.connect(
-                    self.on_screenshot_frame_received
-                )
-            
-            # JavaScript実行
-            script = f"""
-            (function() {{
-                try {{
-                    if (typeof window.startScreenshotBurst === 'function') {{
-                        window.startScreenshotBurst({interval * 1000}, {total_frames});
-                        return true;
-                    }} else {{
-                        console.error('❌ startScreenshotBurst関数が見つかりません');
-                        return false;
-                    }}
-                }} catch (error) {{
-                    console.error('❌ スクショ連射エラー:', error);
-                    return false;
-                }}
-            }})()
-            """
-            
-            self.live2d_webview.page().runJavaScript(script, self._on_burst_started)
-            
-        except Exception as e:
-            print(f"❌ スクショ連射開始エラー: {e}")
-            import traceback
-            traceback.print_exc()
-            self._reset_screenshot_button()
-            QMessageBox.critical(self, "エラー", f"スクショ連射でエラーが発生しました:\n{str(e)}")
-
-    def _on_burst_started(self, result):
-        """連射開始結果"""
-        if result:
-            print("✅ JavaScript側で連射開始")
-        else:
-            print("⚠️ JavaScript側で連射開始失敗")
-            self._reset_screenshot_button()
-            QMessageBox.warning(self, "エラー", 
-                "スクショ連射の開始に失敗しました。\n"
-                "JavaScript側の実装を確認してください。")
-
-    def on_screenshot_frame_received(self, dataURL: str):
-        """JavaScript側からフレームを受信して保存"""
-        try:
-            if not hasattr(self, '_burst_save_dir'):
-                return
-            
-            # DataURLからPNGを抽出
-            if not dataURL.startswith('data:image/png;base64,'):
-                print(f"⚠️ 不正なDataURL形式: {dataURL[:50]}...")
-                return
-            
-            # Base64デコード
-            base64_data = dataURL.split(',', 1)[1]
-            image_data = base64.b64decode(base64_data)
-            
-            # ファイル保存
-            self._burst_frame_count += 1
-            filename = f"frame_{self._burst_frame_count:04d}.png"
-            filepath = self._burst_save_dir / filename
-            
-            with open(filepath, 'wb') as f:
-                f.write(image_data)
-            
-            # 進捗表示
-            if self._burst_frame_count % 5 == 0:
-                print(f"  ✓ [{self._burst_frame_count}/{self._burst_total_frames}] 保存完了")
-            
-            self.screenshot_burst_btn.setText(f"📸 撮影中... ({self._burst_frame_count}/{self._burst_total_frames})")
-            
-            # 完了チェック
-            if self._burst_frame_count >= self._burst_total_frames:
-                self._finish_screenshot_burst()
-            
-        except Exception as e:
-            print(f"❌ フレーム保存エラー: {e}")
-
-    def _finish_screenshot_burst(self):
-        """連射完了処理"""
-        try:
-            print(f"✅ スクショ連射完了: {self._burst_frame_count}枚")
-            
-            # シグナル切断
-            if hasattr(self.live2d_webview, 'recording_backend'):
-                try:
-                    self.live2d_webview.recording_backend.frame_received.disconnect(
-                        self.on_screenshot_frame_received
-                    )
-                except:
-                    pass
-            
-            # 🔥 保存先の絶対パスを取得
-            save_path = self._burst_save_dir.absolute()
-            
-            # 🔥 フォルダを開く（通知なし）
-            import os
-            import subprocess
-            import platform
-            
-            system = platform.system()
-            if system == "Windows":
-                os.startfile(save_path)
-            elif system == "Darwin":  # macOS
-                subprocess.run(["open", str(save_path)])
-            else:  # Linux
-                subprocess.run(["xdg-open", str(save_path)])
-            
-            print(f"📁 保存先を開きました: {save_path}")
-            
-            # クリーンアップ
-            if hasattr(self, '_burst_save_dir'):
-                delattr(self, '_burst_save_dir')
-            if hasattr(self, '_burst_frame_count'):
-                delattr(self, '_burst_frame_count')
-            if hasattr(self, '_burst_total_frames'):
-                delattr(self, '_burst_total_frames')
-            
-            self._reset_screenshot_button()
-            
-        except Exception as e:
-            print(f"❌ 連射完了処理エラー: {e}")
-            self._reset_screenshot_button()
-
-    def _reset_screenshot_button(self):
-        """スクショボタンをリセット"""
-        self.screenshot_burst_btn.setEnabled(True)
-        self.screenshot_burst_btn.setText("📸 スクショ連射")

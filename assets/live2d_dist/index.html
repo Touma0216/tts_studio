@@ -39,37 +39,6 @@
     <script type="module" src="./modeling/modeling_controller.js"></script>
     <script type="module" src="./modeling/drag_controller.js"></script>
     <script type="module" src="./modeling/preset_manager.js"></script>
-    
-    <!-- 🆕 QWebChannel初期化（録画・スクショ用） -->
-    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
-    <script>
-        /**
-         * QWebChannelを初期化（Python側から呼び出される）
-         */
-        window.initializeRecordingChannel = function() {
-            try {
-                if (typeof qt === 'undefined' || !qt.webChannelTransport) {
-                    console.warn("⚠️ QWebChannelが利用できません");
-                    return false;
-                }
-                
-                new QWebChannel(qt.webChannelTransport, function(channel) {
-                    // Python側のRecordingBackendオブジェクトを取得
-                    window.recording_backend = channel.objects.recording_backend;
-                    console.log("✅ QWebChannel接続完了（録画・スクショ用）");
-                });
-                
-                return true;
-                
-            } catch (error) {
-                console.error("❌ QWebChannel初期化エラー:", error);
-                return false;
-            }
-        };
-        
-        console.log("✅ QWebChannel初期化関数を定義しました");
-    </script>
-    
     <script type="module" src="./main.js"></script>
 </body>
 </html>
