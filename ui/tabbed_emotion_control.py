@@ -1,116 +1,13 @@
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, 
-                            QComboBox, QDoubleSpinBox, QGroupBox, QGridLayout, QPushButton, QTabWidget,
-                            QInputDialog, QLineEdit)
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider,
+                            QComboBox, QDoubleSpinBox, QGroupBox, QGridLayout, QTabWidget)
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont
-import json
-import os
-from pathlib import Path
 from .history_manager import ParameterHistory
 
-
-class EmotionPresetManager:
-    """感情パラメータプリセット管理クラス（統一版）"""
-    
-    def __init__(self):
-        self.settings_file = Path("user_settings.json")
-        self.default_presets = {
-            'standard': {
-                'name': '標準',
-                'parameters': {
-                    'style': 'Neutral', 'style_weight': 1.0, 'length_scale': 0.85,
-                    'pitch_scale': 1.0, 'intonation_scale': 1.0, 'sdp_ratio': 0.25, 'noise': 0.35
-                }
-            }
-        }
-        self.settings = self.load_settings()
-    
-    def load_settings(self):
-        try:
-            if self.settings_file.exists():
-                with open(self.settings_file, 'r', encoding='utf-8') as f:
-                    loaded = json.load(f)
-                    if 'emotion_presets' not in loaded:
-                        loaded['emotion_presets'] = {
-                            'presets': self.default_presets.copy(),
-                            'last_selected': 'standard'
-                        }
-                    return loaded
-            else:
-                return {
-                    'emotion_presets': {
-                        'presets': self.default_presets.copy(),
-                        'last_selected': 'standard'
-                    }
-                }
-        except:
-            return {
-                'emotion_presets': {
-                    'presets': self.default_presets.copy(),
-                    'last_selected': 'standard'
-                }
-            }
-    
-    def save_settings(self):
-        try:
-            with open(self.settings_file, 'w', encoding='utf-8') as f:
-                json.dump(self.settings, f, ensure_ascii=False, indent=2)
-        except:
-            pass
-    
-    def get_all_presets(self):
-        return self.settings.get('emotion_presets', {}).get('presets', {})
-    
-    def get_preset(self, preset_key):
-        presets = self.get_all_presets()
-        return presets.get(preset_key)
-    
-    def save_preset(self, preset_key, name, parameters):
-        if 'emotion_presets' not in self.settings:
-            self.settings['emotion_presets'] = {'presets': {}, 'last_selected': 'standard'}
-        
-        self.settings['emotion_presets']['presets'][preset_key] = {
-            'name': name,
-            'parameters': parameters.copy()
-        }
-        self.save_settings()
-    
-    def delete_preset(self, preset_key):
-        if preset_key in self.default_presets:
-            return False
-        
-        presets = self.settings.get('emotion_presets', {}).get('presets', {})
-        if preset_key in presets:
-            del presets[preset_key]
-            self.save_settings()
-            return True
-        return False
-    
-    def rename_preset(self, preset_key, new_name):
-        presets = self.settings.get('emotion_presets', {}).get('presets', {})
-        if preset_key in presets:
-            presets[preset_key]['name'] = new_name
-            self.save_settings()
-            return True
-        return False
-    
-    def is_default_preset(self, preset_key):
-        return preset_key in self.default_presets
-
-# グローバル統一プリセット管理器
-_global_preset_manager = None
-
-def get_global_preset_manager():
-    global _global_preset_manager
-    if _global_preset_manager is None:
-        _global_preset_manager = EmotionPresetManager()
-    return _global_preset_manager
 
 class SingleEmotionControl(QWidget):
     """単一行の感情制御ウィジェット（複数Undo対応版）"""
     
     parameters_changed = pyqtSignal(str, dict)
-    preset_list_changed = pyqtSignal()  # プリセットリスト変更通知
     undo_executed = pyqtSignal(str)  # Undo実行通知
     
     def __init__(self, row_id, parameters=None, is_master=False, parent=None):
@@ -132,12 +29,8 @@ class SingleEmotionControl(QWidget):
         # 利用可能感情（モデル読み込み後に更新）
         self.available_styles = ['Neutral']  # デフォルト
         
-        # 統一プリセット管理器
-        self.preset_manager = get_global_preset_manager()
-        
         self.init_ui()
         self.load_parameters()
-        self.load_preset_list()
         
         # 初期状態を履歴に保存
         self.history.save_current_state(self.current_params)
@@ -152,9 +45,7 @@ class SingleEmotionControl(QWidget):
         
         params_group = self.create_params_group()
         layout.addWidget(params_group)
-        
-        preset_group = self.create_preset_group()
-        layout.addWidget(preset_group)
+
 
         if self.is_master:
             info_label = QLabel("★ デフォルトパラメータ - ここを変更すると全てのタブに反映されます")
@@ -461,154 +352,6 @@ class SingleEmotionControl(QWidget):
         
         return group
     
-    def create_preset_group(self):
-        group = QGroupBox("プリセット")
-        if self.is_master:
-            group.setStyleSheet("""
-                QGroupBox {
-                    font-weight: bold;
-                    border: 2px solid #ffd700;
-                    border-radius: 6px;
-                    margin-top: 10px;
-                    padding-top: 5px;
-                    background-color: #fffef7;
-                }
-                QGroupBox::title {
-                    subcontrol-origin: margin;
-                    left: 10px;
-                    padding: 0 5px 0 5px;
-                    background-color: #fffef7;
-                    color: #b8860b;
-                }
-            """)
-        else:
-            group.setStyleSheet("""
-                QGroupBox {
-                    font-weight: bold;
-                    border: 1px solid #ccc;
-                    border-radius: 6px;
-                    margin-top: 10px;
-                    padding-top: 5px;
-                }
-                QGroupBox::title {
-                    subcontrol-origin: margin;
-                    left: 10px;
-                    padding: 0 5px 0 5px;
-                    background-color: white;
-                }
-            """)
-        
-        layout = QVBoxLayout(group)
-        layout.setSpacing(10)
-        
-        selection_layout = QHBoxLayout()
-        selection_layout.setSpacing(8)
-        
-        preset_label = QLabel("プリセット:")
-        preset_label.setMinimumWidth(80)
-        
-        self.preset_combo = QComboBox()
-        self.preset_combo.setStyleSheet("""
-            QComboBox {
-                padding: 6px;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-                font-size: 12px;
-                min-width: 120px;
-            }
-            QComboBox::drop-down {
-                border: none;
-                width: 20px;
-            }
-            QComboBox::down-arrow {
-                width: 12px;
-                height: 12px;
-            }
-        """)
-        self.preset_combo.currentTextChanged.connect(self.on_preset_selected)
-        
-        self.rename_btn = QPushButton("✎")
-        self.rename_btn.setFixedSize(28, 28)
-        self.rename_btn.setToolTip("プリセット名を変更")
-        self.rename_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f8f9fa;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-                font-size: 14px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #e2e6ea;
-                border-color: #adb5bd;
-            }
-        """)
-        self.rename_btn.clicked.connect(self.rename_current_preset)
-        
-        self.delete_btn = QPushButton("🗑️")
-        self.delete_btn.setFixedSize(28, 28)
-        self.delete_btn.setToolTip("プリセットを削除")
-        self.delete_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f8f9fa;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-                font-size: 12px;
-            }
-            QPushButton:hover {
-                background-color: #f5c6cb;
-                border-color: #f1556c;
-            }
-        """)
-        self.delete_btn.clicked.connect(self.delete_current_preset)
-        
-        selection_layout.addWidget(preset_label)
-        selection_layout.addWidget(self.preset_combo, 1)
-        selection_layout.addWidget(self.rename_btn)
-        selection_layout.addWidget(self.delete_btn)
-        
-        self.save_btn = QPushButton("💾 現在の設定をプリセットとして保存")
-        self.save_btn.setMinimumHeight(35)
-        
-        if self.is_master:
-            self.save_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #ffc107;
-                    color: #212529;
-                    border: 2px solid #ffd700;
-                    border-radius: 6px;
-                    font-size: 13px;
-                    font-weight: bold;
-                    padding: 8px 16px;
-                }
-                QPushButton:hover {
-                    background-color: #e0a800;
-                    border-color: #daa520;
-                }
-            """)
-        else:
-            self.save_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #28a745;
-                    color: white;
-                    border: none;
-                    border-radius: 6px;
-                    font-size: 13px;
-                    font-weight: bold;
-                    padding: 8px 16px;
-                }
-                QPushButton:hover {
-                    background-color: #218838;
-                }
-            """)
-        
-        self.save_btn.clicked.connect(self.save_current_preset)
-        
-        layout.addLayout(selection_layout)
-        layout.addWidget(self.save_btn)
-        
-        return group
-    
     # ================================
     # 改良版Undo機能の実装
     # ================================
@@ -736,90 +479,6 @@ class SingleEmotionControl(QWidget):
         if not self.is_loading_parameters:
             self.emit_parameters_changed()
     
-    def load_preset_list(self):
-        self.preset_combo.clear()
-        
-        presets = self.preset_manager.get_all_presets()
-        for preset_key, preset_data in presets.items():
-            if isinstance(preset_data, dict) and 'name' in preset_data:
-                self.preset_combo.addItem(preset_data['name'], preset_key)
-    
-    def on_preset_selected(self):
-        if self.is_loading_parameters:
-            return
-            
-        preset_key = self.preset_combo.currentData()
-        if preset_key:
-            preset = self.preset_manager.get_preset(preset_key)
-            if preset:
-                # 現在の状態を履歴に保存してからプリセット適用
-                self.save_current_state_to_history()
-                
-                self.current_params.update(preset['parameters'])
-                self.load_parameters()
-                self.emit_parameters_changed()
-            
-            is_default = self.preset_manager.is_default_preset(preset_key)
-            self.rename_btn.setEnabled(not is_default)
-            self.delete_btn.setEnabled(not is_default)
-    
-    def save_current_preset(self):
-        name, ok = QInputDialog.getText(self, "プリセット保存", "プリセット名を入力してください:", text="カスタムプリセット")
-        
-        if ok and name.strip():
-            import time
-            preset_key = f"custom_{int(time.time())}"
-            
-            self.preset_manager.save_preset(preset_key, name.strip(), self.current_params)
-            
-            # 全タブにリスト更新を通知
-            self.preset_list_changed.emit()
-            
-            # 保存したプリセットを選択
-            self.load_preset_list()
-            for i in range(self.preset_combo.count()):
-                if self.preset_combo.itemData(i) == preset_key:
-                    self.preset_combo.setCurrentIndex(i)
-                    break
-    
-    def rename_current_preset(self):
-        preset_key = self.preset_combo.currentData()
-        if not preset_key or self.preset_manager.is_default_preset(preset_key):
-            return
-        
-        current_preset = self.preset_manager.get_preset(preset_key)
-        if not current_preset:
-            return
-        
-        new_name, ok = QInputDialog.getText(self, "プリセット名変更", "新しいプリセット名を入力してください:", text=current_preset['name'])
-        
-        if ok and new_name.strip():
-            self.preset_manager.rename_preset(preset_key, new_name.strip())
-            
-            # 全タブにリスト更新を通知
-            self.preset_list_changed.emit()
-            
-            self.load_preset_list()
-            for i in range(self.preset_combo.count()):
-                if self.preset_combo.itemData(i) == preset_key:
-                    self.preset_combo.setCurrentIndex(i)
-                    break
-    
-    def delete_current_preset(self):
-        preset_key = self.preset_combo.currentData()
-        if not preset_key or self.preset_manager.is_default_preset(preset_key):
-            return
-        
-        if self.preset_manager.delete_preset(preset_key):
-            # 全タブにリスト更新を通知
-            self.preset_list_changed.emit()
-            
-            self.load_preset_list()
-            for i in range(self.preset_combo.count()):
-                if self.preset_combo.itemData(i) == 'standard':
-                    self.preset_combo.setCurrentIndex(i)
-                    break
-    
     def load_parameters(self):
         self.is_loading_parameters = True
         
@@ -852,10 +511,6 @@ class SingleEmotionControl(QWidget):
         
         self.current_params.update(master_params)
         self.load_parameters()
-    
-    def refresh_preset_list(self):
-        """プリセットリストを更新（外部から呼ばれる）"""
-        self.load_preset_list()
     
     def update_emotion_combo(self, available_styles):
         """モデルから取得した感情リストでコンボボックスを更新（統一版）"""
@@ -988,7 +643,6 @@ class TabbedEmotionControl(QWidget):
     def setup_master_tab(self):
         self.master_control = SingleEmotionControl("master", is_master=True)
         self.master_control.parameters_changed.connect(self.on_master_parameters_changed)
-        self.master_control.preset_list_changed.connect(self.on_preset_list_changed)
         self.master_control.undo_executed.connect(self.on_undo_executed)
         
         self.tab_widget.insertTab(0, self.master_control, "★")
@@ -999,15 +653,7 @@ class TabbedEmotionControl(QWidget):
             control.update_parameters_from_master(parameters)
         
         self.master_parameters_changed.emit(parameters)
-    
-    def on_preset_list_changed(self):
-        """プリセットリスト変更時 - 全タブを更新"""
-        if self.master_control:
-            self.master_control.refresh_preset_list()
-        
-        for control in self.emotion_controls.values():
-            control.refresh_preset_list()
-    
+
     def on_undo_executed(self, row_id):
         """Undo実行通知"""
         pass
@@ -1043,7 +689,6 @@ class TabbedEmotionControl(QWidget):
             
             control = SingleEmotionControl(row_id, base_params)
             control.parameters_changed.connect(self.parameters_changed)
-            control.preset_list_changed.connect(self.on_preset_list_changed)
             control.undo_executed.connect(self.on_undo_executed)
             
             # 👈 新しいタブにも現在の利用可能感情を適用
