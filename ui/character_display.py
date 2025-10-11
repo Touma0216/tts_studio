@@ -102,6 +102,7 @@ class MiniMapWidget(QLabel):
         self.character_display = None
         self.original_pixmap = None
         self.view_rect = QRect()
+        self._scaled_pixmap_size = None
         self.setStyleSheet("""
             QLabel { background-color: rgba(255, 255, 255, 200); border: 2px solid #666; border-radius: 4px; }
         """)
@@ -116,6 +117,7 @@ class MiniMapWidget(QLabel):
         if not original_pixmap or original_pixmap.isNull():
             self.clear()
             self.setText("ミニマップ")
+            self._scaled_pixmap_size = None
             return
         self.original_pixmap = original_pixmap
         self.view_rect = view_rect
@@ -124,6 +126,7 @@ class MiniMapWidget(QLabel):
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation
         )
+        self._scaled_pixmap_size = mini_pixmap.size()
         if not view_rect.isNull():
             painter = QPainter(mini_pixmap)
             painter.setPen(QPen(QColor(255, 0, 0, 200), 2))
@@ -141,11 +144,27 @@ class MiniMapWidget(QLabel):
         if not self.character_display or not self.original_pixmap:
             return
         
-        click_pos = event.position().toPoint()
-        scale_x = self.original_pixmap.width() / self.width()
-        scale_y = self.original_pixmap.height() / self.height()
-        target_x = round(click_pos.x() * scale_x)
-        target_y = round(click_pos.y() * scale_y)
+        pixmap = self.pixmap()
+        if not pixmap or pixmap.isNull():
+            return
+
+        click_pos = event.position()
+        pixmap_size = self._scaled_pixmap_size or pixmap.size()
+        offset_x = (self.width() - pixmap_size.width()) / 2
+        offset_y = (self.height() - pixmap_size.height()) / 2
+
+        relative_x = click_pos.x() - offset_x
+        relative_y = click_pos.y() - offset_y
+        if relative_x < 0 or relative_y < 0:
+            return
+        if relative_x > pixmap_size.width() or relative_y > pixmap_size.height():
+            return
+
+        scale_x = self.original_pixmap.width() / pixmap_size.width()
+        scale_y = self.original_pixmap.height() / pixmap_size.height()
+        target_x = round(relative_x * scale_x)
+        target_y = round(relative_y * scale_y)
+
         
         # モードに応じて動作分岐
         if self.character_display.current_display_mode == "image":
@@ -155,6 +174,7 @@ class MiniMapWidget(QLabel):
             v_pos = int((target_y / self.original_pixmap.height()) * 100)
             self.character_display.live2d_h_position_slider.setValue(h_pos)
             self.character_display.live2d_v_position_slider.setValue(v_pos)
+        event.accept()
 
 class DraggableImageLabel(QLabel):
     """ドラッグで移動可能な画像表示ラベル（修正版：直感的操作）"""
@@ -1131,6 +1151,8 @@ class CharacterDisplayWidget(QWidget):
         scale_value = value / 100.0
         settings = {'scale': scale_value}
         self.live2d_webview.update_model_settings(settings)
+
+        self.update_minimap_view()
         
         # 位置調整スライダーは常に有効化（制限を削除）
         if self.current_live2d_id:
@@ -1160,6 +1182,8 @@ class CharacterDisplayWidget(QWidget):
             'position_y': pos_y
         }
         self.live2d_webview.update_model_settings(settings)
+
+        self.update_minimap_view()
         
         # 設定保存
         if not self.live2d_h_position_slider.signalsBlocked():
@@ -1175,8 +1199,7 @@ class CharacterDisplayWidget(QWidget):
             if self.original_pixmap and self.current_display_mode == "image":
                 self.update_minimap_view()
             elif self.original_pixmap:
-                # Live2Dモードでは赤枠なしで画像だけ表示
-                self.minimap.update_minimap(self.original_pixmap, QRect())
+                self.update_minimap_view()
             else:
                 self.minimap.clear()
                 self.minimap.setText("ミニマップ")
@@ -1607,8 +1630,7 @@ class CharacterDisplayWidget(QWidget):
         if minimap_visible:
             self._ensure_minimap_parent()
             self.minimap.show()
-            # Live2Dモードでは赤枠なしで画像だけ表示
-            self.minimap.update_minimap(self.original_pixmap, QRect())
+            self.update_minimap_view()
         else:
             self.minimap.hide()
 
@@ -1833,6 +1855,10 @@ class CharacterDisplayWidget(QWidget):
     
     def update_minimap_view(self):
         if not self.original_pixmap or not self.minimap.isVisible(): return
+        if self.current_display_mode == "live2d":
+            view_rect = self._calculate_live2d_view_rect()
+            self.minimap.update_minimap(self.original_pixmap, view_rect)
+            return
         h_scroll, v_scroll = self.scroll_area.horizontalScrollBar(), self.scroll_area.verticalScrollBar()
         view_w, view_h = self.scroll_area.viewport().width(), self.scroll_area.viewport().height()
         img_w, img_h = self.character_image_label.width(), self.character_image_label.height()
@@ -1841,6 +1867,31 @@ class CharacterDisplayWidget(QWidget):
         scale_y = self.original_pixmap.height() / img_h
         view_rect = QRect(round(h_scroll.value() * scale_x), round(v_scroll.value() * scale_y), round(view_w * scale_x), round(view_h * scale_y))
         self.minimap.update_minimap(self.original_pixmap, view_rect)
+
+    def _calculate_live2d_view_rect(self) -> QRect:
+        if not hasattr(self, 'live2d_zoom_slider'):
+            return QRect()
+
+        pixmap_width = self.original_pixmap.width()
+        pixmap_height = self.original_pixmap.height()
+        if pixmap_width <= 0 or pixmap_height <= 0:
+            return QRect()
+
+        zoom_percent = max(1, self.live2d_zoom_slider.value())
+        view_width = min(pixmap_width, round(pixmap_width * 100 / zoom_percent))
+        view_height = min(pixmap_height, round(pixmap_height * 100 / zoom_percent))
+
+        h_pos = self.live2d_h_position_slider.value()
+        v_pos = self.live2d_v_position_slider.value()
+        center_x = pixmap_width * (h_pos / 100.0)
+        center_y = pixmap_height * (v_pos / 100.0)
+
+        x = round(center_x - view_width / 2)
+        y = round(center_y - view_height / 2)
+        x = max(0, min(pixmap_width - view_width, x))
+        y = max(0, min(pixmap_height - view_height, y))
+
+        return QRect(x, y, view_width, view_height)
     
     def move_view_to_position(self, target_x, target_y):
         if not self.original_pixmap: return
