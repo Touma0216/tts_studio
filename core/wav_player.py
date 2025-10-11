@@ -31,6 +31,8 @@ class WAVPlayer(QObject):
         self._playback_thread = None
         self._playback_start_time = 0.0  # 🔥 追加
         self._playback_start_position = 0.0  # 🔥 追加
+        self._playback_session_id = 0
+        self._active_session_id = 0
         
         # 🔥 追加：再生完了時の処理
         self.playback_finished.connect(self._on_playback_finished)
@@ -81,17 +83,23 @@ class WAVPlayer(QObject):
             # 一時停止から再開
             self.is_paused = False
         else:
-            # 新規再生
-            self.current_position = start_position if start_position is not None else 0.0
+            # 新規または明示的な開始位置からの再生
+            if start_position is not None:
+                self.current_position = start_position
         
         self.is_playing = True
+
+        # セッションIDを更新して古い再生完了イベントを無効化
+        self._playback_session_id += 1
+        session_id = self._playback_session_id
+        self._active_session_id = session_id
         
         # 🔥 追加：再生開始時刻を記録
         import time
         self._playback_start_time = time.time()
         self._playback_start_position = self.current_position
         
-        self._start_playback()
+        self._start_playback(session_id)
         self._position_timer.start(50)  # 50msごとに位置更新
         
         self.playback_started.emit()
@@ -119,7 +127,7 @@ class WAVPlayer(QObject):
         self.is_paused = False
         self._stop_playback()
         self._position_timer.stop()
-        self.current_position = 0.0
+        self._active_session_id = 0
         
         self.playback_stopped.emit()
         print("⏹️ 停止")
@@ -144,7 +152,7 @@ class WAVPlayer(QObject):
         """音量設定（0.0〜2.0）"""
         self.volume = max(0.0, min(2.0, volume))
     
-    def _start_playback(self):
+    def _start_playback(self, session_id: int):
         """内部：再生開始"""
         try:
             start_sample = int(self.current_position * self.sample_rate)
@@ -158,7 +166,7 @@ class WAVPlayer(QObject):
             audio_segment = audio_segment * self.volume
             
             # 別スレッドで再生
-            def play_audio():
+            def play_audio(expected_session_id=session_id):
                 try:
                     import time
                     play_start = time.time()
@@ -166,7 +174,7 @@ class WAVPlayer(QObject):
                     actual_duration = time.time() - play_start
                     print(f"🔍 実際の再生時間: {actual_duration:.2f}秒")
                     
-                    if self.is_playing:
+                    if self._active_session_id == expected_session_id:
                         self.is_playing = False
                         self.playback_finished.emit()
                 except Exception as e:
@@ -205,6 +213,9 @@ class WAVPlayer(QObject):
         """再生完了時の処理"""
         self._position_timer.stop()
         self.current_position = self.duration
+        self.is_playing = False
+        self.is_paused = False
+        self._active_session_id = 0
         self.playback_position_changed.emit(self.current_position)
     
     def get_audio_data(self) -> Optional[np.ndarray]:

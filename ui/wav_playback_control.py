@@ -732,12 +732,16 @@ class WAVPlaybackControl(QWidget):
             self.playback_paused.emit()
             print("⏸️ 一時停止")
         else:
+            start_pos = self.current_position
+            if self.duration > 0 and start_pos >= self.duration:
+                start_pos = 0.0
+                self.current_position = 0.0
+                self.update_position(self.current_position)
             self.is_playing = True
             self.is_paused = False
             self.play_btn.setText("⏸️ 一時停止")
             self.stop_btn.setEnabled(True)
             
-            start_pos = self.current_position if self.is_paused else 0.0
             self.playback_started.emit(start_pos)
             print(f"▶️ 再生開始: {start_pos:.2f}秒から")
     
@@ -746,17 +750,19 @@ class WAVPlaybackControl(QWidget):
         if not self.is_wav_loaded:
             return
         
+        was_active = self.is_playing or self.is_paused
+
         self.is_playing = False
         self.is_paused = False
-        self.current_position = 0.0
         
         self.play_btn.setText("▶️ 再生")
         self.stop_btn.setEnabled(False)
-        self.seek_slider.setValue(0)
-        self.current_time_label.setText("00:00")
-        
-        self.playback_stopped.emit()
-        print("⏹️ 停止")
+        # 最新の位置表示を維持
+        self.update_position(self.current_position)
+
+        if was_active:
+            self.playback_stopped.emit()
+            print("⏹️ 停止")
     
     def update_position(self, position: float):
         """再生位置を更新"""
@@ -805,7 +811,12 @@ class WAVPlaybackControl(QWidget):
     
     def on_playback_finished(self):
         """再生終了時"""
-        self.stop_playback()
+        self.is_playing = False
+        self.is_paused = False
+        self.current_position = self.duration
+        self.play_btn.setText("▶️ 再生")
+        self.stop_btn.setEnabled(False)
+        self.update_position(self.current_position)
         print("✅ 再生完了")
     
     def _format_time(self, seconds: float) -> str:
@@ -821,3 +832,7 @@ class WAVPlaybackControl(QWidget):
     def get_current_file_path(self) -> str:
         """現在のファイルパスを取得"""
         return self.current_file_path
+
+    def has_active_playback(self) -> bool:
+        """再生中または一時停止中かどうか"""
+        return self.is_wav_loaded and (self.is_playing or self.is_paused)

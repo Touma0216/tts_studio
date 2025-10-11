@@ -258,8 +258,8 @@ class TTSStudioMainWindow(QMainWindow):
             timeout_ms = int(duration_sec * 1000) + 300
             self._tts_playback_timer.start(timeout_ms)
 
-        if hasattr(self, 'stop_audio_btn') and self.stop_audio_btn:
-            self.stop_audio_btn.setEnabled(True)
+        self._update_stop_button_state()
+
 
     def _on_tts_playback_finished(self):
         if self._tts_playback_timer.isActive():
@@ -269,8 +269,8 @@ class TTSStudioMainWindow(QMainWindow):
 
         context = self._tts_playback_context
 
-        if hasattr(self, 'stop_audio_btn') and self.stop_audio_btn:
-            self.stop_audio_btn.setEnabled(False)
+        self._update_stop_button_state()
+
 
         if self._tts_playback_context == "test":
             self._reset_test_button()
@@ -281,7 +281,28 @@ class TTSStudioMainWindow(QMainWindow):
         if context in {"single", "sequential", "test"}:
             self._stop_wav_lipsync()
 
+    def _update_stop_button_state(self):
+        """共通の停止ボタンの有効/無効を更新"""
+        if not hasattr(self, 'stop_audio_btn') or not self.stop_audio_btn:
+            return
+
+        wav_active = False
+        try:
+            wav_active = bool(getattr(self.wav_player, 'is_playing', False) or
+                              getattr(self.wav_player, 'is_paused', False))
+        except Exception:
+            wav_active = False
+
+        self.stop_audio_btn.setEnabled(self._tts_playing or wav_active)
+
     def stop_tts_audio(self):
+        try:
+            wav_control = self.tabbed_audio_control.get_wav_playback_control()
+            if wav_control and wav_control.has_active_playback():
+                wav_control.stop_playback()
+        except Exception as e:
+            print(f"❌ WAV停止エラー: {e}")
+
         try:
             if self._tts_playing:
                 import sounddevice as sd
@@ -1603,6 +1624,8 @@ class TTSStudioMainWindow(QMainWindow):
                 if hasattr(self, '_selected_animation_file') and self._selected_animation_file:
                     self._play_animation_with_wav(self._selected_animation_file)
             
+            self._update_stop_button_state()
+
         except Exception as e:
             print(f"❌ WAV再生開始エラー: {e}")
 
@@ -1669,6 +1692,8 @@ class TTSStudioMainWindow(QMainWindow):
             print("⏸️ WAV一時停止")
             self.wav_player.pause()
             self._stop_wav_lipsync()
+            self._update_stop_button_state()
+
             
         except Exception as e:
             print(f"❌ WAV一時停止エラー: {e}")
@@ -1679,6 +1704,8 @@ class TTSStudioMainWindow(QMainWindow):
             print("⏹️ WAV停止")
             self.wav_player.stop()
             self._stop_wav_lipsync()
+            self._update_stop_button_state()
+
             
         except Exception as e:
             print(f"❌ WAV停止エラー: {e}")
@@ -1691,7 +1718,8 @@ class TTSStudioMainWindow(QMainWindow):
             
             # リップシンク再開
             wav_control = self.tabbed_audio_control.get_wav_playback_control()
-            if wav_control.is_lipsync_enabled() and self._wav_lipsync_data:
+            if (wav_control.is_lipsync_enabled() and self._wav_lipsync_data and
+                    getattr(self.wav_player, 'is_playing', False)):
                 self._start_wav_lipsync(position)
             
         except Exception as e:
@@ -1725,7 +1753,7 @@ class TTSStudioMainWindow(QMainWindow):
             wav_control.on_playback_finished()
             
             # リップシンク停止
-            self._stop_wav_lipsync()
+            self._update_stop_button_state()
             
         except Exception as e:
             print(f"❌ WAV完了処理エラー: {e}")
@@ -1737,10 +1765,13 @@ class TTSStudioMainWindow(QMainWindow):
                 print("⚠️ リップシンクデータがありません")
                 return
             
-            if not (hasattr(self.character_display, 'live2d_webview') and 
+            if not (hasattr(self.character_display, 'live2d_webview') and
                     self.character_display.live2d_webview.is_model_loaded):
                 print("⚠️ Live2Dモデルが読み込まれていません")
                 return
+            
+            # 既存のリップシンクを停止してから開始
+            self._stop_wav_lipsync()
             
             # 開始位置からのフレームデータを抽出
             filtered_frames = [
@@ -1768,7 +1799,7 @@ class TTSStudioMainWindow(QMainWindow):
             # シンプルなデータ準備
             simple_data = {
                 'text': self._wav_lipsync_data.text,
-                'duration': self._wav_lipsync_data.total_duration - start_position,
+                'duration': max(self._wav_lipsync_data.total_duration - start_position, 0.0),
                 'frames': [
                     {
                         'time': frame.timestamp,
