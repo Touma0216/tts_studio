@@ -1,5 +1,6 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider,
-                            QComboBox, QDoubleSpinBox, QGroupBox, QGridLayout, QTabWidget)
+                            QComboBox, QDoubleSpinBox, QGroupBox, QGridLayout, QTabWidget,
+                            QPushButton)
 from PyQt6.QtCore import Qt, pyqtSignal
 from .history_manager import ParameterHistory
 
@@ -638,7 +639,98 @@ class TabbedEmotionControl(QWidget):
             }
         """)
         
+        # 🆕 標準の三角ボタンを非表示にする
+        tab_bar = self.tab_widget.tabBar()
+        tab_bar.setUsesScrollButtons(False)
+        
         layout.addWidget(self.tab_widget)
+        
+        # 🆕 タブナビゲーション（スライダー + ◁▷ボタン）
+        nav_layout = QHBoxLayout()
+        nav_layout.setContentsMargins(10, 2, 10, 5)
+        nav_layout.setSpacing(8)
+        
+        slider_label = QLabel("タブ位置:")
+        slider_label.setStyleSheet("font-size: 10px; color: #666;")
+        nav_layout.addWidget(slider_label)
+        
+        # タブスクロール用スライダー
+        self.tab_scroll_slider = QSlider(Qt.Orientation.Horizontal)
+        self.tab_scroll_slider.setRange(0, 0)
+        self.tab_scroll_slider.setValue(0)
+        self.tab_scroll_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                border: 1px solid #ccc;
+                background: #f5f5f5;
+                height: 4px;
+                border-radius: 2px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #5ba8f2;
+                border: 1px solid #4a90e2;
+                height: 4px;
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                background: #5ba8f2;
+                border: 1px solid #4a90e2;
+                width: 14px;
+                margin-top: -5px;
+                margin-bottom: -5px;
+                border-radius: 7px;
+            }
+        """)
+        self.tab_scroll_slider.valueChanged.connect(self.on_tab_scroll_slider_changed)
+        
+        nav_layout.addWidget(self.tab_scroll_slider, 1)  # スライダーは伸縮
+        
+        # ◁ ボタン（前のタブへ）
+        self.prev_tab_btn = QPushButton("◁")
+        self.prev_tab_btn.setFixedSize(28, 28)
+        self.prev_tab_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #5ba8f2;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #4a90e2;
+            }
+            QPushButton:disabled {
+                background-color: #ccc;
+                color: #999;
+            }
+        """)
+        self.prev_tab_btn.clicked.connect(self.on_prev_tab_clicked)
+        nav_layout.addWidget(self.prev_tab_btn)
+        
+        # ▷ ボタン（次のタブへ）
+        self.next_tab_btn = QPushButton("▷")
+        self.next_tab_btn.setFixedSize(28, 28)
+        self.next_tab_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #5ba8f2;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #4a90e2;
+            }
+            QPushButton:disabled {
+                background-color: #ccc;
+                color: #999;
+            }
+        """)
+        self.next_tab_btn.clicked.connect(self.on_next_tab_clicked)
+        nav_layout.addWidget(self.next_tab_btn)
+        
+        layout.addLayout(nav_layout)
     
     def setup_master_tab(self):
         self.master_control = SingleEmotionControl("master", is_master=True)
@@ -647,6 +739,7 @@ class TabbedEmotionControl(QWidget):
         
         self.tab_widget.insertTab(0, self.master_control, "★")
         self.tab_widget.setTabToolTip(0, "デフォルトパラメータ - ここを変更すると全てのタブに反映されます")
+        self.update_tab_scroll_range()
     
     def on_master_parameters_changed(self, row_id, parameters):
         for control in self.emotion_controls.values():
@@ -691,13 +784,15 @@ class TabbedEmotionControl(QWidget):
             control.parameters_changed.connect(self.parameters_changed)
             control.undo_executed.connect(self.on_undo_executed)
             
-            # 👈 新しいタブにも現在の利用可能感情を適用
             if hasattr(self, 'current_available_styles'):
                 control.update_emotion_combo(self.current_available_styles)
             
             self.emotion_controls[row_id] = control
             self.tab_widget.addTab(control, str(row_number))
-    
+            
+            # 🆕 スライダー範囲を更新
+            self.update_tab_scroll_range()
+
     def remove_text_row(self, row_id):
         if row_id in self.emotion_controls:
             control = self.emotion_controls[row_id]
@@ -705,7 +800,10 @@ class TabbedEmotionControl(QWidget):
             if index != -1:
                 self.tab_widget.removeTab(index)
             del self.emotion_controls[row_id]
-    
+            
+            # 🆕 スライダー範囲を更新
+            self.update_tab_scroll_range()
+        
     def update_tab_numbers(self, row_mapping):
         for row_id, row_number in row_mapping.items():
             if row_id in self.emotion_controls:
@@ -749,3 +847,55 @@ class TabbedEmotionControl(QWidget):
             
         except Exception as e:
             print(f"❌ 全タブ感情更新エラー: {e}")
+
+    def on_tab_scroll_slider_changed(self, value):
+        """スライダーでタブを選択"""
+        if self.tab_widget.count() > 0:
+            target_index = min(value, self.tab_widget.count() - 1)
+            self.tab_widget.setCurrentIndex(target_index)
+            self.update_nav_buttons()
+
+    def on_prev_tab_clicked(self):
+        """前のタブに移動"""
+        current_index = self.tab_widget.currentIndex()
+        if current_index > 0:
+            self.tab_widget.setCurrentIndex(current_index - 1)
+            self.tab_scroll_slider.setValue(current_index - 1)
+            self.update_nav_buttons()
+
+    def on_next_tab_clicked(self):
+        """次のタブに移動"""
+        current_index = self.tab_widget.currentIndex()
+        if current_index < self.tab_widget.count() - 1:
+            self.tab_widget.setCurrentIndex(current_index + 1)
+            self.tab_scroll_slider.setValue(current_index + 1)
+            self.update_nav_buttons()
+
+    def update_nav_buttons(self):
+        """ナビゲーションボタンの有効/無効を更新"""
+        current_index = self.tab_widget.currentIndex()
+        tab_count = self.tab_widget.count()
+        
+        # 最初のタブなら◁を無効化
+        self.prev_tab_btn.setEnabled(current_index > 0)
+        
+        # 最後のタブなら▷を無効化
+        self.next_tab_btn.setEnabled(current_index < tab_count - 1)
+
+    def update_tab_scroll_range(self):
+        """タブ数に応じてスライダーの範囲を更新"""
+        tab_count = self.tab_widget.count()
+        if tab_count > 0:
+            self.tab_scroll_slider.setMaximum(tab_count - 1)
+            self.tab_scroll_slider.setEnabled(True)
+            
+            # 現在のタブインデックスに合わせる
+            current_index = self.tab_widget.currentIndex()
+            self.tab_scroll_slider.blockSignals(True)
+            self.tab_scroll_slider.setValue(current_index)
+            self.tab_scroll_slider.blockSignals(False)
+        else:
+            self.tab_scroll_slider.setMaximum(0)
+            self.tab_scroll_slider.setEnabled(False)
+        
+        self.update_nav_buttons()
