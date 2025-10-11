@@ -95,7 +95,7 @@ class DisplayModeManager:
         self.save_settings()
 
 class MiniMapWidget(QLabel):
-    """右上に表示されるミニマップウィジェット（修正版：直感的操作）"""
+    """右上に表示されるミニマップウィジェット（画像・Live2D共通）"""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedSize(120, 90)
@@ -140,91 +140,21 @@ class MiniMapWidget(QLabel):
     def mousePressEvent(self, event):
         if not self.character_display or not self.original_pixmap:
             return
+        
         click_pos = event.position().toPoint()
         scale_x = self.original_pixmap.width() / self.width()
         scale_y = self.original_pixmap.height() / self.height()
         target_x = round(click_pos.x() * scale_x)
         target_y = round(click_pos.y() * scale_y)
-        self.character_display.move_view_to_position(target_x, target_y)
-
-class Live2DMiniMapWidget(QLabel):
-    """Live2D用ミニマップウィジェット（修正版：直感的操作）"""
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFixedSize(120, 90)
-        self.character_display = None
-        self.setStyleSheet("""
-            QLabel { background-color: rgba(50, 50, 50, 200); border: 2px solid #666; border-radius: 4px; }
-        """)
-        self.setText("Live2D")
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setWordWrap(True)
-        self.hide()
-
-    def set_character_display_widget(self, character_display):
-        self.character_display = character_display
-
-    def update_live2d_minimap(self, zoom_percent, h_position, v_position):
-        """Live2Dの位置とズームを視覚的に表示（修正版：直感的な表示）"""
-        if not self.character_display or not self.character_display.live2d_webview.is_model_loaded:
-            self.clear()
-            self.setText("Live2D")
-            self.setStyleSheet("""
-                QLabel { background-color: rgba(50, 50, 50, 200); border: 2px solid #666; border-radius: 4px; color: #ccc; }
-            """)
-            return
         
-        # 背景を描画
-        pixmap = QPixmap(self.size())
-        pixmap.fill(QColor(40, 40, 40, 200))
-        
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        # ビューポート枠（Live2D表示エリア）
-        viewport_rect = QRect(10, 10, 100, 70)
-        painter.setPen(QPen(QColor(100, 100, 100), 1))
-        painter.drawRect(viewport_rect)
-        
-        # Live2Dモデルの位置を表示（円で表現）
-        model_size = max(8, min(50, int(zoom_percent / 8)))  # ズーム範囲調整対応
-        
-        # 位置計算（実際のキャラクター表示位置に合わせて修正）
-        # h_position: 左0（キャラ右表示）→ 中央50 → 右100（キャラ左表示）
-        # v_position: 上0 → 中央50 → 下100 (画像表示と同じ)
-        model_x = 10 + int(((100 - h_position) / 100) * 100)  # 修正：右スライダーで左表示
-        model_y = 10 + int(((100 - v_position) / 100) * 70)  # 画像表示と同じ：下が大きい値
-        
-        # モデル表示（円）
-        painter.setBrush(QColor(100, 150, 255, 180))
-        painter.setPen(QPen(QColor(150, 200, 255), 2))
-        painter.drawEllipse(model_x - model_size//2, model_y - model_size//2, model_size, model_size)
-        
-        # ズーム表示（500%対応）
-        painter.setPen(QColor(200, 200, 200))
-        painter.setFont(QFont("", 8))
-        painter.drawText(5, 85, f"{zoom_percent}%")
-        
-        painter.end()
-        self.setPixmap(pixmap)
-
-    def mousePressEvent(self, event):
-        """ミニマップクリックで位置移動（修正版：直感的な操作）"""
-        if not self.character_display or not self.character_display.live2d_webview.is_model_loaded:
-            return
-        
-        click_pos = event.position().toPoint()
-        
-        # クリック位置をスライダー値に変換（実際の表示に合わせて修正）
-        if 10 <= click_pos.x() <= 110 and 10 <= click_pos.y() <= 80:
-            # 左右：左クリック→キャラ右表示→h_position=0、右クリック→キャラ左表示→h_position=100
-            new_h = int(((110 - click_pos.x()) / 100) * 100)  # 修正：クリック位置を反転
-            # 上下も画像表示と同じ：上クリック→v_position小→キャラ上部表示
-            new_v = int(((click_pos.y() - 10) / 70) * 100)  # 画像表示と同じ方向
-            
-            # スライダー値を更新
-            self.character_display.live2d_h_position_slider.setValue(new_h)
-            self.character_display.live2d_v_position_slider.setValue(new_v)
+        # モードに応じて動作分岐
+        if self.character_display.current_display_mode == "image":
+            self.character_display.move_view_to_position(target_x, target_y)
+        elif self.character_display.current_display_mode == "live2d":
+            h_pos = int((target_x / self.original_pixmap.width()) * 100)
+            v_pos = int((target_y / self.original_pixmap.height()) * 100)
+            self.character_display.live2d_h_position_slider.setValue(h_pos)
+            self.character_display.live2d_v_position_slider.setValue(v_pos)
 
 class DraggableImageLabel(QLabel):
     """ドラッグで移動可能な画像表示ラベル（修正版：直感的操作）"""
@@ -550,9 +480,9 @@ class Live2DWebView(QWebEngineView):
             print(f"❌ パラメータ処理エラー: {e}")
 
 class CharacterDisplayWidget(QWidget):
-    """キャラクター表示エリア（修正版：直感的操作・高倍率対応・リップシンク位置リセット防止）"""
+    """キャラクター表示エリア（修正版：ミニマップ統合）"""
     live2d_model_loaded = pyqtSignal(str)
-    live2d_parameters_loaded = pyqtSignal(list, str)  # 🆕 追加：parameters, model_id
+    live2d_parameters_loaded = pyqtSignal(list, str)
 
     def __init__(self, live2d_url=None, live2d_server_manager=None, parent=None):
         super().__init__(parent)
@@ -572,9 +502,9 @@ class CharacterDisplayWidget(QWidget):
         self.current_display_mode = "image"
         
         # Live2D用の設定（高倍率対応）
-        self.current_live2d_zoom_percent = 100  # デフォルト100%
-        self.current_live2d_h_position = 50     # 中央
-        self.current_live2d_v_position = 50     # 中央
+        self.current_live2d_zoom_percent = 100
+        self.current_live2d_h_position = 50
+        self.current_live2d_v_position = 50
 
         # Live2D背景設定
         self.live2d_background_settings = {
@@ -613,7 +543,7 @@ class CharacterDisplayWidget(QWidget):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(6)
         
-        # 🔥 タブウィジェットを一番上に配置
+        # タブウィジェットを一番上に配置
         self.mode_tab_widget = QTabWidget()
         self.mode_tab_widget.setStyleSheet("""
             QTabWidget::pane { border: 1px solid #ccc; border-radius: 4px; background-color: #f8f9fa; }
@@ -634,12 +564,12 @@ class CharacterDisplayWidget(QWidget):
         
         self.mode_tab_widget.currentChanged.connect(self.on_mode_tab_changed)
         
-        # 🔥 ボタンエリア（タブの下）
+        # ボタンエリア（タブの下）
         button_layout = QHBoxLayout()
         button_layout.setContentsMargins(0, 0, 0, 0)
         button_layout.setSpacing(8)
 
-        # 🆕 停止ボタン（ミニマップの左）
+        # 停止ボタン（ミニマップの左）
         self.pause_model_btn = QPushButton("⏸ 停止")
         self.pause_model_btn.setToolTip("Live2Dアニメーションの一時停止/再開")
         self.pause_model_btn.setCheckable(True)
@@ -651,7 +581,7 @@ class CharacterDisplayWidget(QWidget):
             "QPushButton:checked { background-color: #ffc107; border-color: #ff9800; color: white; font-weight: bold; } "
             "QPushButton:disabled { color: #ccc; }"
         )
-        self.pause_model_btn.setEnabled(False)  # Live2D読み込み時に有効化
+        self.pause_model_btn.setEnabled(False)
         self.pause_model_btn.toggled.connect(self.on_pause_model_toggled)
         button_layout.addWidget(self.pause_model_btn)
         
@@ -705,7 +635,7 @@ class CharacterDisplayWidget(QWidget):
         layout.addWidget(self.mode_tab_widget)
         layout.addLayout(button_layout)
 
-    # 🔥 シグナル接続（全てのウィジェット作成後）
+        # シグナル接続（全てのウィジェット作成後）
         self.zoom_slider.valueChanged.connect(self.on_zoom_slider_changed)
         self.h_position_slider.valueChanged.connect(self.on_position_slider_changed)
         self.v_position_slider.valueChanged.connect(self.on_position_slider_changed)
@@ -1070,7 +1000,7 @@ class CharacterDisplayWidget(QWidget):
         self.character_image_label.set_character_display_widget(self)
         self.scroll_area.setWidget(self.character_image_label)
         
-        # ミニマップ
+        # ミニマップ（画像・Live2D共通）
         self.minimap = MiniMapWidget(self.scroll_area)
         self.minimap.set_character_display_widget(self)
         self.minimap.hide()
@@ -1105,7 +1035,7 @@ class CharacterDisplayWidget(QWidget):
         image_main_layout.addLayout(v_slider_layout)
         
         layout.addLayout(zoom_layout)
-        layout.addWidget(image_container, 1)  # 🔥 stretch=1で縦に伸ばす
+        layout.addWidget(image_container, 1)
 
     def setup_live2d_tab(self):
         """Live2Dタブの中身（ズーム＋Live2D表示エリアのみ）"""
@@ -1143,11 +1073,6 @@ class CharacterDisplayWidget(QWidget):
         self.live2d_webview.setMinimumHeight(300)
         self.live2d_webview.set_character_display_widget(self)
         
-        # Live2D用ミニマップ
-        self.live2d_minimap = Live2DMiniMapWidget(self.live2d_webview)
-        self.live2d_minimap.set_character_display_widget(self)
-        self.live2d_minimap.hide()
-        
         # 横位置調整スライダー
         h_slider_layout = QHBoxLayout()
         h_label = QLabel("左右:")
@@ -1160,7 +1085,7 @@ class CharacterDisplayWidget(QWidget):
         h_slider_layout.addWidget(h_label)
         h_slider_layout.addWidget(self.live2d_h_position_slider)
         
-        left_side_layout.addWidget(self.live2d_webview, 1)  # 🔥 stretch=1で縦に伸ばす
+        left_side_layout.addWidget(self.live2d_webview, 1)
         left_side_layout.addLayout(h_slider_layout)
         
         # 右側：縦位置調整スライダー
@@ -1181,7 +1106,7 @@ class CharacterDisplayWidget(QWidget):
         
         # レイアウト組み立て
         layout.addLayout(zoom_layout)
-        layout.addWidget(live2d_container, 1)  # 🔥 stretch=1で縦に伸ばす
+        layout.addWidget(live2d_container, 1)
         
         # シグナル接続
         self.live2d_zoom_slider.valueChanged.connect(self.on_live2d_zoom_changed)
@@ -1202,12 +1127,9 @@ class CharacterDisplayWidget(QWidget):
         self.live2d_webview.update_model_settings(settings)
         
         # 位置調整スライダーは常に有効化（制限を削除）
-        if self.current_live2d_id:  # モデルが読み込まれている場合のみ有効
+        if self.current_live2d_id:
             self.live2d_h_position_slider.setEnabled(True)
             self.live2d_v_position_slider.setEnabled(True)
-
-        # ミニマップ更新
-        self.update_live2d_minimap()
         
         # 設定保存
         self.save_live2d_ui_settings()
@@ -1224,11 +1146,8 @@ class CharacterDisplayWidget(QWidget):
         self.current_live2d_v_position = v_pos
         
         # JavaScriptに送信する値（修正版：直感的な操作）
-        # h_pos: 0(左スライダー)→50(中央)→100(右スライダー) 
-        # → pos_x: 1.0(キャラ右)→0.0(中央)→-1.0(キャラ左) ← 修正：右スライダーでキャラが左に
-        # v_pos: 0(上)→50(中央)→100(下) → pos_y: -1.0→0.0→1.0 (画像表示と同じ)
-        pos_x = -(h_pos - 50) / 50.0  # 右スライダー→キャラ左（画像表示と同じ挙動）
-        pos_y = (v_pos - 50) / 50.0   # 下スライダー→キャラ下（画像表示と同じ）
+        pos_x = -(h_pos - 50) / 50.0
+        pos_y = (v_pos - 50) / 50.0
         
         settings = {
             'position_x': pos_x,
@@ -1236,63 +1155,45 @@ class CharacterDisplayWidget(QWidget):
         }
         self.live2d_webview.update_model_settings(settings)
         
-        # ミニマップ更新
-        self.update_live2d_minimap()
-        
         # 設定保存
         if not self.live2d_h_position_slider.signalsBlocked():
             self.save_live2d_ui_settings()
 
-    def update_live2d_minimap(self):
-        """Live2Dミニマップの更新"""
-        if hasattr(self, 'live2d_minimap') and self.live2d_minimap.isVisible():
-            zoom = self.live2d_zoom_slider.value()
-            h_pos = self.live2d_h_position_slider.value()
-            v_pos = self.live2d_v_position_slider.value()
-            self.live2d_minimap.update_live2d_minimap(zoom, h_pos, v_pos)
-
-    def update_live2d_minimap_position(self):
-        """Live2Dミニマップの位置更新"""
-        if hasattr(self, 'live2d_minimap') and self.live2d_webview:
-            x_pos = self.live2d_webview.width() - self.live2d_minimap.width() - 5
-            self.live2d_minimap.move(x_pos, 5)
-
     def toggle_minimap(self, checked):
-        """ミニマップの表示/非表示切り替え（画像・Live2D両対応）"""
-        if self.current_display_mode == "image":
-            if not self.original_pixmap: 
-                return
-            if checked: 
-                self.minimap.show()
-                self.update_minimap_view()
-            else: 
-                self.minimap.hide()
-            if not self.toggle_minimap_btn.signalsBlocked(): 
-                self.save_ui_settings()
+        """ミニマップの表示/非表示切り替え（画像・Live2D共通）"""
+        if not self.original_pixmap:
+            return
         
-        elif self.current_display_mode == "live2d":
-            if not hasattr(self, 'live2d_minimap') or not self.live2d_webview.is_model_loaded:
-                return
-            if checked:
-                self.live2d_minimap.show()
-                self.update_live2d_minimap_position()
-                self.update_live2d_minimap()
+        if checked:
+            self.minimap.show()
+            # モードに応じて表示内容を更新
+            if self.current_display_mode == "image":
+                self.update_minimap_view()
+            else:  # Live2Dモード
+                # 赤枠なしで画像だけ表示
+                self.minimap.update_minimap(self.original_pixmap, QRect())
+        else:
+            self.minimap.hide()
+        
+        # 設定保存
+        if not self.toggle_minimap_btn.signalsBlocked():
+            if self.current_display_mode == "image":
+                self.save_ui_settings()
             else:
-                self.live2d_minimap.hide()
-            if not self.toggle_minimap_btn.signalsBlocked():
                 self.save_live2d_ui_settings()
 
     def on_mode_tab_changed(self, index):
         if index == 0:
             self.current_display_mode = "image"
-            self.toggle_minimap_btn.setVisible(True)
             self.toggle_minimap_btn.setEnabled(self.original_pixmap is not None)
         else:
             self.current_display_mode = "live2d"
-            self.toggle_minimap_btn.setVisible(True)
-            self.toggle_minimap_btn.setEnabled(hasattr(self, 'live2d_webview') and self.live2d_webview.is_model_loaded)
+            self.toggle_minimap_btn.setEnabled(
+                self.original_pixmap is not None and 
+                hasattr(self, 'live2d_webview') and 
+                self.live2d_webview.is_model_loaded
+            )
             QTimer.singleShot(0, self.apply_live2d_background)
-
         
         if not self.is_initializing:
             self.display_mode_manager.set_last_tab_index(index)
@@ -1607,20 +1508,17 @@ class CharacterDisplayWidget(QWidget):
             print("⚠️ Live2D未読み込み：設定同期をスキップ")
             return
 
-        # 🔧 追加：リップシンク実行中の設定同期を防止
         if (hasattr(self, '_lipsync_in_progress') and self._lipsync_in_progress
                 and not force):
             print("🎭 リップシンク実行中：設定同期をスキップ（位置リセット防止）")
             return
 
-        # 現在のスライダー値を取得
         current_settings = {
             'zoom_percent': self.live2d_zoom_slider.value(),
             'h_position': self.live2d_h_position_slider.value(),
             'v_position': self.live2d_v_position_slider.value(),
         }
 
-        # WebViewに設定を適用
         self.apply_settings_to_webview(current_settings, force=force)
         
         print(f"🔧 Live2D設定を同期: ズーム={current_settings['zoom_percent']}%, 位置=({current_settings['h_position']}, {current_settings['v_position']})")
@@ -1633,17 +1531,14 @@ class CharacterDisplayWidget(QWidget):
         
         js_settings = {}
         
-        # ズーム設定
         zoom_percent = ui_settings.get('zoom_percent', 100)
         js_settings['scale'] = zoom_percent / 100.0
         
-        # 位置設定（修正版：直感的な操作）
         h_pos = ui_settings.get('h_position', 50)
         v_pos = ui_settings.get('v_position', 50)
-        js_settings['position_x'] = -(h_pos - 50) / 50.0  # 右スライダー→キャラ左（修正）
-        js_settings['position_y'] = (v_pos - 50) / 50.0   # 下スライダー→キャラ下（画像表示と同じ）
+        js_settings['position_x'] = -(h_pos - 50) / 50.0
+        js_settings['position_y'] = (v_pos - 50) / 50.0
         
-        # 🔧 追加：設定の厳密な重複チェック
         settings_key = f"{js_settings['scale']:.3f}_{js_settings['position_x']:.3f}_{js_settings['position_y']:.3f}"
         
         if (not force and hasattr(self, '_last_applied_settings_key')
@@ -1651,21 +1546,17 @@ class CharacterDisplayWidget(QWidget):
             print("🔄 Live2D設定変更なし（厳密チェック）：適用をスキップ")
             return
         
-        # 🔧 追加：連続適用防止のためのクールダウン
         current_time = time.time()
         if (not force and hasattr(self, '_last_settings_apply_time')
-                and current_time - self._last_settings_apply_time < 0.05):  # 50ms以内の連続適用を防止
+                and current_time - self._last_settings_apply_time < 0.05):
                 return
         
-        # 設定をWebViewに送信
         print(f"🎭 Live2D設定適用: scale={js_settings['scale']:.2f}, pos_x={js_settings['position_x']:.2f}, pos_y={js_settings['position_y']:.2f}")
         self.live2d_webview.update_model_settings(js_settings)
         
-        # 最後に適用した設定とタイムスタンプを記録
         self._last_applied_settings_key = settings_key
         self._last_settings_apply_time = current_time
         
-        # 旧方式の記録も維持（互換性のため）
         self._last_applied_settings = js_settings.copy()
 
     def enable_live2d_controls(self):
@@ -1677,12 +1568,11 @@ class CharacterDisplayWidget(QWidget):
         ]:
             control.setEnabled(True)
         
-        # 🆕 停止ボタンも有効化
         if hasattr(self, 'pause_model_btn'):
             self.pause_model_btn.setEnabled(True)
         
         if self.current_display_mode == "live2d":
-            self.toggle_minimap_btn.setEnabled(True)
+            self.toggle_minimap_btn.setEnabled(self.original_pixmap is not None)
 
     def restore_live2d_settings(self, ui_settings):
         """Live2D設定を復元（500%対応）"""
@@ -1703,13 +1593,12 @@ class CharacterDisplayWidget(QWidget):
         
         minimap_visible = ui_settings.get('minimap_visible', False)
         self.toggle_minimap_btn.setChecked(minimap_visible)
-        if hasattr(self, 'live2d_minimap'):
-            if minimap_visible:
-                self.live2d_minimap.show()
-                self.update_live2d_minimap_position()
-                self.update_live2d_minimap()
-            else:
-                self.live2d_minimap.hide()
+        if minimap_visible:
+            self.minimap.show()
+            # Live2Dモードでは赤枠なしで画像だけ表示
+            self.minimap.update_minimap(self.original_pixmap, QRect())
+        else:
+            self.minimap.hide()
 
         background_settings = ui_settings.get('background_settings')
         if background_settings:
@@ -1905,9 +1794,8 @@ class CharacterDisplayWidget(QWidget):
         h_max = h_scroll.maximum()
         v_max = v_scroll.maximum()
         
-        # 修正：右スライダーで画像が右に移動する直感的な操作
         if h_max > 0: 
-            h_scroll.setValue(round(h_max * self.h_position_slider.value() / 100))  # 反転を削除
+            h_scroll.setValue(round(h_max * self.h_position_slider.value() / 100))
         if v_max > 0: 
             v_scroll.setValue(round(v_scroll.maximum() * (100 - self.v_position_slider.value()) / 100))
         
@@ -1925,8 +1813,7 @@ class CharacterDisplayWidget(QWidget):
         self.h_position_slider.blockSignals(True)
         self.v_position_slider.blockSignals(True)
         
-        # 修正：右スクロール→右スライダー（直感的な対応）
-        self.h_position_slider.setValue(round(100 * h_scroll.value() / h_max) if h_max > 0 else 50)  # 反転を削除
+        self.h_position_slider.setValue(round(100 * h_scroll.value() / h_max) if h_max > 0 else 50)
         self.v_position_slider.setValue(100 - round(100 * v_scroll.value() / v_max) if v_max > 0 else 50)
         
         self.h_position_slider.blockSignals(False)
@@ -1965,8 +1852,6 @@ class CharacterDisplayWidget(QWidget):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.update_minimap_position()
-        if hasattr(self, 'live2d_minimap'):
-            self.update_live2d_minimap_position()
         if self.original_pixmap: 
             self.resize_timer.start(150)
 
@@ -2009,6 +1894,7 @@ class CharacterDisplayWidget(QWidget):
             self.live2d_webview.page().runJavaScript(script)
         except Exception as e:
             print(f"❌ パラメータ一括設定エラー: {e}")
+    
     def enable_drag_control(self, enabled: bool):
         """ドラッグ制御を有効化/無効化"""
         if not hasattr(self, 'live2d_webview') or not self.live2d_webview.is_model_loaded:
@@ -2048,7 +1934,6 @@ class CharacterDisplayWidget(QWidget):
             }})()
             """
             self.live2d_webview.page().runJavaScript(script)
-            # ログ削除：スライダー操作で大量に出るため
         except Exception as e:
             print(f"❌ ドラッグ感度設定エラー: {e}")
     
@@ -2079,7 +1964,6 @@ class CharacterDisplayWidget(QWidget):
                 print("⚠️ live2d_webview未初期化")
                 return
             
-            # QWebChannel取得または作成
             page = self.live2d_webview.page()
             channel = page.webChannel()
             
@@ -2088,17 +1972,12 @@ class CharacterDisplayWidget(QWidget):
                 channel = QWebChannel(page)
                 page.setWebChannel(channel)
             
-            # ブリッジ登録
             channel.registerObject('videoBridge', video_bridge)
             print("✅ VideoBridge登録完了")
             
         except Exception as e:
             print(f"❌ VideoBridge登録エラー: {e}")
 
-# ================================
-    # アイドルモーション制御
-    # ================================
-    
     def toggle_idle_motion(self, motion_type: str, enabled: bool):
         """アイドルモーションのON/OFF切り替え"""
         if not hasattr(self, 'live2d_webview') or not self.live2d_webview.is_model_loaded:
@@ -2141,10 +2020,6 @@ class CharacterDisplayWidget(QWidget):
         except Exception as e:
             print(f"❌ アイドルモーションパラメータ設定エラー: {e}")
 
-    # ================================
-    # 物理演算制御
-    # ================================
-    
     def toggle_physics(self, enabled: bool):
         """物理演算のON/OFF切り替え"""
         if not hasattr(self, 'live2d_webview') or not self.live2d_webview.is_model_loaded:
@@ -2205,7 +2080,6 @@ class CharacterDisplayWidget(QWidget):
             
             def on_result(result):
                 if result:
-                    # JavaScript側の結果に応じてボタン表示を更新
                     is_paused = self.pause_model_btn.isChecked()
                     if is_paused:
                         self.pause_model_btn.setText("▶ 再生")
