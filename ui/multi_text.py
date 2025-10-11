@@ -1,5 +1,6 @@
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, 
-                            QPushButton, QLabel, QFrame, QScrollArea, QDoubleSpinBox)
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTextEdit,
+                            QPushButton, QLabel, QScrollArea, QDoubleSpinBox,
+                            QSpinBox)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 import uuid
@@ -208,6 +209,8 @@ class MultiTextWidget(QWidget):
     row_added = pyqtSignal(str, int)  # row_id, row_number
     row_removed = pyqtSignal(str)  # row_id
     row_numbers_updated = pyqtSignal(dict)  # {row_id: row_number}
+    row_focus_requested = pyqtSignal(str)  # row_id
+
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -232,19 +235,54 @@ class MultiTextWidget(QWidget):
         header_label = QLabel("テキスト入力:")
         header_label.setFont(QFont("", 10, QFont.Weight.Bold))
         
-        # 🆕 説明追加
-        info_label = QLabel("💡 各行の後に挿入する無音時間を設定できます")
-        info_label.setStyleSheet("color: #666; font-size: 10px;")
-        
         header_layout.addWidget(header_label)
-        header_layout.addWidget(info_label)
         header_layout.addStretch()
+
+        jump_label = QLabel("行ジャンプ:")
+        jump_label.setStyleSheet("color: #666; font-size: 10px;")
+
+        self.jump_spin = QSpinBox()
+        self.jump_spin.setRange(1, 1)
+        self.jump_spin.setValue(1)
+        self.jump_spin.setFixedWidth(60)
+        self.jump_spin.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.jump_spin.setStyleSheet("""
+            QSpinBox {
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                padding: 2px 6px;
+                font-size: 11px;
+            }
+        """)
+
+        self.jump_button = QPushButton("移動")
+        self.jump_button.setFixedHeight(24)
+        self.jump_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2196f3;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 4px 10px;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #1976d2;
+            }
+        """)
+        self.jump_button.setToolTip("指定した番号のテキスト行に移動")
+        self.jump_button.clicked.connect(self.on_jump_requested)
+        self.jump_spin.editingFinished.connect(self.on_jump_requested)
+
+        header_layout.addWidget(jump_label)
+        header_layout.addWidget(self.jump_spin)
+        header_layout.addWidget(self.jump_button)
         
         # スクロールエリア
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         
         # テキスト行コンテナ
         self.rows_container = QWidget()
@@ -252,7 +290,7 @@ class MultiTextWidget(QWidget):
         self.rows_layout.setContentsMargins(5, 5, 5, 5)
         self.rows_layout.setSpacing(3)
         
-        scroll_area.setWidget(self.rows_container)
+        self.scroll_area.setWidget(self.rows_container)
         
         # 追加ボタン
         add_btn = QPushButton("➕ テキスト行を追加(N)")
@@ -274,14 +312,11 @@ class MultiTextWidget(QWidget):
         
         # レイアウト配置
         layout.addLayout(header_layout)
-        layout.addWidget(scroll_area, 1)  # 伸縮
+        layout.addWidget(self.scroll_area, 1)  # 伸縮
         layout.addWidget(add_btn)
     
     def add_text_row(self, text="", parameters=None, silence_after=0.0):
         """テキスト行を追加"""
-        # 9行制限
-        if len(self.text_rows) >= 9:
-            return None
             
         row_widget = TextRowWidget(text=text, parameters=parameters, silence_after=silence_after)
         
@@ -351,6 +386,8 @@ class MultiTextWidget(QWidget):
         
         # シグナル送信
         self.row_numbers_updated.emit(row_mapping)
+        self.update_jump_range()
+
     
     def on_row_parameters_changed(self, row_id, parameters):
         """行のパラメータが変更された（現在は未使用）"""
@@ -404,3 +441,50 @@ class MultiTextWidget(QWidget):
         self.update_row_numbers()
 
         return first_row_id
+
+    def update_jump_range(self):
+        """行ジャンプ入力の範囲を最新の行数に合わせて更新"""
+        if not hasattr(self, 'jump_spin'):
+            return
+
+        row_count = max(1, len(self.text_rows))
+        self.jump_spin.setMaximum(row_count)
+
+        if self.jump_spin.value() > row_count:
+            self.jump_spin.setValue(row_count)
+
+    def on_jump_requested(self):
+        """ジャンプボタンまたは確定操作で指定行に移動"""
+        if not self.text_rows:
+            return
+
+        target_number = self.jump_spin.value()
+        self.focus_row_by_number(target_number)
+
+    def focus_row_by_number(self, row_number):
+        """指定された番号のテキスト行にフォーカス"""
+        if not self.text_rows:
+            return
+
+        row_count = len(self.text_rows)
+        target_number = max(1, min(row_number, row_count))
+
+        # 順序付きで取得
+        text_rows = list(self.text_rows.items())
+        target_row_id, target_widget = text_rows[target_number - 1]
+
+        # スクロール位置を調整
+        if hasattr(self, 'scroll_area') and self.scroll_area:
+            self.scroll_area.ensureWidgetVisible(target_widget)
+
+        # テキスト入力にフォーカス
+        target_widget.text_input.setFocus()
+
+        # 現在値を更新
+        if self.jump_spin.value() != target_number:
+            self.jump_spin.blockSignals(True)
+            self.jump_spin.setValue(target_number)
+            self.jump_spin.blockSignals(False)
+
+        # 音声パラメータタブの選択を連動
+        self.row_focus_requested.emit(target_row_id)

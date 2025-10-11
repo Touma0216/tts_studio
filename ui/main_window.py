@@ -111,6 +111,8 @@ class TTSStudioMainWindow(QMainWindow):
         self.multi_text.row_added.connect(self.on_text_row_added)
         self.multi_text.row_removed.connect(self.on_text_row_removed)
         self.multi_text.row_numbers_updated.connect(self.on_row_numbers_updated)
+        self.multi_text.row_focus_requested.connect(self.on_row_focus_requested)
+
         
         # 統合されたタブコントロール
         self.tabbed_audio_control = TabbedAudioControl()
@@ -1138,6 +1140,9 @@ class TTSStudioMainWindow(QMainWindow):
         
     def on_row_numbers_updated(self, row_mapping):
         self.tabbed_audio_control.update_tab_numbers(row_mapping)
+
+    def on_row_focus_requested(self, row_id):
+        self.tabbed_audio_control.set_current_row_silent(row_id)
         
     def on_parameters_changed(self, row_id, parameters): pass
     def on_cleaner_settings_changed(self, cleaner_settings): pass

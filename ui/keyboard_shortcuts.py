@@ -224,9 +224,6 @@ class KeyboardShortcutManager(QObject):
     
     def add_text_row(self):
         """テキスト行を追加"""
-        # 9行制限チェック
-        if len(self.main_window.multi_text.text_rows) >= 9:
-            return
         self.main_window.multi_text.add_text_row()
     
     def focus_master_tab(self):
@@ -241,14 +238,16 @@ class KeyboardShortcutManager(QObject):
     
     def focus_text_row(self, row_number):
         """指定番号のテキスト行にフォーカス"""
-        text_rows = list(self.main_window.multi_text.text_rows.values())
-        if 0 < row_number <= len(text_rows):
-            target_row = text_rows[row_number - 1]
-            target_row.text_input.setFocus()
-            
-            # 対応するパラメータタブもアクティブに（マスタータブの次のインデックス）
-            row_id = target_row.row_id
-            self.main_window.tabbed_audio_control.set_current_row(row_id)
+        if hasattr(self.main_window.multi_text, 'focus_row_by_number'):
+            self.main_window.multi_text.focus_row_by_number(row_number)
+        else:
+            text_rows = list(self.main_window.multi_text.text_rows.values())
+            if 0 < row_number <= len(text_rows):
+                target_row = text_rows[row_number - 1]
+                target_row.text_input.setFocus()
+
+                row_id = target_row.row_id
+                self.main_window.tabbed_audio_control.set_current_row_silent(row_id)
     
     def open_emotion_combo(self):
         """感情コンボボックスを開く"""

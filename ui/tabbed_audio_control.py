@@ -43,6 +43,7 @@ class TabbedAudioControl(QWidget):
     wav_export_requested = pyqtSignal(dict)    
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.last_selected_row_id = None
         self.init_ui()
         
     def init_ui(self):
@@ -298,8 +299,18 @@ class TabbedAudioControl(QWidget):
         """指定行のタブをアクティブに"""
         # 音声パラメータタブを選択してから行を設定
         self.main_tab_widget.setCurrentIndex(0)
-        self.emotion_control.set_current_row(row_id)
-    
+        self.set_current_row_silent(row_id)
+
+    def set_current_row_silent(self, row_id):
+        """音声パラメータタブを開かずに指定行をアクティブに"""
+        if not row_id:
+            return
+
+        emotion_controls = getattr(self.emotion_control, 'emotion_controls', {})
+
+        if row_id in emotion_controls:
+            self.emotion_control.set_current_row(row_id)
+            self.last_selected_row_id = row_id    
     # ================================
     # 音声クリーナー関連
     # ================================
