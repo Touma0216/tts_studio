@@ -69,26 +69,30 @@ class TextRowWidget(QWidget):
             }
         """)
         
-        # カスタムキーイベント処理
-        self.text_input.keyPressEvent = self.text_input_key_press
-        
         # 🆕 無音区間入力
         silence_container = QWidget()
         silence_layout = QVBoxLayout(silence_container)
         silence_layout.setContentsMargins(0, 0, 0, 0)
         silence_layout.setSpacing(2)
-        
+
         silence_label = QLabel("後の無音:")
         silence_label.setStyleSheet("font-size: 10px; color: #666;")
-        
+        silence_layout.addWidget(silence_label)
+
+        # 無音時間の入力とボタン
+        silence_input_layout = QHBoxLayout()
+        silence_input_layout.setContentsMargins(0, 0, 0, 0)
+        silence_input_layout.setSpacing(2)
+
         self.silence_spin = QDoubleSpinBox()
-        self.silence_spin.setRange(0.0, 3600.0)  # 0秒～1時間
+        self.silence_spin.setRange(0.0, 3600.0)
         self.silence_spin.setValue(self.silence_after)
         self.silence_spin.setSuffix(" 秒")
         self.silence_spin.setDecimals(1)
         self.silence_spin.setSingleStep(0.5)
-        self.silence_spin.setFixedWidth(80)
-        self.silence_spin.setToolTip("このテキストの後に挿入する無音時間")
+        self.silence_spin.setFixedWidth(60)
+        self.silence_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.silence_spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
         self.silence_spin.setStyleSheet("""
             QDoubleSpinBox {
                 border: 1px solid #ccc;
@@ -97,10 +101,48 @@ class TextRowWidget(QWidget):
                 font-size: 11px;
             }
         """)
-        
-        silence_layout.addWidget(silence_label)
-        silence_layout.addWidget(self.silence_spin)
-        
+        silence_input_layout.addWidget(self.silence_spin)
+
+        # 上ボタン（▲で増加/緑）
+        silence_up_btn = QPushButton("▲")
+        silence_up_btn.setFixedSize(20, 20)
+        silence_up_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4caf50;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+        silence_up_btn.clicked.connect(lambda: self.silence_spin.setValue(min(3600.0, self.silence_spin.value() + 0.5)))
+        silence_input_layout.addWidget(silence_up_btn)
+
+        # 下ボタン（▼で減少/赤）
+        silence_down_btn = QPushButton("▼")
+        silence_down_btn.setFixedSize(20, 20)
+        silence_down_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f44336;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #d32f2f;
+            }
+        """)
+        silence_down_btn.clicked.connect(lambda: self.silence_spin.setValue(max(0.0, self.silence_spin.value() - 0.5)))
+        silence_input_layout.addWidget(silence_down_btn)
+
+        silence_layout.addLayout(silence_input_layout)
+
         # 再生ボタン
         self.play_btn = QPushButton("▶")
         self.play_btn.setFixedSize(30, 30)
@@ -228,32 +270,68 @@ class MultiTextWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(5)
-        
+
         # ヘッダー
         header_layout = QHBoxLayout()
-        
+
         header_label = QLabel("テキスト入力:")
         header_label.setFont(QFont("", 10, QFont.Weight.Bold))
-        
         header_layout.addWidget(header_label)
-        header_layout.addStretch()
 
-        jump_label = QLabel("行ジャンプ:")
-        jump_label.setStyleSheet("color: #666; font-size: 10px;")
-
+        # 行ジャンプ入力（ボタンなしテキストボックス）
         self.jump_spin = QSpinBox()
         self.jump_spin.setRange(1, 1)
         self.jump_spin.setValue(1)
-        self.jump_spin.setFixedWidth(60)
-        self.jump_spin.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.jump_spin.setFixedWidth(50)
+        self.jump_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.jump_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         self.jump_spin.setStyleSheet("""
             QSpinBox {
                 border: 1px solid #ccc;
                 border-radius: 4px;
-                padding: 2px 6px;
+                padding: 2px;
                 font-size: 11px;
             }
         """)
+        header_layout.addWidget(self.jump_spin)
+
+        # 上ボタン（▲で増加/緑）
+        self.jump_up_btn = QPushButton("▲")
+        self.jump_up_btn.setFixedSize(24, 24)
+        self.jump_up_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4caf50;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+        self.jump_up_btn.clicked.connect(lambda: self.jump_spin.setValue(min(self.jump_spin.maximum(), self.jump_spin.value() + 1)))
+        header_layout.addWidget(self.jump_up_btn)
+
+        # 下ボタン（▼で減少/赤）
+        self.jump_down_btn = QPushButton("▼")
+        self.jump_down_btn.setFixedSize(24, 24)
+        self.jump_down_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f44336;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #d32f2f;
+            }
+        """)
+        self.jump_down_btn.clicked.connect(lambda: self.jump_spin.setValue(max(1, self.jump_spin.value() - 1)))
+        header_layout.addWidget(self.jump_down_btn)
 
         self.jump_button = QPushButton("移動")
         self.jump_button.setFixedHeight(24)
@@ -270,13 +348,11 @@ class MultiTextWidget(QWidget):
                 background-color: #1976d2;
             }
         """)
-        self.jump_button.setToolTip("指定した番号のテキスト行に移動")
         self.jump_button.clicked.connect(self.on_jump_requested)
         self.jump_spin.editingFinished.connect(self.on_jump_requested)
-
-        header_layout.addWidget(jump_label)
-        header_layout.addWidget(self.jump_spin)
         header_layout.addWidget(self.jump_button)
+
+        header_layout.addStretch()
         
         # スクロールエリア
         self.scroll_area = QScrollArea()
