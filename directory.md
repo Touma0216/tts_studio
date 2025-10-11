@@ -54,6 +54,7 @@ tts_studio/
     ├── audio_effects_control.py      # 音声エフェクト制御UI
     ├── character_display.py          # キャラクター表示・Live2D統合UI
     ├── help_dialog.py                # ヘルプ・操作説明ダイアログ
+    ├── history_manager.py            # Undo Redo機能の保存・管理
     ├── image_history.py              # 画像履歴選択・管理ダイアログ
     ├── live2d_history.py             # Live2D履歴選択・管理ダイアログ
     ├── keyboard_shortcuts.py         # キーボードショートカット管理
