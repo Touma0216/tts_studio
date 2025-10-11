@@ -4,6 +4,7 @@ tts_studio/
 ├── user_settings.json                # ユーザー設定ファイル
 ├── image_history.json                # 画像履歴データ
 ├── live2d_history.json               # Live2Dモデル履歴データ
+├── __pycache__/                      # Pythonバイトコードキャッシュ
 ├── animations/                       # アニメーションJSONファイル
 │   ├── preset_look_around.json       # サンプルアニメーション
 │   └── (その他のアニメーションファイル)
@@ -46,6 +47,7 @@ tts_studio/
 │   ├── wav_player.py                 # WAV再生エンジン
 │   ├── whisper_transcriber.py        # 文字起こしエンジン
 │   └── audio_realtime_processor.py   # リアルタイム音声処理
+├── outputs/                          # 生成された音声ファイルの保存ディレクトリ
 └── ui/                               # ユーザーインターフェース
     ├── __init__.py                   # パッケージ初期化
     ├── audio_cleaner_control.py      # 音声クリーナー制御UI
