@@ -834,15 +834,46 @@ class TabbedModelingControl(QWidget):
     # ================================
     
     def on_drag_toggle(self, checked: bool):
-        """ドラッグ制御ON/OFF"""
+        """ドラッグ制御ON/OFF（背景編集モード対応版）"""
         if checked:
             self.drag_toggle_btn.setText("🎮 ドラッグ制御 ON")
             self.drag_sensitivity_slider.setEnabled(True)
             self.drag_reset_btn.setEnabled(True)
         else:
-            self.drag_toggle_btn.setText("🎮 ドラッグ制御 OFF")
+            self.drag_toggle_btn.setText("🖼️ 背景編集モード")
             self.drag_sensitivity_slider.setEnabled(False)
             self.drag_reset_btn.setEnabled(False)
+        
+        # CharacterDisplayWidgetを探す
+        parent = self.parent()
+        while parent and not hasattr(parent, 'character_display'):
+            parent = parent.parent()
+        
+        if parent and hasattr(parent, 'character_display'):
+            char_display = parent.character_display
+            
+            if checked:
+                # モデリングドラッグON
+                script = """
+                window.enableDragControl(true);
+                window.enableBackgroundEdit(false);
+                """
+            else:
+                # 背景編集ON
+                bg_settings = char_display.live2d_background_settings
+                if bg_settings.get('mode') == 'image':
+                    # 既存背景を直接編集するだけ
+                    script = """
+                    window.enableDragControl(false);
+                    window.enableBackgroundEdit(true);
+                    """
+                else:
+                    script = """
+                    window.enableDragControl(false);
+                    alert('背景を「画像」モードに設定してください');
+                    """
+            
+            char_display.live2d_webview.page().runJavaScript(script)
         
         self.drag_control_toggled.emit(checked)
         self._schedule_state_snapshot()
