@@ -171,7 +171,7 @@ class MiniMapWidget(QLabel):
             self.character_display.move_view_to_position(target_x, target_y)
         elif self.character_display.current_display_mode == "live2d":
             h_pos = int((target_x / self.original_pixmap.width()) * 100)
-            v_pos = int((target_y / self.original_pixmap.height()) * 100)
+            v_pos = 100 - int((target_y / self.original_pixmap.height()) * 100)
             self.character_display.live2d_h_position_slider.setValue(h_pos)
             self.character_display.live2d_v_position_slider.setValue(v_pos)
         event.accept()
@@ -1903,7 +1903,8 @@ class CharacterDisplayWidget(QWidget):
         h_pos = self.live2d_h_position_slider.value()
         v_pos = self.live2d_v_position_slider.value()
         center_x = pixmap_width * (h_pos / 100.0)
-        center_y = pixmap_height * (v_pos / 100.0)
+        center_y = pixmap_height * ((100 - v_pos) / 100.0)
+
 
         x = round(center_x - view_width / 2)
         y = round(center_y - view_height / 2)
