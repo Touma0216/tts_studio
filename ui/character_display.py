@@ -341,6 +341,12 @@ class Live2DWebView(QWebEngineView):
         if not self.is_dragging:
             self.setCursor(Qt.CursorShape.ArrowCursor)
         super().leaveEvent(event)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.character_display:
+            self.character_display.update_minimap_position()
+
         
     def load_initial_page(self):
         if self.live2d_url:
@@ -1001,7 +1007,7 @@ class CharacterDisplayWidget(QWidget):
         self.scroll_area.setWidget(self.character_image_label)
         
         # ミニマップ（画像・Live2D共通）
-        self.minimap = MiniMapWidget(self.scroll_area)
+        self.minimap = MiniMapWidget(self.scroll_area.viewport())
         self.minimap.set_character_display_widget(self)
         self.minimap.hide()
         
@@ -1161,17 +1167,19 @@ class CharacterDisplayWidget(QWidget):
 
     def toggle_minimap(self, checked):
         """ミニマップの表示/非表示切り替え（画像・Live2D共通）"""
-        if not self.original_pixmap:
-            return
         
         if checked:
+            self._ensure_minimap_parent()
             self.minimap.show()
             # モードに応じて表示内容を更新
-            if self.current_display_mode == "image":
+            if self.original_pixmap and self.current_display_mode == "image":
                 self.update_minimap_view()
-            else:  # Live2Dモード
-                # 赤枠なしで画像だけ表示
+            elif self.original_pixmap:
+                # Live2Dモードでは赤枠なしで画像だけ表示
                 self.minimap.update_minimap(self.original_pixmap, QRect())
+            else:
+                self.minimap.clear()
+                self.minimap.setText("ミニマップ")
         else:
             self.minimap.hide()
         
@@ -1194,6 +1202,9 @@ class CharacterDisplayWidget(QWidget):
                 self.live2d_webview.is_model_loaded
             )
             QTimer.singleShot(0, self.apply_live2d_background)
+
+        self._ensure_minimap_parent()
+        self.update_minimap_position()
         
         if not self.is_initializing:
             self.display_mode_manager.set_last_tab_index(index)
@@ -1594,6 +1605,7 @@ class CharacterDisplayWidget(QWidget):
         minimap_visible = ui_settings.get('minimap_visible', False)
         self.toggle_minimap_btn.setChecked(minimap_visible)
         if minimap_visible:
+            self._ensure_minimap_parent()
             self.minimap.show()
             # Live2Dモードでは赤枠なしで画像だけ表示
             self.minimap.update_minimap(self.original_pixmap, QRect())
@@ -1845,15 +1857,39 @@ class CharacterDisplayWidget(QWidget):
         self.save_ui_settings()
     
     def update_minimap_position(self):
-        if self.scroll_area: 
-            x_pos = self.scroll_area.viewport().width() - self.minimap.width() - 5
-            self.minimap.move(x_pos, 5)
-    
+        parent_widget = self.minimap.parentWidget()
+        if not parent_widget:
+            return
+
+        x_pos = max(5, parent_widget.width() - self.minimap.width() - 5)
+        self.minimap.move(x_pos, 5)
+        self.minimap.raise_()
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.update_minimap_position()
         if self.original_pixmap: 
             self.resize_timer.start(150)
+
+    def _ensure_minimap_parent(self):
+        """現在の表示モードに応じてミニマップの親ウィジェットを切り替える"""
+        if not hasattr(self, 'minimap'):
+            return
+
+        target_parent = None
+        if self.current_display_mode == "live2d" and hasattr(self, 'live2d_webview'):
+            target_parent = self.live2d_webview
+        elif hasattr(self, 'scroll_area') and self.scroll_area:
+            target_parent = self.scroll_area.viewport()
+
+        if target_parent:
+            if self.minimap.parentWidget() is not target_parent:
+                was_visible = self.minimap.isVisible()
+                self.minimap.setParent(target_parent)
+                if was_visible:
+                    self.minimap.show()
+            self.minimap.raise_()
+            self.update_minimap_position()
 
     def set_live2d_parameter(self, param_id: str, value: float):
         """Live2Dパラメータを設定（単一）"""
