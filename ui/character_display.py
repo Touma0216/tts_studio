@@ -1881,6 +1881,25 @@ class CharacterDisplayWidget(QWidget):
         view_width = min(pixmap_width, round(pixmap_width * 100 / zoom_percent))
         view_height = min(pixmap_height, round(pixmap_height * 100 / zoom_percent))
 
+        if hasattr(self, 'live2d_webview') and self.live2d_webview:
+            viewport_width = max(1, self.live2d_webview.width())
+            viewport_height = max(1, self.live2d_webview.height())
+            if viewport_height > 0:
+                viewport_ratio = viewport_width / viewport_height
+                pixmap_ratio = pixmap_width / pixmap_height
+
+                if viewport_ratio > pixmap_ratio:
+                    adjusted_height = round(view_width / viewport_ratio)
+                    if adjusted_height > 0:
+                        view_height = min(pixmap_height, adjusted_height)
+                else:
+                    adjusted_width = round(view_height * viewport_ratio)
+                    if adjusted_width > 0:
+                        view_width = min(pixmap_width, adjusted_width)
+
+        view_width = max(1, view_width)
+        view_height = max(1, view_height)
+        
         h_pos = self.live2d_h_position_slider.value()
         v_pos = self.live2d_v_position_slider.value()
         center_x = pixmap_width * (h_pos / 100.0)
