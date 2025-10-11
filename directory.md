@@ -70,4 +70,4 @@ tts_studio/
     ├── tabbed_modeling_control.py    # タブ式モデリング制御UI
     ├── tabbed_wav_export_control.py  # 音声書き出しタブUI
     ├── wav_playback_control.py       # タブ式wav再生制御UI
-    └── tts_worker.py                 # TTS生成・リップシンク処理用バックグラウンドワーカー
+    └── tts_worker.py                 # TTS生成・リップシンク処理用非同期バックグラウンドワーカー
