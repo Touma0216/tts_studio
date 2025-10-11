@@ -311,7 +311,7 @@ class MultiTextWidget(QWidget):
                 background-color: #45a049;
             }
         """)
-        self.jump_up_btn.clicked.connect(lambda: self.jump_spin.setValue(min(self.jump_spin.maximum(), self.jump_spin.value() + 1)))
+        self.jump_up_btn.clicked.connect(self.on_jump_up)
         header_layout.addWidget(self.jump_up_btn)
 
         # 下ボタン（▼で減少/赤）
@@ -353,6 +353,19 @@ class MultiTextWidget(QWidget):
         header_layout.addWidget(self.jump_button)
 
         header_layout.addStretch()
+
+        # 🆕 テキスト数表示ラベル（右端に配置）
+        self.text_count_label = QLabel("テキスト数: 1")
+        self.text_count_label.setStyleSheet("""
+            QLabel {
+                color: #666;
+                font-size: 10px;
+                padding: 2px 8px;
+                background-color: #f0f0f0;
+                border-radius: 4px;
+            }
+        """)
+        header_layout.addWidget(self.text_count_label)
         
         # スクロールエリア
         self.scroll_area = QScrollArea()
@@ -460,11 +473,14 @@ class MultiTextWidget(QWidget):
             widget.update_row_number(i)
             row_mapping[row_id] = i
         
+        # 🆕 テキスト数ラベルを更新
+        row_count = len(self.text_rows)
+        self.text_count_label.setText(f"テキスト数: {row_count}")
+        
         # シグナル送信
         self.row_numbers_updated.emit(row_mapping)
         self.update_jump_range()
-
-    
+        
     def on_row_parameters_changed(self, row_id, parameters):
         """行のパラメータが変更された（現在は未使用）"""
         pass
@@ -528,6 +544,22 @@ class MultiTextWidget(QWidget):
 
         if self.jump_spin.value() > row_count:
             self.jump_spin.setValue(row_count)
+
+    def on_jump_up(self):
+        """ジャンプ上ボタン: 上限なら新規行追加、未満なら+1"""
+        current = self.jump_spin.value()
+        maximum = self.jump_spin.maximum()
+        
+        if current >= maximum:
+            # 上限に達している → 新しい行を追加
+            new_row_id = self.add_text_row()
+            # 追加後の最新行（最後の行）に自動でジャンプ
+            new_row_number = len(self.text_rows)
+            self.jump_spin.setValue(new_row_number)
+            self.focus_row_by_number(new_row_number)
+        else:
+            # 上限未満 → 単純に+1
+            self.jump_spin.setValue(current + 1)
 
     def on_jump_requested(self):
         """ジャンプボタンまたは確定操作で指定行に移動"""
