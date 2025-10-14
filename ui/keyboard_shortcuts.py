@@ -20,6 +20,13 @@ class KeyboardShortcutManager(QObject):
         # ヘルプ機能（テキスト入力時は無効）
         self.add_shortcut("H", self.toggle_help_dialog)
 
+        # Live2D表情切り替え
+        self.add_shortcut("F1", self.set_expression_default)
+        self.add_shortcut("F2", self.set_expression_joy)
+        self.add_shortcut("F3", self.set_expression_surprised)
+        self.add_shortcut("F4", self.set_expression_fear)
+        self.add_shortcut("F5", self.set_expression_sad)
+
         # テキスト操作
         self.add_shortcut("Ctrl+D", self.reset_text_inputs)
 
@@ -183,6 +190,27 @@ class KeyboardShortcutManager(QObject):
         """テキストリセット"""
         if hasattr(self.main_window, 'reset_text_btn'):
             self.main_window.reset_text_btn.click()
+
+    def set_expression_default(self):
+        """デフォルト表情"""
+        self.main_window.trigger_live2d_expression(None)
+
+    def set_expression_joy(self):
+        """喜び表情"""
+        self.main_window.trigger_live2d_expression("Scene1")
+
+    def set_expression_surprised(self):
+        """驚き表情"""
+        self.main_window.trigger_live2d_expression("Scene2")
+
+    def set_expression_fear(self):
+        """恐怖表情"""
+        self.main_window.trigger_live2d_expression("Scene3")
+
+    def set_expression_sad(self):
+        """悲しみ表情"""
+        self.main_window.trigger_live2d_expression("Scene4")
+        
     
     def play_current_row(self):
         """現在フォーカス中の行を再生"""

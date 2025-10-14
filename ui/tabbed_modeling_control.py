@@ -279,7 +279,7 @@ class TabbedModelingControl(QWidget):
         preset_layout = QVBoxLayout(preset_group)
         
         # デフォルト表情ボタン
-        default_btn = QPushButton("😐 デフォルト表情")
+        default_btn = QPushButton("😐 デフォルト表情 (F1)")
         default_btn.setMinimumHeight(45)
         default_btn.setStyleSheet("""
             QPushButton {
@@ -304,10 +304,10 @@ class TabbedModelingControl(QWidget):
         expression_buttons_layout.setSpacing(10)
         
         expression_names = [
-            ("Scene1", "😄 喜び"),
-            ("Scene2", "😲 驚き"),
-            ("Scene3", "😨 恐怖"),
-            ("Scene4", "😢 悲しみ")
+            ("Scene1", "😄 喜び (F2)"),
+            ("Scene2", "😲 驚き (F3)"),
+            ("Scene3", "😨 恐怖 (F4)"),
+            ("Scene4", "😢 悲しみ (F5)")
         ]
         
         for i, (scene_id, label) in enumerate(expression_names):
@@ -915,7 +915,12 @@ class TabbedModelingControl(QWidget):
         
         if parent and hasattr(parent, 'character_display'):
             char_display = parent.character_display
-            if hasattr(char_display, 'live2d_webview') and char_display.live2d_webview.is_model_loaded:
+            if hasattr(char_display, 'apply_live2d_expression'):
+                if char_display.apply_live2d_expression(expression_name):
+                    print(f"😊 表情切り替え: {expression_name}")
+                else:
+                    QMessageBox.warning(self, "エラー", "Live2Dモデルが読み込まれていません")
+            elif hasattr(char_display, 'live2d_webview') and char_display.live2d_webview.is_model_loaded:
                 char_display.live2d_webview.set_expression(expression_name)
                 print(f"😊 表情切り替え: {expression_name}")
             else:
@@ -931,7 +936,12 @@ class TabbedModelingControl(QWidget):
         
         if parent and hasattr(parent, 'character_display'):
             char_display = parent.character_display
-            if hasattr(char_display, 'live2d_webview') and char_display.live2d_webview.is_model_loaded:
+            if hasattr(char_display, 'reset_live2d_expression'):
+                if char_display.reset_live2d_expression():
+                    print("✅ 表情リセット")
+                else:
+                    QMessageBox.warning(self, "エラー", "Live2Dモデルが読み込まれていません")
+            elif hasattr(char_display, 'live2d_webview') and char_display.live2d_webview.is_model_loaded:
                 script = "window.resetExpression();"
                 char_display.live2d_webview.page().runJavaScript(script)
                 print("✅ 表情リセット")

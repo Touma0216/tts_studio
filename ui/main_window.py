@@ -81,6 +81,17 @@ class TTSStudioMainWindow(QMainWindow):
         self.keyboard_shortcuts = KeyboardShortcutManager(self)
         self.load_last_model()
 
+    def trigger_live2d_expression(self, expression_name: str | None = None) -> bool:
+        """キーボードショートカットからLive2D表情を適用"""
+        if not hasattr(self, 'character_display') or self.character_display is None:
+            return False
+
+        if expression_name is None:
+            return self.character_display.reset_live2d_expression()
+
+        return self.character_display.apply_live2d_expression(expression_name)
+    
+
     def init_ui(self):
         self.setWindowTitle("TTSスタジオ - ほのか")
         self.setGeometry(100, 100, 1200, 800)

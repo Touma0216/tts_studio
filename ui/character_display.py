@@ -978,6 +978,33 @@ class CharacterDisplayWidget(QWidget):
 
         self.live2d_webview.page().runJavaScript(script, handle_result)
 
+    def apply_live2d_expression(self, expression_name: str) -> bool:
+        """Live2Dモデルに表情を適用"""
+        if (
+            hasattr(self, 'live2d_webview')
+            and self.live2d_webview
+            and self.live2d_webview.is_model_loaded
+        ):
+            self.live2d_webview.set_expression(expression_name)
+            return True
+
+        print("⚠️ Live2Dモデルが読み込まれていません（表情適用失敗）")
+        return False
+
+    def reset_live2d_expression(self) -> bool:
+        """Live2Dモデルの表情をデフォルトに戻す"""
+        if (
+            hasattr(self, 'live2d_webview')
+            and self.live2d_webview
+            and self.live2d_webview.is_model_loaded
+        ):
+            script = "if (typeof window.resetExpression === 'function') { window.resetExpression(); }"
+            self.live2d_webview.page().runJavaScript(script)
+            return True
+
+        print("⚠️ Live2Dモデルが読み込まれていません（表情リセット失敗）")
+        return False
+
     def setup_image_tab(self):
         """画像タブの中身（ズーム＋画像表示エリアのみ）"""
         layout = QVBoxLayout(self.image_tab)
