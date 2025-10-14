@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider,
                             QComboBox, QDoubleSpinBox, QGroupBox, QGridLayout, QTabWidget,
                             QPushButton)
@@ -10,16 +12,27 @@ class SingleEmotionControl(QWidget):
     
     parameters_changed = pyqtSignal(str, dict)
     undo_executed = pyqtSignal(str)  # Undo実行通知
+
+    DEFAULT_PARAMETERS = {
+        'style': 'Neutral',
+        'style_weight': 1.0,
+        'length_scale': 0.85,
+        'pitch_scale': 1.0,
+        'intonation_scale': 1.0,
+        'sdp_ratio': 0.25,
+        'noise': 0.35,
+    }
     
     def __init__(self, row_id, parameters=None, is_master=False, parent=None):
         super().__init__(parent)
         
         self.row_id = row_id
         self.is_master = is_master
-        self.current_params = parameters or {
-            'style': 'Neutral', 'style_weight': 1.0, 'length_scale': 0.85,
-            'pitch_scale': 1.0, 'intonation_scale': 1.0, 'sdp_ratio': 0.25, 'noise': 0.35
-        }
+        initial_params = deepcopy(parameters) if parameters else deepcopy(self.DEFAULT_PARAMETERS)
+        self.current_params = initial_params
+        self.factory_default_params = deepcopy(self.DEFAULT_PARAMETERS)
+        self.master_default_params = (deepcopy(self.factory_default_params)
+                                      if self.is_master else deepcopy(initial_params))
         
         # 改良版履歴管理（複数Undo対応）
         self.history = ParameterHistory(max_history=20)
@@ -47,6 +60,49 @@ class SingleEmotionControl(QWidget):
         params_group = self.create_params_group()
         layout.addWidget(params_group)
 
+        reset_layout = QHBoxLayout()
+        reset_layout.addStretch()
+
+        self.reset_button = QPushButton("🔄 パラメータリセット")
+        self.reset_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        if self.is_master:
+            self.reset_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #ffd700;
+                    color: #8b6508;
+                    border: 1px solid #daa520;
+                    border-radius: 6px;
+                    padding: 6px 12px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #ffe44d;
+                }
+                QPushButton:pressed {
+                    background-color: #f5c518;
+                }
+            """)
+        else:
+            self.reset_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #e6f2ff;
+                    color: #1a73e8;
+                    border: 1px solid #4a90e2;
+                    border-radius: 6px;
+                    padding: 6px 12px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #d2e7ff;
+                }
+                QPushButton:pressed {
+                    background-color: #bcd9ff;
+                }
+            """)
+        self.reset_button.clicked.connect(self.on_reset_button_clicked)
+
+        reset_layout.addWidget(self.reset_button)
+        layout.addLayout(reset_layout)
 
         if self.is_master:
             info_label = QLabel("★ デフォルトパラメータ - ここを変更すると全てのタブに反映されます")
@@ -502,6 +558,25 @@ class SingleEmotionControl(QWidget):
     
     def emit_parameters_changed(self):
         self.parameters_changed.emit(self.row_id, self.current_params.copy())
+
+    def on_reset_button_clicked(self):
+        if self.is_loading_parameters:
+            return
+
+        target_defaults = (self.factory_default_params if self.is_master
+                            else self.master_default_params or self.factory_default_params)
+        target_defaults = deepcopy(target_defaults)
+
+        new_params = self.current_params.copy()
+        new_params.update(target_defaults)
+
+        if new_params == self.current_params:
+            return
+
+        self.save_current_state_to_history()
+        self.current_params = new_params
+        self.load_parameters()
+        self.emit_parameters_changed()
     
     def get_current_parameters(self):
         return self.current_params.copy()
@@ -510,7 +585,11 @@ class SingleEmotionControl(QWidget):
         # マスターからの更新は履歴に保存
         self.save_current_state_to_history()
         
-        self.current_params.update(master_params)
+        self.master_default_params = deepcopy(master_params)
+
+        updated_params = self.current_params.copy()
+        updated_params.update(master_params)
+        self.current_params = updated_params
         self.load_parameters()
     
     def update_emotion_combo(self, available_styles):
