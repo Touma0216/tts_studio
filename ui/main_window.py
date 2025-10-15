@@ -1294,20 +1294,13 @@ class TTSStudioMainWindow(QMainWindow):
         """キューアイテム再生開始"""
         print(f"  🎵 [{index + 1}] 再生開始")
         
-        # 🔧 最初のチャンク以外は500ms待ってからリップシンク送信
+        # 🔧 チャンク開始と同時にリップシンクを送信
         lipsync = self.wav_player.get_current_lipsync_data()
         if lipsync and self.tabbed_audio_control.is_lip_sync_enabled():
-            if (hasattr(self.character_display, 'live2d_webview') and 
+            if (hasattr(self.character_display, 'live2d_webview') and
                 self.character_display.live2d_webview.is_model_loaded):
-                
-                if index == 0:
-                    # 最初はすぐ送信
-                    self.send_lipsync_to_live2d(lipsync)
-                    print(f"    🎭 リップシンク送信")
-                else:
-                    # 2番目以降は500ms遅延（語尾保護）
-                    QTimer.singleShot(500, lambda: self.send_lipsync_to_live2d(lipsync))
-                    print(f"    🎭 リップシンク送信（500ms遅延）")
+                self.send_lipsync_to_live2d(lipsync)
+                print(f"    🎭 リップシンク送信")
 
 
     def on_queue_item_finished(self, index: int):
