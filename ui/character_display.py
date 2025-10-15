@@ -534,10 +534,10 @@ class CharacterDisplayWidget(QWidget):
 
         # Live2D背景設定
         self.live2d_background_settings = {
-            'mode': 'transparent',
+            'mode': 'default',
             'color': '#000000',
-            'alpha': 0.0,
-            'previewAlpha': 0.0
+            'alpha': 1.0,
+            'previewAlpha': 1.0
         }
         self._background_image_cache = {}
         self._background_retry_attempts = 0
@@ -750,7 +750,7 @@ class CharacterDisplayWidget(QWidget):
             color = self.live2d_background_settings.get('color', '#00ff00')
             tooltip = f"Live2D表示の背景をクロマキー用の色 ({color.upper()}) に切り替え"
         elif mode == 'default':
-            tooltip = "Live2D表示の背景を標準のグラデーションに切り替え"
+            tooltip = "Live2D表示の背景を標準（黒）に切り替え"
         else:
             tooltip = "Live2D表示の背景を切り替え"
 
@@ -813,7 +813,8 @@ class CharacterDisplayWidget(QWidget):
             })
         else:
             new_settings.update({
-                'alpha': kwargs.get('alpha', 0.0),
+                'color': kwargs.get('color', '#000000'),
+                'alpha': kwargs.get('alpha', 1.0),                
                 'previewAlpha': kwargs.get('previewAlpha', 1.0)
             })
 
@@ -937,10 +938,10 @@ class CharacterDisplayWidget(QWidget):
                 self._background_image_warning_shown = True
             if self.live2d_background_settings.get('mode') == 'image':
                 self.live2d_background_settings = {
-                    'mode': 'transparent',
+                    'mode': 'default',
                     'color': '#000000',
-                    'alpha': 0.0,
-                    'previewAlpha': 0.0
+                    'alpha': 1.0,
+                    'previewAlpha': 1.0
                 }
                 self._background_retry_attempts = 0
                 self.update_live2d_background_button()
@@ -1666,10 +1667,10 @@ class CharacterDisplayWidget(QWidget):
             self.live2d_background_settings = dict(background_settings)
         else:
             self.live2d_background_settings = {
-                'mode': 'transparent',
+                'mode': 'default',
                 'color': '#000000',
-                'alpha': 0.0,
-                'previewAlpha': 0.0
+                'alpha': 1.0,
+                'previewAlpha': 1.0
             }
         self._background_image_warning_shown = False
         self._background_retry_attempts = 0

@@ -32,11 +32,15 @@ class Live2DManager:
                     self.models_data = data.get('models', [])
                     for model in self.models_data:
                         ui_settings = model.setdefault('ui_settings', {})
+                        ui_settings.setdefault('zoom_percent', 100)
+                        ui_settings.setdefault('h_position', 50)
+                        ui_settings.setdefault('v_position', 50)
+                        ui_settings.setdefault('minimap_visible', False)
                         ui_settings.setdefault('background_settings', {
-                            'mode': 'transparent',
+                            'mode': 'default',
                             'color': '#000000',
-                            'alpha': 0.0,
-                            'previewAlpha': 0.0
+                            'alpha': 1.0,
+                            'previewAlpha': 1.0
                         })
                     # 存在しないモデルフォルダを自動削除
                     self.cleanup_missing_models()
@@ -87,11 +91,15 @@ class Live2DManager:
                 'auto_eye_blink': True,
                 'lip_sync_gain': 1.0,
                 'background_visible': True,
+                'zoom_percent': 100,
+                'h_position': 50,
+                'v_position': 50,
+                'minimap_visible': False,
                 'background_settings': {
-                    'mode': 'transparent',
+                    'mode': 'default',
                     'color': '#000000',
-                    'alpha': 0.0,
-                    'previewAlpha': 0.0
+                    'alpha': 1.0,
+                    'previewAlpha': 1.0
                 }
             }
         }
@@ -151,11 +159,15 @@ class Live2DManager:
             'auto_eye_blink': True,
             'lip_sync_gain': 1.0,
             'background_visible': True,
+            'zoom_percent': 100,
+            'h_position': 50,
+            'v_position': 50,
+            'minimap_visible': False,
             'background_settings': {
-                'mode': 'transparent',
+                'mode': 'default',
                 'color': '#000000',
-                'alpha': 0.0,
-                'previewAlpha': 0.0
+                'alpha': 1.0,
+                'previewAlpha': 1.0
             }
         }
     
