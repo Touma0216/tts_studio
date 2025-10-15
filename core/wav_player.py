@@ -43,6 +43,10 @@ class WAVPlayer(QObject):
         self._queue_enabled: bool = False
         self._current_queue_index: int = -1
         self._queue_playing: bool = False
+
+        self._queue_stream = None
+        self._queue_stream_sr: Optional[int] = None
+        self._queue_stream_lock = threading.Lock()
         
         self.playback_finished.connect(self._on_playback_finished)
     
@@ -61,6 +65,7 @@ class WAVPlayer(QObject):
             self._queue.clear()
             self._current_queue_index = -1
             self._queue_playing = False
+            self._close_queue_stream()
         print(f"🎵 キューモード: {'有効' if enabled else '無効'}")
     
     def add_to_queue(self, audio: np.ndarray, sample_rate: int, lipsync_data=None):
@@ -108,6 +113,7 @@ class WAVPlayer(QObject):
             self._queue_playing = False
             self._current_queue_index = -1
             self.queue_finished.emit()
+            self._close_queue_stream()
             return
         
         # 次のアイテムを取り出す
@@ -279,13 +285,24 @@ class WAVPlayer(QObject):
             expected_duration = len(audio_segment) / self.sample_rate
             print(f"🔍 再生データ: {len(audio_segment)}サンプル, 予想時間: {expected_duration:.2f}秒")
             
-            audio_segment = audio_segment * self.volume
+            audio_segment = np.ascontiguousarray(audio_segment * self.volume, dtype=np.float32)
             
             def play_audio(expected_session_id=session_id):
                 try:
                     import time
                     play_start = time.time()
-                    sd.play(audio_segment, self.sample_rate, blocking=True)
+                    if self._queue_enabled and self._queue_playing:
+                        if self._ensure_queue_stream(self.sample_rate):
+                            # OutputStreamは(サンプル, チャンネル)の配列を想定
+                            stream_data = audio_segment
+                            if stream_data.ndim == 1:
+                                stream_data = stream_data.reshape(-1, 1)
+                            with self._queue_stream_lock:
+                                self._queue_stream.write(stream_data)
+                        else:
+                            sd.play(audio_segment, self.sample_rate, blocking=True)
+                    else:
+                        sd.play(audio_segment, self.sample_rate, blocking=True)
                     actual_duration = time.time() - play_start
                     print(f"🔍 実際の再生時間: {actual_duration:.2f}秒")
                     
@@ -308,6 +325,8 @@ class WAVPlayer(QObject):
             if self._stream:
                 self._stream.close()
                 self._stream = None
+            if not self._queue_playing:
+                self._close_queue_stream()
         except Exception as e:
             print(f"⚠️ 停止エラー: {e}")
     
@@ -358,3 +377,53 @@ class WAVPlayer(QObject):
     def is_loaded(self) -> bool:
         """WAVファイルが読み込まれているか"""
         return self.audio_data is not None
+    
+    def _ensure_queue_stream(self, sample_rate: int) -> bool:
+        """キューモード用の連続再生ストリームを準備"""
+        if self._queue_stream and self._queue_stream_sr == sample_rate:
+            return True
+
+        self._close_queue_stream()
+
+        try:
+            stream = sd.OutputStream(
+                samplerate=sample_rate,
+                channels=1,
+                dtype='float32',
+                blocksize=0,
+            )
+            stream.start()
+            self._queue_stream = stream
+            self._queue_stream_sr = sample_rate
+            print("🔊 連続ストリーム初期化")
+            return True
+        except Exception as e:
+            print(f"❌ 連続ストリーム初期化エラー: {e}")
+            self._queue_stream = None
+            self._queue_stream_sr = None
+            return False
+
+    def _close_queue_stream(self):
+        """キューモード用のストリームをクローズ"""
+        with self._queue_stream_lock:
+            if self._queue_stream is None:
+                return
+
+            try:
+                self._queue_stream.abort()
+            except Exception:
+                pass
+
+            try:
+                self._queue_stream.stop()
+            except Exception:
+                pass
+
+            try:
+                self._queue_stream.close()
+            except Exception:
+                pass
+
+            self._queue_stream = None
+            self._queue_stream_sr = None
+            print("🔇 連続ストリーム終了")
