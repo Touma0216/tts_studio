@@ -352,6 +352,24 @@ class MultiTextWidget(QWidget):
         self.jump_spin.editingFinished.connect(self.on_jump_requested)
         header_layout.addWidget(self.jump_button)
 
+        # 自動整理ボタン（移動ボタンの右隣）
+        self.auto_split_button = QPushButton("自動整理")
+        self.auto_split_button.setFixedHeight(24)
+        self.auto_split_button.setStyleSheet("""
+            QPushButton {
+                background-color: #4caf50;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 4px 10px;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #43a047;
+            }
+        """)
+        self.auto_split_button.clicked.connect(self.auto_split_texts)
+        header_layout.addWidget(self.auto_split_button)
         header_layout.addStretch()
 
         # 🆕 テキスト数表示ラベル（右端に配置）
@@ -596,3 +614,53 @@ class MultiTextWidget(QWidget):
 
         # 音声パラメータタブの選択を連動
         self.row_focus_requested.emit(target_row_id)
+
+    def auto_split_texts(self):
+        """入力されたテキストを改行ごとに自動整理"""
+
+        # 現在のテキストを行順で取得
+        current_widgets = list(self.text_rows.values())
+        lines = []
+        for widget in current_widgets:
+            text = widget.get_text()
+            if not text:
+                continue
+
+            for raw_line in text.splitlines():
+                stripped = raw_line.strip()
+                if not stripped:
+                    continue
+
+                cleaned = " ".join(stripped.split())
+                if cleaned:
+                    lines.append(cleaned)
+
+        # 必要行数を算出（最低1行）
+        required_rows = max(1, len(lines))
+
+        # 行が存在しない場合は自動生成
+        while len(self.text_rows) < required_rows:
+            self.add_text_row()
+
+        # 余分な行を削除（下から）
+        if len(self.text_rows) > required_rows:
+            extra_ids = list(self.text_rows.keys())[required_rows:]
+            for row_id in extra_ids:
+                self.delete_text_row(row_id)
+
+        final_widgets = list(self.text_rows.values())
+
+        if lines:
+            # 行ごとにテキストを設定
+            for widget, line in zip(final_widgets, lines):
+                widget.set_text(line)
+
+            # 余った行は空にする
+            for widget in final_widgets[len(lines):]:
+                widget.set_text("")
+        else:
+            # 入力が空の場合でも1行を残す
+            final_widgets[0].set_text("")
+
+        # 行番号やカウンターを更新
+        self.update_row_numbers()
