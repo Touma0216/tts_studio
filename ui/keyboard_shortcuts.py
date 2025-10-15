@@ -34,9 +34,10 @@ class KeyboardShortcutManager(QObject):
         # 再生系
         self.add_shortcut("Ctrl+P", self.play_current_row)
         self.add_shortcut("Ctrl+R", self.play_sequential)
+        self.add_shortcut("Ctrl+E", self.play_streaming)  # 🆕 ストリーミング再生
 
-        # 感情選択
-        self.add_shortcut("Ctrl+E", self.open_emotion_combo)
+        # 感情選択（ショートカット削除、必要なら別のキーに変更可能）
+        # self.add_shortcut("Ctrl+Shift+E", self.open_emotion_combo)  # 👈 無効化
         
         # 保存系
         self.add_shortcut("Ctrl+S", self.save_individual)
@@ -234,6 +235,11 @@ class KeyboardShortcutManager(QObject):
     def play_sequential(self):
         """連続再生"""
         self.main_window.sequential_play_btn.click()
+    
+    def play_streaming(self):
+        """🆕 ストリーミング再生"""
+        if hasattr(self.main_window, 'streaming_play_btn'):
+            self.main_window.streaming_play_btn.click()
 
     def save_individual(self):
         """個別保存"""
@@ -278,18 +284,8 @@ class KeyboardShortcutManager(QObject):
                 self.main_window.tabbed_audio_control.set_current_row_silent(row_id)
     
     def open_emotion_combo(self):
-        """感情コンボボックスを開く"""
+        """感情コンボボックスを開く（ショートカット無効化中）"""
         current_control = self.main_window.tabbed_audio_control.emotion_control.tab_widget.currentWidget()
         if current_control and hasattr(current_control, 'emotion_combo'):
             current_control.emotion_combo.setFocus()
             current_control.emotion_combo.showPopup()
-    
-    def save_individual(self):
-        """個別保存"""
-        if hasattr(self.main_window, 'save_individual_btn'):
-            self.main_window.save_individual_btn.click()
-    
-    def save_continuous(self):
-        """連続保存"""
-        if hasattr(self.main_window, 'save_continuous_btn'):
-            self.main_window.save_continuous_btn.click()

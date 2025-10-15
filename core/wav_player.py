@@ -2,18 +2,22 @@ import numpy as np
 import sounddevice as sd
 import soundfile as sf
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Optional, Callable, List, Tuple
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 import threading
+from collections import deque
 
 class WAVPlayer(QObject):
-    """WAVファイル再生エンジン（リップシンク同期対応）"""
+    """WAVファイル再生エンジン（リップシンク同期対応 + キュー機能）"""
     
     playback_position_changed = pyqtSignal(float)  # 現在の再生位置（秒）
     playback_finished = pyqtSignal()
     playback_started = pyqtSignal()
     playback_paused = pyqtSignal()
     playback_stopped = pyqtSignal()
+    queue_item_started = pyqtSignal(int)  # キューアイテム再生開始（インデックス）
+    queue_item_finished = pyqtSignal(int)  # キューアイテム完了（インデックス）
+    queue_finished = pyqtSignal()  # キュー全体完了
     
     def __init__(self):
         super().__init__()
@@ -29,14 +33,147 @@ class WAVPlayer(QObject):
         self._position_timer = QTimer()
         self._position_timer.timeout.connect(self._update_position)
         self._playback_thread = None
-        self._playback_start_time = 0.0  # 🔥 追加
-        self._playback_start_position = 0.0  # 🔥 追加
+        self._playback_start_time = 0.0
+        self._playback_start_position = 0.0
         self._playback_session_id = 0
         self._active_session_id = 0
         
-        # 🔥 追加：再生完了時の処理
-        self.playback_finished.connect(self._on_playback_finished)
+        # 🆕 キュー機能
+        self._queue: deque = deque()  # [(audio_data, sample_rate, lipsync_data), ...]
+        self._queue_enabled: bool = False
+        self._current_queue_index: int = -1
+        self._queue_playing: bool = False
         
+        self.playback_finished.connect(self._on_playback_finished)
+    
+    # ========================================
+    # 🆕 キュー機能
+    # ========================================
+    
+    def enable_queue_mode(self, enabled: bool = True):
+        """キューモードを有効化
+        
+        Args:
+            enabled: True=キューモード、False=通常モード
+        """
+        self._queue_enabled = enabled
+        if not enabled:
+            self._queue.clear()
+            self._current_queue_index = -1
+            self._queue_playing = False
+        print(f"🎵 キューモード: {'有効' if enabled else '無効'}")
+    
+    def add_to_queue(self, audio: np.ndarray, sample_rate: int, lipsync_data=None):
+        """キューに音声を追加
+        
+        Args:
+            audio: 音声データ
+            sample_rate: サンプルレート
+            lipsync_data: リップシンクデータ（オプション）
+        """
+        if not self._queue_enabled:
+            print("⚠️ キューモードが無効です。enable_queue_mode(True)を呼び出してください")
+            return
+        
+        self._queue.append((audio, sample_rate, lipsync_data))
+        print(f"📥 キュー追加: {len(audio)/sample_rate:.2f}秒 (キューサイズ: {len(self._queue)})")
+    
+    def start_queue_playback(self):
+        """キューの再生を開始"""
+        if not self._queue_enabled:
+            print("⚠️ キューモードが無効です")
+            return
+        
+        if not self._queue:
+            print("⚠️ キューが空です")
+            return
+        
+        if self._queue_playing:
+            print("⚠️ 既にキュー再生中です")
+            return
+        
+        print(f"▶️ キュー再生開始: {len(self._queue)}個")
+        self._queue_playing = True
+        self._current_queue_index = -1
+        self._play_next_in_queue()
+    
+    def _play_next_in_queue(self):
+        """キューの次のアイテムを再生"""
+        if not self._queue_enabled or not self._queue_playing:
+            return
+        
+        if not self._queue:
+            # キュー終了
+            print("✅ キュー全体完了")
+            self._queue_playing = False
+            self._current_queue_index = -1
+            self.queue_finished.emit()
+            return
+        
+        # 次のアイテムを取り出す
+        self._current_queue_index += 1
+        audio, sample_rate, lipsync_data = self._queue.popleft()
+        
+        print(f"  🎵 [{self._current_queue_index + 1}] 再生開始: {len(audio)/sample_rate:.2f}秒")
+        
+        # 音声データをロード
+        self.load_audio(audio, sample_rate)
+        
+        # リップシンクデータを保存（外部で使用）
+        self._current_lipsync_data = lipsync_data
+        
+        # 再生開始
+        self.play()
+        self.queue_item_started.emit(self._current_queue_index)
+    
+    def stop_queue_playback(self):
+        """キュー再生を停止"""
+        print("⏹️ キュー再生停止")
+        self._queue_playing = False
+        self._queue.clear()
+        self._current_queue_index = -1
+        self.stop()
+    
+    def get_queue_size(self) -> int:
+        """現在のキューサイズを取得"""
+        return len(self._queue)
+    
+    def get_current_queue_index(self) -> int:
+        """現在再生中のキューインデックスを取得"""
+        return self._current_queue_index
+    
+    def get_current_lipsync_data(self):
+        """現在のリップシンクデータを取得"""
+        return getattr(self, '_current_lipsync_data', None)
+    
+    # ========================================
+    # 既存の機能（修正版）
+    # ========================================
+    
+    def load_audio(self, audio: np.ndarray, sample_rate: int):
+        """音声データを直接ロード
+        
+        Args:
+            audio: 音声データ（numpy配列）
+            sample_rate: サンプルレート
+        """
+        try:
+            # モノラル化
+            if audio.ndim > 1:
+                audio = np.mean(audio, axis=1)
+            
+            self.audio_data = audio.astype(np.float32)
+            self.sample_rate = sample_rate
+            self.duration = len(audio) / sample_rate
+            self.current_position = 0.0
+            
+            print(f"✅ 音声ロード完了: {self.duration:.2f}秒")
+            return True
+            
+        except Exception as e:
+            print(f"❌ 音声ロードエラー: {e}")
+            return False
+    
     def load_wav_file(self, file_path: str) -> bool:
         """WAVファイルを読み込み"""
         try:
@@ -45,22 +182,8 @@ class WAVPlayer(QObject):
                 print(f"❌ ファイルが見つかりません: {file_path}")
                 return False
             
-            # soundfileで読み込み
             audio, sr = sf.read(file_path, dtype='float32')
-            
-            # モノラル化（必要に応じて）
-            if audio.ndim > 1:
-                audio = np.mean(audio, axis=1)
-            
-            self.audio_data = audio
-            self.sample_rate = sr
-            self.duration = len(audio) / sr
-            self.current_position = 0.0
-            
-            print(f"✅ WAV読み込み完了: {path.name}")
-            print(f"   長さ: {self.duration:.2f}秒, サンプルレート: {sr}Hz")
-            
-            return True
+            return self.load_audio(audio, sr)
             
         except Exception as e:
             print(f"❌ WAV読み込みエラー: {e}")
@@ -80,27 +203,22 @@ class WAVPlayer(QObject):
             self.current_position = max(0.0, min(start_position, self.duration))
         
         if self.is_paused:
-            # 一時停止から再開
             self.is_paused = False
         else:
-            # 新規または明示的な開始位置からの再生
             if start_position is not None:
                 self.current_position = start_position
         
         self.is_playing = True
-
-        # セッションIDを更新して古い再生完了イベントを無効化
         self._playback_session_id += 1
         session_id = self._playback_session_id
         self._active_session_id = session_id
         
-        # 🔥 追加：再生開始時刻を記録
         import time
         self._playback_start_time = time.time()
         self._playback_start_position = self.current_position
         
         self._start_playback(session_id)
-        self._position_timer.start(50)  # 50msごとに位置更新
+        self._position_timer.start(50)
         
         self.playback_started.emit()
         print(f"▶️ 再生開始: {self.current_position:.2f}秒から")
@@ -158,14 +276,11 @@ class WAVPlayer(QObject):
             start_sample = int(self.current_position * self.sample_rate)
             audio_segment = self.audio_data[start_sample:]
             
-            # 🔍 デバッグログ追加
             expected_duration = len(audio_segment) / self.sample_rate
             print(f"🔍 再生データ: {len(audio_segment)}サンプル, 予想時間: {expected_duration:.2f}秒")
-            print(f"🔍 開始位置: {self.current_position:.2f}秒, 開始サンプル: {start_sample}")
             
             audio_segment = audio_segment * self.volume
             
-            # 別スレッドで再生
             def play_audio(expected_session_id=session_id):
                 try:
                     import time
@@ -201,14 +316,12 @@ class WAVPlayer(QObject):
         if not self.is_playing:
             return
         
-        # 🔥 修正：実際の経過時間から位置を計算
         import time
         elapsed = time.time() - self._playback_start_time
         self.current_position = self._playback_start_position + elapsed
         
-        # タイマー停止はplayback_finishedで行う
         self.playback_position_changed.emit(self.current_position)
-    
+        
     def _on_playback_finished(self):
         """再生完了時の処理"""
         self._position_timer.stop()
@@ -217,6 +330,14 @@ class WAVPlayer(QObject):
         self.is_paused = False
         self._active_session_id = 0
         self.playback_position_changed.emit(self.current_position)
+        
+        # 🆕 キューモードの場合は次を再生
+        if self._queue_enabled and self._queue_playing:
+            print(f"  ✅ [{self._current_queue_index + 1}] 完了")
+            self.queue_item_finished.emit(self._current_queue_index)
+            
+            # 🔧 待機時間を500msに延長（語尾保護）
+            QTimer.singleShot(500, self._play_next_in_queue)
     
     def get_audio_data(self) -> Optional[np.ndarray]:
         """音声データを取得"""

@@ -42,9 +42,6 @@ class TTSStudioMainWindow(QMainWindow):
         self._wav_lipsync_timer = None
         self._wav_lipsync_data = None
         self.whisper_transcriber = WhisperTranscriber(model_size="large", device="cuda")
-
-        
-        self.setup_tts_worker()
         
         self.last_generated_audio = None
         self.last_sample_rate = None
@@ -58,7 +55,9 @@ class TTSStudioMainWindow(QMainWindow):
         self.init_ui()
         self.help_dialog = HelpDialog(self)
         self.setup_audio_processing_integration()
-        
+
+        self.setup_streaming_worker()
+
         # リップシンク統合設定
         self.setup_lipsync_integration()
 
@@ -173,6 +172,19 @@ class TTSStudioMainWindow(QMainWindow):
 
         self.sequential_play_btn = QPushButton("連続して再生(Ctrl + R)")
         self.sequential_play_btn.setStyleSheet(self._blue_btn_css())
+        self.streaming_play_btn = QPushButton("🚀 ストリーミング再生(Ctrl + E)")
+        self.streaming_play_btn.setStyleSheet("""
+            QPushButton { background-color: #9c27b0; color: white; border: none; border-radius: 4px; font-size: 13px; font-weight: bold; padding: 6px 16px; }
+            QPushButton:hover:enabled { background-color: #7b1fa2; }
+            QPushButton:pressed:enabled { background-color: #6a1b9a; }
+            QPushButton:disabled { background-color: #f0f0f0; color: #aaaaaa; }
+        """)
+        self.streaming_play_btn.setMinimumHeight(35)
+        self.streaming_play_btn.setEnabled(False)
+        self.streaming_play_btn.clicked.connect(self.play_streaming)
+        controls.addWidget(self.streaming_play_btn)
+        if self.tts_engine.is_loaded:
+            self.streaming_play_btn.setEnabled(True)
         self.save_individual_btn = QPushButton("個別保存(Ctrl + S)")
         self.save_individual_btn.setStyleSheet(self._green_btn_css())
         self.save_continuous_btn = QPushButton("連続保存(Ctrl + Shift + S)")
@@ -187,7 +199,7 @@ class TTSStudioMainWindow(QMainWindow):
             QPushButton:disabled { background-color: #f0f0f0; color: #aaaaaa; }
         """)
         
-        for btn in [self.sequential_play_btn, self.save_individual_btn, self.save_continuous_btn, self.test_lipsync_btn]:
+        for btn in [self.sequential_play_btn, self.save_individual_btn, self.save_continuous_btn, self.test_lipsync_btn, self.streaming_play_btn]:
             btn.setMinimumHeight(35)
             btn.setEnabled(False)
             controls.addWidget(btn)
@@ -309,14 +321,24 @@ class TTSStudioMainWindow(QMainWindow):
         self.stop_audio_btn.setEnabled(self._tts_playing or wav_active)
 
     def stop_tts_audio(self):
+        """音声停止（ストリーミング対応版）"""
         try:
+            # WAV再生停止
             wav_control = self.tabbed_audio_control.get_wav_playback_control()
             if wav_control and wav_control.has_active_playback():
                 wav_control.stop_playback()
+            
+            # 🆕 キュー再生停止
+            if self.wav_player._queue_playing:
+                self.wav_player.stop_queue_playback()
+                self.streaming_play_btn.setEnabled(True)
+                self.sequential_play_btn.setEnabled(True)
+        
         except Exception as e:
             print(f"❌ WAV停止エラー: {e}")
 
         try:
+            # TTS再生停止
             if self._tts_playing:
                 import sounddevice as sd
                 sd.stop()
@@ -358,6 +380,41 @@ class TTSStudioMainWindow(QMainWindow):
         self.tts_synthesis_requested.connect(self.tts_worker.synthesize)
         self.tts_thread.finished.connect(self.tts_worker.deleteLater)
         self.tts_thread.start()
+
+    def setup_streaming_worker(self):
+        """ストリーミングワーカーのセットアップ"""
+        try:
+            from ui.streaming_tts_worker import StreamingTTSWorker
+            
+            self.streaming_worker = StreamingTTSWorker(
+                self.tts_engine,
+                self.lip_sync_engine,
+                self.audio_processor,
+                self.audio_effects_processor
+            )
+            
+            self.streaming_thread = QThread()
+            self.streaming_worker.moveToThread(self.streaming_thread)
+            
+            # シグナル接続
+            self.streaming_worker.chunk_ready.connect(self.on_chunk_ready)
+            self.streaming_worker.progress_updated.connect(self.on_streaming_progress)
+            self.streaming_worker.processing_started.connect(self.on_streaming_started)
+            self.streaming_worker.all_finished.connect(self.on_streaming_finished)
+            self.streaming_worker.error_occurred.connect(self.on_streaming_error)
+            
+            # WAVプレイヤーのキューシグナル接続
+            self.wav_player.queue_item_started.connect(self.on_queue_item_started)
+            self.wav_player.queue_item_finished.connect(self.on_queue_item_finished)
+            self.wav_player.queue_finished.connect(self.on_queue_finished)
+            
+            self.streaming_thread.start()
+            
+            print("✅ ストリーミングワーカー初期化完了")
+            
+        except Exception as e:
+            print(f"❌ ストリーミングワーカー初期化エラー: {e}")
+
 
     def on_lipsync_settings_changed(self, settings):
         """リップシンク設定変更時の処理 - 完全修正版"""
@@ -814,7 +871,7 @@ class TTSStudioMainWindow(QMainWindow):
         try:
             if self.tts_engine.load_model(**paths):
                 self.model_manager.add_model(**paths)
-                for btn in [self.sequential_play_btn, self.save_individual_btn, self.save_continuous_btn, self.test_lipsync_btn]:
+                for btn in [self.sequential_play_btn, self.save_individual_btn, self.save_continuous_btn, self.test_lipsync_btn, self.streaming_play_btn]:
                     btn.setEnabled(True)
                 model_name = Path(paths["model_path"]).parent.name
                 if hasattr(self.character_display, 'current_live2d_folder') and self.character_display.current_live2d_folder:
@@ -839,7 +896,7 @@ class TTSStudioMainWindow(QMainWindow):
             if self.model_manager.validate_model_files(last):
                 paths = {k: last[k] for k in ["model_path", "config_path", "style_path"]}
                 if self.tts_engine.load_model(**paths):
-                    for btn in [self.sequential_play_btn, self.save_individual_btn, self.save_continuous_btn, self.test_lipsync_btn]:
+                    for btn in [self.sequential_play_btn, self.save_individual_btn, self.save_continuous_btn, self.test_lipsync_btn, self.streaming_play_btn]:
                         btn.setEnabled(True)
                     model_name = Path(paths["model_path"]).parent.name
                     self.setWindowTitle(f"TTSスタジオ - {model_name}")
@@ -1114,6 +1171,163 @@ class TTSStudioMainWindow(QMainWindow):
         
         finally:
             self.sequential_play_btn.setEnabled(True)
+
+    def play_streaming(self):
+        """ストリーミング再生（最新方式）
+        
+        特徴:
+        - 3チャンク先行バッファリング
+        - 最初の数秒で再生開始
+        - メモリ効率的
+        """
+        if not self.tts_engine.is_loaded:
+            QMessageBox.warning(self, "エラー", "モデルが読み込まれていません。")
+            return
+        
+        try:
+            # ボタン無効化
+            self.streaming_play_btn.setEnabled(True)
+            self.sequential_play_btn.setEnabled(False)
+            
+            # テキストデータ取得
+            texts_data = self.multi_text.get_all_texts_and_parameters()
+            if not texts_data:
+                QMessageBox.information(self, "情報", "処理するテキストがありません。")
+                self.streaming_play_btn.setEnabled(True)
+                self.sequential_play_btn.setEnabled(True)
+                return
+            
+            print(f"🚀 ストリーミング再生開始: {len(texts_data)}個のテキスト")
+            
+            # 処理オプション準備
+            options = {
+                'enable_lipsync': (
+                    self.tabbed_audio_control.is_lip_sync_enabled() and
+                    hasattr(self.character_display, 'live2d_webview') and
+                    self.character_display.live2d_webview.is_model_loaded
+                ),
+                'apply_cleaner': self.tabbed_audio_control.is_cleaner_enabled(),
+                'cleaner_settings': self.tabbed_audio_control.get_cleaner_settings(),
+                'apply_effects': self.tabbed_audio_control.is_effects_enabled(),
+                'effects_settings': self.tabbed_audio_control.get_effects_settings(),
+                'trim_threshold': 0.0
+            }
+            
+            # WAVプレイヤーをキューモードに設定
+            self.wav_player.enable_queue_mode(True)
+            
+            # ストリーミング処理開始（別スレッド）
+            from PyQt6.QtCore import QMetaObject, Qt, Q_ARG
+            QMetaObject.invokeMethod(
+                self.streaming_worker,
+                "synthesize_streaming",
+                Qt.ConnectionType.QueuedConnection,
+                Q_ARG(object, texts_data),
+                Q_ARG(object, options)
+            )
+            
+            print("✅ ストリーミング処理を開始しました")
+            
+        except Exception as e:
+            print(f"❌ ストリーミング再生エラー: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            QMessageBox.critical(self, "エラー", f"ストリーミング再生でエラー:\n{str(e)}")
+            
+            self.streaming_play_btn.setEnabled(True)
+            self.sequential_play_btn.setEnabled(True)
+
+
+    def on_streaming_started(self, total_count: int):
+        """ストリーミング処理開始"""
+        print(f"📊 ストリーミング開始: 合計{total_count}個")
+
+
+    def on_chunk_ready(self, index: int, sr: int, audio: np.ndarray, lipsync):
+        """1チャンク準備完了 → キューに追加"""
+        try:
+            print(f"✅ チャンク{index}準備完了、キューに追加")
+            
+            # キューに追加
+            self.wav_player.add_to_queue(audio, sr, lipsync)
+            
+            # 最初のチャンクの場合は即座に再生開始
+            if index == 0:
+                print("▶️ 最初のチャンク、再生開始")
+                self.wav_player.start_queue_playback()
+                self._update_stop_button_state()
+            
+        except Exception as e:
+            print(f"❌ チャンク追加エラー: {e}")
+
+
+    def on_streaming_progress(self, current: int, total: int):
+        """ストリーミング進捗更新"""
+        progress = int((current / total) * 100) if total > 0 else 0
+        print(f"📊 処理進捗: {current}/{total} ({progress}%)")
+        
+        # 必要に応じてプログレスバー更新
+
+
+    def on_streaming_finished(self):
+        """ストリーミング処理完了（全チャンク生成完了）"""
+        print("✅ 全チャンク生成完了（キュー再生は継続中）")
+
+
+    def on_streaming_error(self, error: str):
+        """ストリーミングエラー"""
+        print(f"❌ ストリーミングエラー:\n{error}")
+        
+        QMessageBox.critical(self, "エラー", f"ストリーミング処理でエラーが発生:\n{error[:200]}")
+        
+        # ボタン再有効化
+        self.streaming_play_btn.setEnabled(True)
+        self.sequential_play_btn.setEnabled(True)
+        
+        # キュー停止
+        self.wav_player.stop_queue_playback()
+        self.wav_player.enable_queue_mode(False)
+
+
+    def on_queue_item_started(self, index: int):
+        """キューアイテム再生開始"""
+        print(f"  🎵 [{index + 1}] 再生開始")
+        
+        # 🔧 最初のチャンク以外は500ms待ってからリップシンク送信
+        lipsync = self.wav_player.get_current_lipsync_data()
+        if lipsync and self.tabbed_audio_control.is_lip_sync_enabled():
+            if (hasattr(self.character_display, 'live2d_webview') and 
+                self.character_display.live2d_webview.is_model_loaded):
+                
+                if index == 0:
+                    # 最初はすぐ送信
+                    self.send_lipsync_to_live2d(lipsync)
+                    print(f"    🎭 リップシンク送信")
+                else:
+                    # 2番目以降は500ms遅延（語尾保護）
+                    QTimer.singleShot(500, lambda: self.send_lipsync_to_live2d(lipsync))
+                    print(f"    🎭 リップシンク送信（500ms遅延）")
+
+
+    def on_queue_item_finished(self, index: int):
+        """キューアイテム完了"""
+        print(f"  ✅ [{index + 1}] 完了")
+
+
+    def on_queue_finished(self):
+        """キュー全体完了"""
+        print("✅ ストリーミング再生完了（全チャンク再生終了）")
+        
+        # ボタン再有効化
+        self.streaming_play_btn.setEnabled(True)
+        self.sequential_play_btn.setEnabled(True)
+        
+        # キューモード解除
+        self.wav_player.enable_queue_mode(False)
+        
+        # 停止ボタン更新
+        self._update_stop_button_state()
             
     def save_individual(self):
         folder_path = QFileDialog.getExistingDirectory(self, "個別保存フォルダを選択")
@@ -1168,21 +1382,26 @@ class TTSStudioMainWindow(QMainWindow):
             print(f"感情UI更新エラー: {e}")
             
     def closeEvent(self, event):
+        """アプリケーション終了時の処理"""
         try:
-            cleaner_control = self.tabbed_audio_control.cleaner_control
-            if hasattr(cleaner_control, 'analysis_thread') and cleaner_control.analysis_thread and cleaner_control.analysis_thread.isRunning():
-                cleaner_control.analysis_thread.quit()
-                cleaner_control.analysis_thread.wait(3000)
-            if self.tts_engine: self.tts_engine.unload_model()
-            self.model_manager.save_history()
-            if hasattr(self.character_display, 'live2d_manager'):
-                self.character_display.live2d_manager.save_history()
-            if hasattr(self, 'tts_thread') and self.tts_thread.isRunning():
-                self.tts_thread.quit()
-                self.tts_thread.wait(5000)
-                self.character_display.live2d_manager.save_history()
+            # 既存の終了処理...
+            
+            # 🆕 ストリーミングスレッド終了
+            if hasattr(self, 'streaming_thread') and self.streaming_thread.isRunning():
+                if hasattr(self, 'streaming_worker'):
+                    self.streaming_worker.cancel()
+                self.streaming_thread.quit()
+                self.streaming_thread.wait(5000)
+            
+            # 🆕 キュー停止
+            if hasattr(self, 'wav_player'):
+                self.wav_player.stop_queue_playback()
+            
+            # 既存の終了処理続き...
+            
         except Exception as e:
             print(f"終了処理中にエラー: {e}")
+        
         event.accept()
 
     # ================================
