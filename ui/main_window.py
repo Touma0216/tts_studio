@@ -60,6 +60,11 @@ class TTSStudioMainWindow(QMainWindow):
         self._tts_playback_segments: list[dict] = []
         self._tts_segment_lookup: dict[str, dict] = {}
         self._tts_playback_timer.timeout.connect(self._handle_tts_playback_timeout)
+        self._streaming_texts_data: list[dict] = []
+        self._streaming_known_duration: float = 0.0
+        self._streaming_playback_started: bool = False
+        self._streaming_elapsed_offset: float = 0.0
+        self._streaming_total_count: int = 0
         
         self.init_ui()
         self.help_dialog = HelpDialog(self)
@@ -290,6 +295,20 @@ class TTSStudioMainWindow(QMainWindow):
 
         self._tts_last_reported_row_id = None
 
+        if context == "streaming":
+            if duration_sec and duration_sec > 0:
+                self._tts_playback_total_duration = duration_sec
+                self._tts_playback_start_time = time.monotonic()
+                if not self._tts_playback_progress_timer.isActive():
+                    self._tts_playback_progress_timer.start()
+                self._update_tts_playback_progress(elapsed_override=0.0)
+            else:
+                self._tts_playback_total_duration = None
+                self._tts_playback_start_time = None
+                self._tts_playback_progress_timer.stop()
+            self._update_stop_button_state()
+            return
+
         if duration_sec and duration_sec > 0:
             timeout_ms = int(duration_sec * 1000) + 300
             self._tts_playback_timer.start(timeout_ms)
@@ -339,6 +358,11 @@ class TTSStudioMainWindow(QMainWindow):
         if context != "single":
             self._tts_current_row_id = None
         self._set_playback_segments([])
+        self._streaming_texts_data = []
+        self._streaming_known_duration = 0.0
+        self._streaming_playback_started = False
+        self._streaming_elapsed_offset = 0.0
+        self._streaming_total_count = 0
 
         # Live2Dのリップシンクを停止（TTS再生時のみ）
         if context in {"single", "sequential", "test"}:
@@ -365,6 +389,32 @@ class TTSStudioMainWindow(QMainWindow):
             row_id = segment.get('row_id')
             if row_id:
                 self._tts_segment_lookup[row_id] = segment
+
+    def _append_playback_segment(self, segment: dict | None):
+        if not segment:
+            return
+        self._tts_playback_segments.append(segment)
+        row_id = segment.get('row_id')
+        if row_id:
+            self._tts_segment_lookup[row_id] = segment
+
+    def _prepare_streaming_playback(self, texts_data: list[dict]):
+        self._streaming_texts_data = texts_data or []
+        self._streaming_total_count = len(self._streaming_texts_data)
+        self._streaming_known_duration = 0.0
+        self._streaming_playback_started = False
+        self._streaming_elapsed_offset = 0.0
+        self._tts_current_row_id = None
+        self._tts_last_reported_row_id = None
+        self._set_playback_segments([])
+        self._tts_playback_total_duration = None
+        self._tts_playback_start_time = None
+        self._tts_playback_context = None
+        self._tts_playback_timer.stop()
+        self._tts_playback_progress_timer.stop()
+        self.tabbed_audio_control.reset_all_playback_progress()
+        self._update_stop_button_state()
+
 
     def _find_segment_for_elapsed(self, elapsed: float):
         if not self._tts_playback_segments:
@@ -405,7 +455,7 @@ class TTSStudioMainWindow(QMainWindow):
                     elapsed,
                     total,
                 )
-        elif context == "sequential":
+        elif context in {"sequential", "streaming"}:
             segment = self._find_segment_for_elapsed(elapsed)
             if segment:
                 row_id = segment.get('row_id')
@@ -436,7 +486,7 @@ class TTSStudioMainWindow(QMainWindow):
                 self.tabbed_audio_control.update_master_playback_progress(elapsed, total)
 
         if final:
-            if context == "sequential":
+            if context in {"sequential", "streaming"}:
                 for segment in self._tts_playback_segments:
                     row_id = segment.get('row_id')
                     if not row_id:
@@ -1418,6 +1468,8 @@ class TTSStudioMainWindow(QMainWindow):
                 return
             
             print(f"🚀 ストリーミング再生開始: {len(texts_data)}個のテキスト")
+
+            self._prepare_streaming_playback(texts_data)
             
             # 処理オプション準備
             options = {
@@ -1468,6 +1520,38 @@ class TTSStudioMainWindow(QMainWindow):
         """1チャンク準備完了 → キューに追加"""
         try:
             print(f"✅ チャンク{index}準備完了、キューに追加")
+
+            row_id = None
+            if 0 <= index < len(self._streaming_texts_data):
+                row_id = self._streaming_texts_data[index].get('row_id')
+
+            duration = 0.0
+            if sr and audio is not None and len(audio) > 0:
+                duration = float(len(audio) / sr)
+
+            start_time = self._streaming_known_duration
+            segment = {
+                'row_id': row_id,
+                'start': start_time,
+                'duration': duration,
+            }
+            self._append_playback_segment(segment)
+
+            self._streaming_known_duration += duration
+            self._tts_playback_total_duration = (
+                self._streaming_known_duration if self._streaming_known_duration > 0 else None
+            )
+
+            if (self._streaming_playback_started and
+                    self._tts_playback_start_time is None and
+                    self._tts_playback_total_duration):
+                self._on_tts_playback_started(self._tts_playback_total_duration, context="streaming")
+
+            if row_id and duration > 0:
+                self.tabbed_audio_control.update_row_playback_progress(row_id, 0.0, duration)
+
+            if index == 0 and self._tts_playback_total_duration:
+                self.tabbed_audio_control.update_master_playback_progress(0.0, self._tts_playback_total_duration)
             
             # キューに追加
             self.wav_player.add_to_queue(audio, sr, lipsync)
@@ -1476,7 +1560,13 @@ class TTSStudioMainWindow(QMainWindow):
             if index == 0:
                 print("▶️ 最初のチャンク、再生開始")
                 self.wav_player.start_queue_playback()
+                self._streaming_playback_started = True
+                initial_total = self._tts_playback_total_duration
+                self._on_tts_playback_started(initial_total, context="streaming")
                 self._update_stop_button_state()
+            elif self._streaming_playback_started and self._tts_playback_start_time:
+                elapsed = max(time.monotonic() - self._tts_playback_start_time, 0.0)
+                self._update_tts_playback_progress(elapsed_override=elapsed)
             
         except Exception as e:
             print(f"❌ チャンク追加エラー: {e}")
@@ -1509,10 +1599,21 @@ class TTSStudioMainWindow(QMainWindow):
         self.wav_player.stop_queue_playback()
         self.wav_player.enable_queue_mode(False)
 
+        self._on_tts_playback_finished()
 
     def on_queue_item_started(self, index: int):
         """キューアイテム再生開始"""
         print(f"  🎵 [{index + 1}] 再生開始")
+
+        if self._tts_playback_context == "streaming":
+            if 0 <= index < len(self._tts_playback_segments):
+                segment = self._tts_playback_segments[index]
+                self._streaming_elapsed_offset = float(segment.get('start', 0.0) or 0.0)
+            else:
+                self._streaming_elapsed_offset = 0.0
+            self._update_tts_playback_progress(
+                elapsed_override=self._streaming_elapsed_offset,
+            )
         
         # 🔧 チャンク開始と同時にリップシンクを送信
         lipsync = self.wav_player.get_current_lipsync_data()
@@ -1527,6 +1628,13 @@ class TTSStudioMainWindow(QMainWindow):
         """キューアイテム完了"""
         print(f"  ✅ [{index + 1}] 完了")
 
+        if self._tts_playback_context == "streaming":
+            end_time = self._streaming_elapsed_offset
+            if 0 <= index < len(self._tts_playback_segments):
+                segment = self._tts_playback_segments[index]
+                end_time = float(segment.get('start', 0.0) or 0.0) + float(segment.get('duration', 0.0) or 0.0)
+            self._streaming_elapsed_offset = end_time
+            self._update_tts_playback_progress(elapsed_override=end_time)
 
     def on_queue_finished(self):
         """キュー全体完了"""
@@ -1538,6 +1646,7 @@ class TTSStudioMainWindow(QMainWindow):
         
         # キューモード解除
         self.wav_player.enable_queue_mode(False)
+        self._on_tts_playback_finished()
         
         # 停止ボタン更新
         self._update_stop_button_state()
@@ -2221,6 +2330,10 @@ class TTSStudioMainWindow(QMainWindow):
             # UI側に通知
             wav_control = self.tabbed_audio_control.get_wav_playback_control()
             wav_control.on_playback_finished()
+
+            if self._tts_playing and self._tts_playback_context == "streaming":
+                elapsed = self._streaming_elapsed_offset + position
+                self._update_tts_playback_progress(elapsed_override=elapsed)
             
             # リップシンク停止
             self._update_stop_button_state()
