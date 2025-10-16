@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTextEdit,
                             QPushButton, QLabel, QScrollArea, QDoubleSpinBox,
                             QSpinBox)
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont
 import uuid
 
@@ -264,6 +264,15 @@ class MultiTextWidget(QWidget):
         
         # 初期タブ作成のためのシグナル送信
         self.row_added.emit("initial", 1)
+
+        # 自動整理処理のステート
+        self._auto_split_processing = False
+        self._auto_split_lines = []
+        self._auto_split_index = 0
+        self._auto_split_required_rows = 0
+        self._auto_split_stage = None
+        self._auto_split_extra_ids = []
+        self._auto_split_chunk_size = 50
     
     def init_ui(self):
         """UIを初期化"""
@@ -618,6 +627,9 @@ class MultiTextWidget(QWidget):
     def auto_split_texts(self):
         """入力されたテキストを改行ごとに自動整理"""
 
+        if self._auto_split_processing:
+            return
+
         # 現在のテキストを行順で取得
         current_widgets = list(self.text_rows.values())
         lines = []
@@ -635,32 +647,66 @@ class MultiTextWidget(QWidget):
                 if cleaned:
                     lines.append(cleaned)
 
-        # 必要行数を算出（最低1行）
-        required_rows = max(1, len(lines))
+        self._auto_split_processing = True
+        self.auto_split_button.setEnabled(False)
 
-        # 行が存在しない場合は自動生成
-        while len(self.text_rows) < required_rows:
-            self.add_text_row()
+        self._auto_split_lines = lines
+        self._auto_split_index = 0
+        self._auto_split_required_rows = max(1, len(lines))
+        self._auto_split_stage = "assign"
+        self._auto_split_extra_ids = []
 
-        # 余分な行を削除（下から）
-        if len(self.text_rows) > required_rows:
-            extra_ids = list(self.text_rows.keys())[required_rows:]
-            for row_id in extra_ids:
+        current_count = len(self.text_rows)
+        if current_count > self._auto_split_required_rows:
+            # 削除対象行を保持
+            self._auto_split_extra_ids = list(self.text_rows.keys())[self._auto_split_required_rows:]
+
+        self._process_auto_split_batch()
+
+    def _process_auto_split_batch(self):
+        """自動整理の分割処理を実行"""
+        if not self._auto_split_processing:
+            return
+
+        chunk_size = self._auto_split_chunk_size
+        processed = 0
+
+        if self._auto_split_stage == "assign":
+            while processed < chunk_size and self._auto_split_index < self._auto_split_required_rows:
+                target_index = self._auto_split_index
+
+                # 必要数まで行を追加
+                if len(self.text_rows) <= target_index:
+                    self.add_text_row()
+                    continue
+
+                widgets = list(self.text_rows.values())
+                widget = widgets[target_index]
+                text = self._auto_split_lines[target_index] if target_index < len(self._auto_split_lines) else ""
+                widget.set_text(text)
+
+                self._auto_split_index += 1
+                processed += 1
+
+            if self._auto_split_index >= self._auto_split_required_rows:
+                self._auto_split_stage = "remove"
+
+        if self._auto_split_stage == "remove" and processed < chunk_size:
+            while processed < chunk_size and self._auto_split_extra_ids:
+                row_id = self._auto_split_extra_ids.pop(0)
                 self.delete_text_row(row_id)
+                processed += 1
 
-        final_widgets = list(self.text_rows.values())
+            if not self._auto_split_extra_ids:
+                self._auto_split_stage = "finalize"
+                
+        if self._auto_split_stage == "finalize":
+            if not self.text_rows:
+                self.add_text_row()
 
-        if lines:
-            # 行ごとにテキストを設定
-            for widget, line in zip(final_widgets, lines):
-                widget.set_text(line)
+            self._auto_split_processing = False
+            self.auto_split_button.setEnabled(True)
+            self.update_row_numbers()
+            return
 
-            # 余った行は空にする
-            for widget in final_widgets[len(lines):]:
-                widget.set_text("")
-        else:
-            # 入力が空の場合でも1行を残す
-            final_widgets[0].set_text("")
-
-        # 行番号やカウンターを更新
-        self.update_row_numbers()
+        QTimer.singleShot(0, self._process_auto_split_batch)
