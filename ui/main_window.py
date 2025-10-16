@@ -2331,6 +2331,12 @@ class TTSStudioMainWindow(QMainWindow):
             wav_control = self.tabbed_audio_control.get_wav_playback_control()
             wav_control.on_playback_finished()
 
+            position = 0.0
+            try:
+                position = self.wav_player.get_current_position()
+            except AttributeError:
+                position = getattr(self.wav_player, "current_position", 0.0) or 0.0
+
             if self._tts_playing and self._tts_playback_context == "streaming":
                 elapsed = self._streaming_elapsed_offset + position
                 self._update_tts_playback_progress(elapsed_override=elapsed)
