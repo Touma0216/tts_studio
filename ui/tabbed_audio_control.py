@@ -405,6 +405,31 @@ class TabbedAudioControl(QWidget):
         """モデリングタブをアクティブに設定"""
         self.main_tab_widget.setCurrentIndex(4)
 
+    # ================================
+    # 再生時間表示関連
+    # ================================
+
+    def update_master_playback_progress(self, current_seconds, total_seconds):
+        """マスタータブの再生時間表示を更新"""
+        if hasattr(self, 'emotion_control') and self.emotion_control:
+            self.emotion_control.update_master_playback_progress(
+                current_seconds,
+                total_seconds,
+            )
+
+    def update_row_playback_progress(self, row_id, current_seconds, total_seconds):
+        """個別タブの再生時間表示を更新"""
+        if hasattr(self, 'emotion_control') and self.emotion_control:
+            self.emotion_control.update_row_playback_progress(
+                row_id,
+                current_seconds,
+                total_seconds,
+            )
+
+    def reset_all_playback_progress(self):
+        """全タブの再生時間表示をリセット"""
+        if hasattr(self, 'emotion_control') and self.emotion_control:
+            self.emotion_control.reset_playback_progress()
 
     # ================================
     # 🆕 WAV再生関連

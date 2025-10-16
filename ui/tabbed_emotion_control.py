@@ -53,6 +53,33 @@ class SingleEmotionControl(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(15)
+
+        self.playback_time_label = QLabel()
+        self.playback_time_label.setStyleSheet(
+            """
+                QLabel {
+                    background-color: #f0f4ff;
+                    border: 1px solid #9bb7ff;
+                    border-radius: 6px;
+                    padding: 6px 10px;
+                    color: #1a73e8;
+                    font-weight: bold;
+                }
+            """
+            if self.is_master
+            else
+            """
+                QLabel {
+                    background-color: #f7f7f7;
+                    border: 1px solid #cccccc;
+                    border-radius: 6px;
+                    padding: 6px 10px;
+                    color: #444444;
+                    font-weight: bold;
+                }
+            """
+        )
+        layout.addWidget(self.playback_time_label)
         
         emotion_group = self.create_emotion_group()
         layout.addWidget(emotion_group)
@@ -119,6 +146,40 @@ class SingleEmotionControl(QWidget):
             layout.addWidget(info_label)
         
         layout.addStretch()
+
+
+        self.reset_playback_progress()
+
+    def _format_time(self, seconds):
+        if seconds is None or seconds < 0:
+            return "--:--"
+
+        total_seconds = int(round(seconds))
+        minutes, secs = divmod(total_seconds, 60)
+        return f"{minutes:02d}:{secs:02d}"
+
+    def _format_playback_text(self, current, total):
+        if total is None or total <= 0:
+            if self.is_master:
+                return "⏱️ 総再生時間: --:-- / --:--"
+            return "⏱️ このテキスト: --:-- / --:--"
+
+        current_text = self._format_time(current if current is not None else 0.0)
+        total_text = self._format_time(total)
+
+        if self.is_master:
+            return f"⏱️ 総再生時間: {current_text} / {total_text}"
+        return f"⏱️ このテキスト: {current_text} / {total_text}"
+
+    def set_playback_progress(self, current_seconds, total_seconds):
+        self.playback_time_label.setText(
+            self._format_playback_text(current_seconds, total_seconds)
+        )
+
+    def reset_playback_progress(self):
+        self.playback_time_label.setText(
+            self._format_playback_text(None, None)
+        )
         
     def create_emotion_group(self):
         group = QGroupBox("感情制御")
@@ -890,6 +951,21 @@ class TabbedEmotionControl(QWidget):
                 index = self.tab_widget.indexOf(control)
                 if index != -1:
                     self.tab_widget.setTabText(index, str(row_number))
+
+    def update_master_playback_progress(self, current_seconds, total_seconds):
+        if self.master_control:
+            self.master_control.set_playback_progress(current_seconds, total_seconds)
+
+    def update_row_playback_progress(self, row_id, current_seconds, total_seconds):
+        control = self.emotion_controls.get(row_id)
+        if control:
+            control.set_playback_progress(current_seconds, total_seconds)
+
+    def reset_playback_progress(self):
+        if self.master_control:
+            self.master_control.reset_playback_progress()
+        for control in self.emotion_controls.values():
+            control.reset_playback_progress()
     
     def get_parameters(self, row_id):
         if row_id in self.emotion_controls:

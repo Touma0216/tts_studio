@@ -1,4 +1,5 @@
 import os
+import time
 import numpy as np
 from pathlib import Path
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -49,6 +50,15 @@ class TTSStudioMainWindow(QMainWindow):
         self._tts_playback_context = None
         self._tts_playback_timer = QTimer(self)
         self._tts_playback_timer.setSingleShot(True)
+        self._tts_playback_progress_timer = QTimer(self)
+        self._tts_playback_progress_timer.setInterval(100)
+        self._tts_playback_progress_timer.timeout.connect(self._update_tts_playback_progress)
+        self._tts_playback_start_time: float | None = None
+        self._tts_playback_total_duration: float | None = None
+        self._tts_current_row_id: str | None = None
+        self._tts_last_reported_row_id: str | None = None
+        self._tts_playback_segments: list[dict] = []
+        self._tts_segment_lookup: dict[str, dict] = {}
         self._tts_playback_timer.timeout.connect(self._handle_tts_playback_timeout)
         
         self.init_ui()
@@ -278,16 +288,41 @@ class TTSStudioMainWindow(QMainWindow):
         self._tts_playing = True
         self._tts_playback_context = context
 
+        self._tts_last_reported_row_id = None
+
         if duration_sec and duration_sec > 0:
             timeout_ms = int(duration_sec * 1000) + 300
             self._tts_playback_timer.start(timeout_ms)
 
+            self._tts_playback_total_duration = duration_sec
+            self._tts_playback_start_time = time.monotonic()
+            if not self._tts_playback_progress_timer.isActive():
+                self._tts_playback_progress_timer.start()
+            self._update_tts_playback_progress(elapsed_override=0.0)
+        else:
+            self._tts_playback_total_duration = None
+            self._tts_playback_start_time = None
+            self._tts_playback_progress_timer.stop()
         self._update_stop_button_state()
-
 
     def _on_tts_playback_finished(self):
         if self._tts_playback_timer.isActive():
             self._tts_playback_timer.stop()
+
+        elapsed_override = None
+        if self._tts_playback_start_time is not None and self._tts_playback_total_duration:
+            elapsed_override = min(
+                time.monotonic() - self._tts_playback_start_time,
+                self._tts_playback_total_duration,
+            )
+
+        if elapsed_override is not None:
+            self._update_tts_playback_progress(elapsed_override=elapsed_override, final=True)
+
+        self._tts_playback_progress_timer.stop()
+        self._tts_playback_start_time = None
+        self._tts_playback_total_duration = None
+        self._tts_last_reported_row_id = None
 
         self._tts_playing = False
 
@@ -300,6 +335,10 @@ class TTSStudioMainWindow(QMainWindow):
             self._reset_test_button()
 
         self._tts_playback_context = None
+
+        if context != "single":
+            self._tts_current_row_id = None
+        self._set_playback_segments([])
 
         # Live2Dのリップシンクを停止（TTS再生時のみ）
         if context in {"single", "sequential", "test"}:
@@ -318,6 +357,97 @@ class TTSStudioMainWindow(QMainWindow):
             wav_active = False
 
         self.stop_audio_btn.setEnabled(self._tts_playing or wav_active)
+
+    def _set_playback_segments(self, segments):
+        self._tts_playback_segments = segments or []
+        self._tts_segment_lookup = {}
+        for segment in self._tts_playback_segments:
+            row_id = segment.get('row_id')
+            if row_id:
+                self._tts_segment_lookup[row_id] = segment
+
+    def _find_segment_for_elapsed(self, elapsed: float):
+        if not self._tts_playback_segments:
+            return None
+
+        for segment in self._tts_playback_segments:
+            start = float(segment.get('start', 0.0) or 0.0)
+            duration = float(segment.get('duration', 0.0) or 0.0)
+            if duration <= 0:
+                continue
+            end = start + duration
+            if elapsed <= end + 0.01:
+                return segment
+
+        return self._tts_playback_segments[-1]
+
+    def _update_tts_playback_progress(self, elapsed_override: float | None = None, final: bool = False):
+        if self._tts_playback_total_duration is None or self._tts_playback_total_duration <= 0:
+            return
+
+        if self._tts_playback_start_time is None and elapsed_override is None:
+            return
+
+        elapsed = elapsed_override if elapsed_override is not None else time.monotonic() - self._tts_playback_start_time
+        total = float(self._tts_playback_total_duration or 0.0)
+
+        if total > 0:
+            elapsed = max(0.0, min(elapsed, total))
+
+        self.tabbed_audio_control.update_master_playback_progress(elapsed, total)
+
+        context = self._tts_playback_context
+
+        if context == "single":
+            if self._tts_current_row_id:
+                self.tabbed_audio_control.update_row_playback_progress(
+                    self._tts_current_row_id,
+                    elapsed,
+                    total,
+                )
+        elif context == "sequential":
+            segment = self._find_segment_for_elapsed(elapsed)
+            if segment:
+                row_id = segment.get('row_id')
+                if row_id:
+                    row_elapsed = min(
+                        max(elapsed - float(segment.get('start', 0.0) or 0.0), 0.0),
+                        float(segment.get('duration', 0.0) or 0.0)
+                    )
+
+                    if self._tts_last_reported_row_id and self._tts_last_reported_row_id != row_id:
+                        prev_segment = self._tts_segment_lookup.get(self._tts_last_reported_row_id)
+                        if prev_segment:
+                            prev_duration = float(prev_segment.get('duration', 0.0) or 0.0)
+                            self.tabbed_audio_control.update_row_playback_progress(
+                                self._tts_last_reported_row_id,
+                                prev_duration,
+                                prev_duration,
+                            )
+
+                    self.tabbed_audio_control.update_row_playback_progress(
+                        row_id,
+                        row_elapsed,
+                        float(segment.get('duration', 0.0) or 0.0),
+                    )
+                    self._tts_last_reported_row_id = row_id
+        else:
+            if context == "test":
+                self.tabbed_audio_control.update_master_playback_progress(elapsed, total)
+
+        if final:
+            if context == "sequential":
+                for segment in self._tts_playback_segments:
+                    row_id = segment.get('row_id')
+                    if not row_id:
+                        continue
+                    duration = float(segment.get('duration', 0.0) or 0.0)
+                    end_time = float(segment.get('start', 0.0) or 0.0) + duration
+                    if elapsed >= end_time - 0.05:
+                        self.tabbed_audio_control.update_row_playback_progress(row_id, duration, duration)
+
+            if elapsed >= total - 0.05:
+                self.tabbed_audio_control.update_master_playback_progress(total, total)
 
     def stop_tts_audio(self):
         """音声停止（ストリーミング対応版）"""
@@ -983,6 +1113,14 @@ class TTSStudioMainWindow(QMainWindow):
         
         tab_parameters = self.tabbed_audio_control.get_parameters(row_id) or parameters
 
+        self._tts_current_row_id = row_id
+        self._tts_last_reported_row_id = None
+        self._set_playback_segments([])
+        self._tts_playback_total_duration = None
+        self._tts_playback_start_time = None
+        self.tabbed_audio_control.update_master_playback_progress(None, None)
+        self.tabbed_audio_control.update_row_playback_progress(row_id, None, None)
+
         self._tts_busy = True
         enable_lipsync = self.tabbed_audio_control.is_lip_sync_enabled()
         self.tts_synthesis_requested.emit(text, tab_parameters, enable_lipsync)
@@ -1009,6 +1147,30 @@ class TTSStudioMainWindow(QMainWindow):
             sd.play(audio, sample_rate, blocking=False)
 
             playback_duration = len(audio) / sample_rate if sample_rate else None
+            if playback_duration and self._tts_current_row_id:
+                self._set_playback_segments([
+                    {
+                        'row_id': self._tts_current_row_id,
+                        'start': 0.0,
+                        'duration': playback_duration,
+                    }
+                ])
+                self.tabbed_audio_control.update_master_playback_progress(0.0, playback_duration)
+                self.tabbed_audio_control.update_row_playback_progress(
+                    self._tts_current_row_id,
+                    0.0,
+                    playback_duration,
+                )
+            else:
+                self._set_playback_segments([])
+                self.tabbed_audio_control.update_master_playback_progress(None, None)
+                if self._tts_current_row_id:
+                    self.tabbed_audio_control.update_row_playback_progress(
+                        self._tts_current_row_id,
+                        None,
+                        None,
+                    )
+
             self._on_tts_playback_started(playback_duration, context="single")
 
             # リップシンク送信
@@ -1063,10 +1225,16 @@ class TTSStudioMainWindow(QMainWindow):
                 self.sequential_play_btn.setEnabled(True)
                 return
             
+            self.tabbed_audio_control.reset_all_playback_progress()
+            self._tts_current_row_id = None
+            self._tts_last_reported_row_id = None
+            self._set_playback_segments([])
+
             all_audio = []
             all_lipsync_frames = []
             audio_offset = 0.0
             sample_rate = None
+            segments = []
             
             # リップシンクが有効かチェック
             enable_lipsync = (
@@ -1123,7 +1291,13 @@ class TTSStudioMainWindow(QMainWindow):
                 
                 # 音声を追加
                 all_audio.append(audio)
+                segment_start = audio_offset
                 audio_duration = len(audio) / sr
+                segments.append({
+                    'row_id': data.get('row_id'),
+                    'start': segment_start,
+                    'duration': audio_duration,
+                })
                 audio_offset += audio_duration
 
                 # 🆕 無音区間を挿入
@@ -1161,6 +1335,29 @@ class TTSStudioMainWindow(QMainWindow):
             self.last_sample_rate = sample_rate
             
             print(f"✅ 連続音声生成完了: {audio_offset:.2f}秒")
+
+            filtered_segments = [
+                seg for seg in segments
+                if seg.get('row_id') is not None and (seg.get('duration') or 0) >= 0
+            ]
+            self._set_playback_segments(filtered_segments)
+
+            total_duration = len(final_audio) / sample_rate if sample_rate else audio_offset
+
+            if total_duration:
+                self.tabbed_audio_control.update_master_playback_progress(0.0, total_duration)
+            else:
+                self.tabbed_audio_control.update_master_playback_progress(None, None)
+
+            for segment in self._tts_playback_segments:
+                row_id = segment.get('row_id')
+                if not row_id:
+                    continue
+                duration = float(segment.get('duration', 0.0) or 0.0)
+                if duration > 0:
+                    self.tabbed_audio_control.update_row_playback_progress(row_id, 0.0, duration)
+                else:
+                    self.tabbed_audio_control.update_row_playback_progress(row_id, None, None)
             
             # 🆕 リップシンクデータを作成
             combined_lipsync = None
@@ -1179,7 +1376,6 @@ class TTSStudioMainWindow(QMainWindow):
             sd.play(final_audio, sample_rate, blocking=False)
             print("▶️ 音声再生開始")
 
-            total_duration = len(final_audio) / sample_rate if sample_rate else audio_offset
             self._on_tts_playback_started(total_duration, context="sequential")
             
             # 🆕 リップシンク送信
