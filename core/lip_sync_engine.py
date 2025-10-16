@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from threading import Thread, Event
 import traceback
 import copy
+import gc
 
 try:
     import pyopenjtalk
@@ -98,14 +99,10 @@ class LipSyncEngine:
             self.phoneme_analyzer = PhonemeAnalyzer()
             self.audio_processor = AudioRealtimeProcessor()
             
-            # 🆕 WhisperTranscriberを初期化（長時間WAV対応用）
-            try:
-                from .whisper_transcriber import WhisperTranscriber
-                self.whisper_transcriber = WhisperTranscriber(model_size="large", device="cuda")
-                print("✅ WhisperTranscriber初期化完了")
-            except Exception as e:
-                print(f"⚠️ WhisperTranscriber初期化エラー: {e}")
-                self.whisper_transcriber = None
+            # Whisperは遅延初期化
+            self.whisper_transcriber = None
+            self._whisper_enabled = False
+            self._whisper_initialized = False
             
             print("✅ LipSyncEngine初期化完了 (完全修正版)")
             
@@ -115,7 +112,59 @@ class LipSyncEngine:
         except Exception as e:
             print(f"❌ LipSyncEngine初期化エラー: {e}")
             self.is_initialized = False
-    
+
+    def enable_transcription(self, enabled: bool):
+        """Whisper文字起こし機能の有効/無効を切り替え"""
+        self._whisper_enabled = enabled
+
+        if enabled:
+            if self._whisper_initialized:
+                return
+
+            try:
+                from .whisper_transcriber import WhisperTranscriber
+
+                self.whisper_transcriber = WhisperTranscriber(model_size="large", device="cuda")
+                if self.whisper_transcriber and self.whisper_transcriber.is_ready():
+                    self._whisper_initialized = True
+                    print("✅ WhisperTranscriber初期化完了")
+                else:
+                    print("⚠️ WhisperTranscriberが利用できません")
+                    self.whisper_transcriber = None
+                    self._whisper_initialized = False
+            except Exception as e:
+                print(f"⚠️ WhisperTranscriber初期化エラー: {e}")
+                self.whisper_transcriber = None
+                self._whisper_initialized = False
+        else:
+            if self.whisper_transcriber is not None:
+                try:
+                    if hasattr(self.whisper_transcriber, "model") and self.whisper_transcriber.model is not None:
+                        try:
+                            import torch
+                            if torch.cuda.is_available():
+                                torch.cuda.empty_cache()
+                        except ImportError:
+                            pass
+                    print("🧹 WhisperTranscriberを解放します")
+                except Exception as e:
+                    print(f"⚠️ WhisperTranscriber解放エラー: {e}")
+                finally:
+                    self.whisper_transcriber = None
+
+            self._whisper_initialized = False
+            gc.collect()
+
+    def is_transcription_available(self) -> bool:
+        """Whisper文字起こしが利用可能かを返す"""
+        return bool(self._whisper_enabled and self._whisper_initialized and self.whisper_transcriber)
+
+    def get_whisper_transcriber(self):
+        """現在のWhisperTranscriberインスタンスを取得"""
+        if self.is_transcription_available():
+            return self.whisper_transcriber
+        return None
+
     def is_available(self) -> bool:
         """リップシンク機能が利用可能かチェック"""
         return self.is_initialized and PYOPENJTALK_AVAILABLE
@@ -1150,6 +1199,10 @@ class LipSyncEngine:
     def _get_whisper_segments(self, wav_path: str, provided_text: str = None) -> List[Dict]:
         """Whisperでセグメント情報を取得"""
         try:
+            if not self.is_transcription_available():
+                print("⚠️ Whisper文字起こしが無効です")
+                return []
+
             if not self.whisper_transcriber:
                 print("⚠️ WhisperTranscriber利用不可")
                 return []

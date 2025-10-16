@@ -23,7 +23,6 @@ from core.audio_analyzer import AudioAnalyzer
 from core.audio_effects_processor import AudioEffectsProcessor
 from core.lip_sync_engine import LipSyncEngine
 from core.wav_player import WAVPlayer
-from core.whisper_transcriber import WhisperTranscriber
 
 class TTSStudioMainWindow(QMainWindow):
     tts_synthesis_requested = pyqtSignal(str, dict, bool)
@@ -41,7 +40,7 @@ class TTSStudioMainWindow(QMainWindow):
         self.wav_player = WAVPlayer()
         self._wav_lipsync_timer = None
         self._wav_lipsync_data = None
-        self.whisper_transcriber = WhisperTranscriber(model_size="large", device="cuda")
+        self.whisper_transcriber = None
         
         self.last_generated_audio = None
         self.last_sample_rate = None
@@ -787,7 +786,8 @@ class TTSStudioMainWindow(QMainWindow):
             wav_control = self.tabbed_audio_control.get_wav_playback_control()
             wav_control.re_analyze_requested.connect(self.on_wav_reanalyze_requested)
             wav_control.save_transcription_requested.connect(self.on_save_transcription_requested)
-            
+            wav_control.transcription_toggle_changed.connect(self.on_transcription_toggle_changed)
+
             # 🆕 アニメーション連動シグナル接続
             wav_control.animation_sync_toggled.connect(self.on_animation_sync_toggled)
             wav_control.animation_selected.connect(self.on_animation_selected)
@@ -800,6 +800,30 @@ class TTSStudioMainWindow(QMainWindow):
         except Exception as e:
             print(f"❌ WAV再生統合エラー: {e}")
         
+    def on_transcription_toggle_changed(self, enabled: bool):
+        """文字起こし機能のON/OFF切り替え"""
+        try:
+            self.lip_sync_engine.enable_transcription(enabled)
+            self.whisper_transcriber = self.lip_sync_engine.get_whisper_transcriber()
+
+            wav_control = self.tabbed_audio_control.get_wav_playback_control()
+            if not wav_control:
+                return
+
+            if enabled:
+                if not self.lip_sync_engine.is_transcription_available():
+                    wav_control.set_transcription_status("⚠️ faster-whisperが利用できません", is_processing=False)
+                    return
+
+                current_file = wav_control.get_current_file_path()
+                if current_file:
+                    self._transcribe_and_generate_lipsync(current_file, wav_control)
+            else:
+                wav_control.set_transcription_status("🔕 文字起こしは無効です", is_processing=False)
+
+        except Exception as e:
+            print(f"⚠️ 文字起こし切り替えエラー: {e}")
+
     def handle_cleaner_analysis_request(self):
         if not self.tts_engine.is_loaded:
             QMessageBox.warning(self, "エラー", "モデルが読み込まれていません。\n先にモデルを読み込んでから解析してください。")
@@ -1514,13 +1538,19 @@ class TTSStudioMainWindow(QMainWindow):
             
             print(f"✅ WAVファイル読み込み完了: {duration:.2f}秒")
             
-            # 🆕 Whisperによる文字起こし実行
-            if self.whisper_transcriber.is_ready():
+            # 🆕 Whisperによる文字起こし実行（遅延初期化対応）
+            transcription_enabled = wav_control.is_transcription_enabled()
+            self.whisper_transcriber = self.lip_sync_engine.get_whisper_transcriber()
+            transcription_available = self.lip_sync_engine.is_transcription_available()
+
+            if transcription_enabled and transcription_available and self.whisper_transcriber:
                 self._transcribe_and_generate_lipsync(file_path, wav_control)
             else:
-                # Whisper利用不可時はフォールバック
-                print("⚠️ Whisper利用不可、フォールバックモード")
-                wav_control.set_transcription_status("⚠️ faster-whisperが利用できません", is_processing=False)
+                if transcription_enabled and not transcription_available:
+                    print("⚠️ Whisper利用不可、フォールバックモード")
+                    wav_control.set_transcription_status("⚠️ faster-whisperが利用できません", is_processing=False)
+                else:
+                    wav_control.set_transcription_status("🔕 文字起こしは無効です", is_processing=False)
                 self._generate_wav_lipsync_data_with_text(file_path, "こんにちは")
             
         except Exception as e:
@@ -1538,7 +1568,14 @@ class TTSStudioMainWindow(QMainWindow):
             QApplication.processEvents()
             
             # Whisperで文字起こし実行
-            success, transcribed_text, segments = self.whisper_transcriber.transcribe_wav(
+            transcriber = self.lip_sync_engine.get_whisper_transcriber()
+            if not transcriber:
+                wav_control.set_transcription_status("⚠️ faster-whisperが利用できません", is_processing=False)
+                self._generate_wav_lipsync_data_with_text(file_path, "こんにちは")
+                return
+
+            self.whisper_transcriber = transcriber
+            success, transcribed_text, segments = transcriber.transcribe_wav(
                 file_path, 
                 language="ja"
             )
@@ -1594,7 +1631,11 @@ class TTSStudioMainWindow(QMainWindow):
             file_name = Path(wav_path).name
             
             # 追記モードで保存
-            success = self.whisper_transcriber.save_transcription_to_file(
+            transcriber = self.lip_sync_engine.get_whisper_transcriber()
+            if not transcriber:
+                return
+
+            success = transcriber.save_transcription_to_file(
                 segments,
                 str(transcription_file),
                 include_timestamps=True,
@@ -1700,7 +1741,12 @@ class TTSStudioMainWindow(QMainWindow):
                 return
             
             # ファイルに保存
-            success = self.whisper_transcriber.save_transcription_to_file(
+            transcriber = self.lip_sync_engine.get_whisper_transcriber()
+            if not transcriber:
+                QMessageBox.warning(self, "エラー", "文字起こし機能が無効です。")
+                return
+
+            success = transcriber.save_transcription_to_file(
                 segments,
                 file_path,
                 include_timestamps=True

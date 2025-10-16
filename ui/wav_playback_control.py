@@ -23,6 +23,7 @@ class WAVPlaybackControl(QWidget):
     transcription_text_edited = pyqtSignal(str)  # テキスト編集
     re_analyze_requested = pyqtSignal(str)  # 再解析リクエスト
     save_transcription_requested = pyqtSignal()  # 保存リクエスト
+    transcription_toggle_changed = pyqtSignal(bool)  # 文字起こしON/OFF
     
     # 🆕 アニメーション連動シグナル
     animation_sync_toggled = pyqtSignal(bool)  # アニメーション連動ON/OFF
@@ -402,6 +403,16 @@ class WAVPlaybackControl(QWidget):
             }
         """)
         transcription_layout = QVBoxLayout()
+
+        # トグル + ステータス表示
+        toggle_layout = QHBoxLayout()
+        self.transcription_toggle = QCheckBox("文字起こしを有効にする")
+        self.transcription_toggle.setChecked(False)
+        self.transcription_toggle.stateChanged.connect(self.on_transcription_toggle_changed)
+        toggle_layout.addWidget(self.transcription_toggle)
+        toggle_layout.addStretch()
+
+        transcription_layout.addLayout(toggle_layout)
         
         # ステータス表示
         status_layout = QHBoxLayout()
@@ -448,6 +459,7 @@ class WAVPlaybackControl(QWidget):
                 background-color: white;
             }
         """)
+        self.transcription_text_edit.setEnabled(False)
         self.transcription_text_edit.textChanged.connect(self.on_transcription_text_changed)
         
         # 再解析＆保存ボタン
@@ -526,6 +538,7 @@ class WAVPlaybackControl(QWidget):
         
         # 内部状態
         self._seek_dragging = False
+        self._update_transcription_controls(False)
 
     # ========================================
     # 🆕 アニメーション連動関連メソッド
@@ -602,8 +615,14 @@ class WAVPlaybackControl(QWidget):
             self.transcription_text_edit.setPlainText(text)
             self.transcription_text_edit.blockSignals(False)
         
-        self.reanalyze_btn.setEnabled(True)
-        self.save_transcription_btn.setEnabled(len(self.transcription_segments) > 0)
+        self._update_transcription_controls(self.is_transcription_enabled())
+
+    def _update_transcription_controls(self, enabled: bool):
+        """文字起こし関連UIの有効/無効を更新"""
+        self.transcription_text_edit.setEnabled(enabled)
+        has_text = bool(self.transcribed_text.strip()) if isinstance(self.transcribed_text, str) else False
+        self.reanalyze_btn.setEnabled(enabled and has_text)
+        self.save_transcription_btn.setEnabled(enabled and len(self.transcription_segments) > 0)
 
     def _start_typing_animation(self, text: str):
         """タイピングアニメーション開始"""
@@ -643,6 +662,24 @@ class WAVPlaybackControl(QWidget):
         current_text = self.transcription_text_edit.toPlainText()
         if current_text != self.transcribed_text:
             self.transcription_text_edited.emit(current_text)
+
+    def on_transcription_toggle_changed(self, state):
+        """文字起こしトグル変更"""
+        enabled = (state == Qt.CheckState.Checked.value)
+
+        if not enabled:
+            self.transcribed_text = ""
+            self.transcription_segments = []
+            self.transcription_text_edit.blockSignals(True)
+            self.transcription_text_edit.clear()
+            self.transcription_text_edit.blockSignals(False)
+            self.set_transcription_status("🔕 文字起こしは無効です", is_processing=False)
+        else:
+            if not self.is_wav_loaded:
+                self.set_transcription_status("待機中...", is_processing=False)
+
+        self._update_transcription_controls(enabled)
+        self.transcription_toggle_changed.emit(enabled)
     
     def on_reanalyze_clicked(self):
         """再解析ボタンクリック"""
@@ -695,9 +732,17 @@ class WAVPlaybackControl(QWidget):
             
             self.file_info_label.setText(f"📁 {path.name}\n読み込み完了")
             
-            self.set_transcription_status("🎤 文字起こし処理中...", is_processing=True)
+            if self.is_transcription_enabled():
+                self.set_transcription_status("🎤 文字起こし処理中...", is_processing=True)
+            else:
+                self.set_transcription_status("🔕 文字起こしは無効です", is_processing=False)
+
+            self.transcribed_text = ""
+            self.transcription_segments = []
+            self.transcription_text_edit.blockSignals(True)
             self.transcription_text_edit.clear()
-            self.reanalyze_btn.setEnabled(False)
+            self.transcription_text_edit.blockSignals(False)
+            self._update_transcription_controls(self.is_transcription_enabled())
             
             self.wav_loaded.emit(file_path)
             
@@ -828,6 +873,10 @@ class WAVPlaybackControl(QWidget):
     def is_lipsync_enabled(self) -> bool:
         """リップシンク連動が有効か"""
         return self.lipsync_checkbox.isChecked()
+
+    def is_transcription_enabled(self) -> bool:
+        """文字起こしが有効か"""
+        return self.transcription_toggle.isChecked()
     
     def get_current_file_path(self) -> str:
         """現在のファイルパスを取得"""
