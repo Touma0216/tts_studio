@@ -1831,12 +1831,12 @@ window.toggleLive2DModelPause = function() {
 console.log('✅ モデル静止機能を追加');
 
 // =============================================================================
-// アイドルモーション制御機能（startRandomMotion上書き版）
+// アイドルモーション制御機能（update制御版）
 // =============================================================================
 
 let idleMotionState = {
     enabled: true,
-    originalStartRandomMotion: null
+    originalUpdate: null
 };
 
 window.toggleIdleMotion = function(enabled) {
@@ -1848,34 +1848,30 @@ window.toggleIdleMotion = function(enabled) {
     idleMotionState.enabled = enabled;
     
     try {
-        const motionManager = currentModel.internalModel?.motionManager;
-        if (!motionManager) return false;
+        const internalModel = currentModel.internalModel;
         
         if (enabled) {
             console.log('▶️ アイドルモーション有効化');
             
-            if (idleMotionState.originalStartRandomMotion) {
-                motionManager.startRandomMotion = idleMotionState.originalStartRandomMotion;
-                idleMotionState.originalStartRandomMotion = null;
+            if (idleMotionState.originalUpdate) {
+                internalModel.update = idleMotionState.originalUpdate;
+                idleMotionState.originalUpdate = null;
             }
             
         } else {
             console.log('⏸️ アイドルモーション無効化');
             
-            motionManager.stopAllMotions();
-            
-            if (!idleMotionState.originalStartRandomMotion) {
-                idleMotionState.originalStartRandomMotion = motionManager.startRandomMotion.bind(motionManager);
-                
-                // idleグループのstartRandomMotionをブロック
-                motionManager.startRandomMotion = function(group, priority) {
-                    if (group === 'idle' || group === 'Idle') {
-                        console.log('🚫 Idleモーションをブロック');
-                        return Promise.resolve(false);
-                    }
-                    return idleMotionState.originalStartRandomMotion.call(this, group, priority);
-                };
+            if (!idleMotionState.originalUpdate) {
+                idleMotionState.originalUpdate = internalModel.update.bind(internalModel);
             }
+            
+            // パラメータ反映だけする最小限のupdate
+            internalModel.update = function(model, now) {
+                // coreModelだけ更新（パラメータ反映）
+                if (this.coreModel && typeof this.coreModel.update === 'function') {
+                    this.coreModel.update();
+                }
+            };
         }
         
         return true;
@@ -1885,9 +1881,3 @@ window.toggleIdleMotion = function(enabled) {
         return false;
     }
 };
-
-window.getIdleMotionState = function() {
-    return idleMotionState.enabled;
-};
-
-console.log('✅ アイドルモーション制御機能を追加');
