@@ -191,8 +191,8 @@ class IdleMotionManager {
             },
             breath: {
                 enabled: false,
-                amplitude: 0.12,
-                period: 1.0,
+                amplitude: 1.0,
+                period: 3.0,
                 phase: 0,
                 lastUpdateTime: 0,
                 currentValue: 0
