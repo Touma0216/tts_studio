@@ -1865,20 +1865,45 @@ window.toggleIdleMotion = function(enabled) {
                 idleMotionState.originalUpdate = internalModel.update.bind(internalModel);
             }
             
-            // 🔥 修正：coreModelを渡す
+            // 🔥 修正：表情は維持しつつ、内部状態をクリーンに更新
             internalModel.update = function(model, now) {
-                // 1. 表情マネージャーを更新（coreModelを渡す）
+                const coreModel = this.coreModel;
+
+                // 1. パラメータの退避（累積防止）
+                if (coreModel && typeof coreModel.saveParam === 'function') {
+                    try {
+                        coreModel.saveParam();
+                    } catch (e) {
+                        console.warn('⚠️ パラメータ保存エラー:', e);
+                    }
+                }
+
+                // 2. 表情マネージャーを更新
                 if (this.motionManager && this.motionManager.expressionManager) {
                     try {
-                        this.motionManager.expressionManager.update(this.coreModel, now);
+                        this.motionManager.expressionManager.update(coreModel, now);
                     } catch (e) {
                         console.warn('⚠️ 表情更新エラー:', e);
                     }
                 }
                 
-                // 2. coreModelを更新（パラメータ反映）
-                if (this.coreModel && typeof this.coreModel.update === 'function') {
-                    this.coreModel.update();
+                // 3. 表情を反映
+                if (coreModel && typeof coreModel.update === 'function') {
+                    try {
+                        this.emit && this.emit('beforeModelUpdate');
+                    } catch (e) {
+                        console.warn('⚠️ beforeModelUpdate通知エラー:', e);
+                    }
+
+                    coreModel.update();
+
+                    if (typeof coreModel.loadParam === 'function') {
+                        try {
+                            coreModel.loadParam();
+                        } catch (e) {
+                            console.warn('⚠️ パラメータ復元エラー:', e);
+                        }
+                    }
                 }
             };
         }
