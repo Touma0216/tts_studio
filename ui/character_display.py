@@ -604,7 +604,8 @@ class CharacterDisplayWidget(QWidget):
         self.idling_btn.setStyleSheet(
             "QPushButton { background-color: #4caf50; border: 1px solid #388e3c; border-radius: 4px; "
             "font-size: 11px; padding: 4px 8px; color: white; font-weight: bold; } "
-            "QPushButton:hover:enabled { background-color: #45a049; } "
+            "QPushButton:hover:checked { background-color: #45a049; } "
+            "QPushButton:hover:!checked { background-color: #f44336; } "
             "QPushButton:checked { background-color: #4caf50; border-color: #2e7d32; } "
             "QPushButton:!checked { background-color: #f44336; border-color: #d32f2f; } "
             "QPushButton:disabled { color: #ccc; background-color: #f0f0f0; }"
