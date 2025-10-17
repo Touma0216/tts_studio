@@ -163,6 +163,7 @@ class Live2DManager:
             'h_position': 50,
             'v_position': 50,
             'minimap_visible': False,
+            'idle_motion_enabled': True,
             'background_settings': {
                 'mode': 'default',
                 'color': '#000000',

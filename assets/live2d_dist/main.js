@@ -1829,3 +1829,65 @@ window.toggleLive2DModelPause = function() {
 };
 
 console.log('✅ モデル静止機能を追加');
+
+// =============================================================================
+// アイドルモーション制御機能（startRandomMotion上書き版）
+// =============================================================================
+
+let idleMotionState = {
+    enabled: true,
+    originalStartRandomMotion: null
+};
+
+window.toggleIdleMotion = function(enabled) {
+    if (!currentModel) {
+        console.warn('⚠️ モデル未読み込み');
+        return false;
+    }
+    
+    idleMotionState.enabled = enabled;
+    
+    try {
+        const motionManager = currentModel.internalModel?.motionManager;
+        if (!motionManager) return false;
+        
+        if (enabled) {
+            console.log('▶️ アイドルモーション有効化');
+            
+            if (idleMotionState.originalStartRandomMotion) {
+                motionManager.startRandomMotion = idleMotionState.originalStartRandomMotion;
+                idleMotionState.originalStartRandomMotion = null;
+            }
+            
+        } else {
+            console.log('⏸️ アイドルモーション無効化');
+            
+            motionManager.stopAllMotions();
+            
+            if (!idleMotionState.originalStartRandomMotion) {
+                idleMotionState.originalStartRandomMotion = motionManager.startRandomMotion.bind(motionManager);
+                
+                // idleグループのstartRandomMotionをブロック
+                motionManager.startRandomMotion = function(group, priority) {
+                    if (group === 'idle' || group === 'Idle') {
+                        console.log('🚫 Idleモーションをブロック');
+                        return Promise.resolve(false);
+                    }
+                    return idleMotionState.originalStartRandomMotion.call(this, group, priority);
+                };
+            }
+        }
+        
+        return true;
+        
+    } catch (error) {
+        console.error('❌ エラー:', error);
+        return false;
+    }
+};
+
+window.getIdleMotionState = function() {
+    return idleMotionState.enabled;
+};
+
+console.log('✅ アイドルモーション制御機能を追加');

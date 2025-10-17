@@ -532,6 +532,8 @@ class CharacterDisplayWidget(QWidget):
         self.current_live2d_h_position = 50
         self.current_live2d_v_position = 50
 
+        self.current_idle_motion_enabled = True
+
         # Live2D背景設定
         self.live2d_background_settings = {
             'mode': 'default',
@@ -594,6 +596,22 @@ class CharacterDisplayWidget(QWidget):
         button_layout = QHBoxLayout()
         button_layout.setContentsMargins(0, 0, 0, 0)
         button_layout.setSpacing(8)
+
+        self.idling_btn = QPushButton("▷ アイドリング")
+        self.idling_btn.setToolTip("モデルの自動揺れON/OFF\n（リップシンクは常に動きます）")
+        self.idling_btn.setCheckable(True)
+        self.idling_btn.setChecked(True)  # デフォルトON
+        self.idling_btn.setStyleSheet(
+            "QPushButton { background-color: #4caf50; border: 1px solid #388e3c; border-radius: 4px; "
+            "font-size: 11px; padding: 4px 8px; color: white; font-weight: bold; } "
+            "QPushButton:hover:enabled { background-color: #45a049; } "
+            "QPushButton:checked { background-color: #4caf50; border-color: #2e7d32; } "
+            "QPushButton:!checked { background-color: #f44336; border-color: #d32f2f; } "
+            "QPushButton:disabled { color: #ccc; background-color: #f0f0f0; }"
+        )
+        self.idling_btn.setEnabled(False)
+        self.idling_btn.toggled.connect(self.on_idling_toggled)
+        button_layout.addWidget(self.idling_btn)
 
         # 停止ボタン（ミニマップの左）
         self.pause_model_btn = QPushButton("⏸ 停止")
@@ -1629,6 +1647,9 @@ class CharacterDisplayWidget(QWidget):
             self.live2d_v_position_slider
         ]:
             control.setEnabled(True)
+
+        if hasattr(self, 'idling_btn'):
+            self.idling_btn.setEnabled(True)
         
         if hasattr(self, 'pause_model_btn'):
             self.pause_model_btn.setEnabled(True)
@@ -1662,6 +1683,18 @@ class CharacterDisplayWidget(QWidget):
         else:
             self.minimap.hide()
 
+        idle_motion_enabled = ui_settings.get('idle_motion_enabled', True)
+        if hasattr(self, 'idling_btn'):
+            self.idling_btn.blockSignals(True)
+            self.idling_btn.setChecked(idle_motion_enabled)
+            self.idling_btn.setText("▷ アイドリング" if idle_motion_enabled else "⏸ アイドリング")
+            self.idling_btn.blockSignals(False)
+
+        self.current_idle_motion_enabled = idle_motion_enabled
+
+        # Live2D側に反映（モデル読み込み後に実行）
+        QTimer.singleShot(100, lambda: self.apply_idle_motion_state(idle_motion_enabled))
+
         background_settings = ui_settings.get('background_settings')
         if background_settings:
             self.live2d_background_settings = dict(background_settings)
@@ -1688,7 +1721,8 @@ class CharacterDisplayWidget(QWidget):
             'zoom_percent': self.live2d_zoom_slider.value(),
             'h_position': self.live2d_h_position_slider.value(),
             'v_position': self.live2d_v_position_slider.value(),
-            'minimap_visible': self.toggle_minimap_btn.isChecked()
+            'minimap_visible': self.toggle_minimap_btn.isChecked(),
+            'idle_motion_enabled': self.current_idle_motion_enabled
         }
         bg_settings = {k: v for k, v in self.live2d_background_settings.items() if k != 'imageDataUrl'}
         ui_settings['background_settings'] = bg_settings
@@ -2228,3 +2262,59 @@ class CharacterDisplayWidget(QWidget):
         except Exception as e:
             print(f"❌ モデル停止/再開エラー: {e}")
             self.pause_model_btn.setChecked(False)
+
+    def on_idling_toggled(self, checked):
+        """アイドリングボタンのON/OFF切り替え"""
+        try:
+            if not hasattr(self, 'live2d_webview') or not self.live2d_webview.is_model_loaded:
+                self.idling_btn.setChecked(True)
+                return
+            
+            # ボタンテキスト変更
+            if checked:
+                self.idling_btn.setText("▷ アイドリング")
+            else:
+                self.idling_btn.setText("⏸ アイドリング")
+            
+            # Live2D側に送信
+            script = f"""
+            (function() {{
+                if (typeof window.toggleIdleMotion === 'function') {{
+                    return window.toggleIdleMotion({str(checked).lower()});
+                }}
+                return false;
+            }})()
+            """
+            
+            self.live2d_webview.page().runJavaScript(script)
+            
+            # 状態保存
+            self.current_idle_motion_enabled = checked
+            if self.current_live2d_id:
+                self.save_live2d_ui_settings()
+            
+            print(f"{'▶️' if checked else '⏸️'} アイドリング: {'ON' if checked else 'OFF'}")
+            
+        except Exception as e:
+            print(f"❌ アイドリング切り替えエラー: {e}")
+            self.idling_btn.setChecked(True)
+
+    def apply_idle_motion_state(self, enabled: bool):
+        """アイドルモーション状態をLive2D側に適用"""
+        try:
+            if not hasattr(self, 'live2d_webview') or not self.live2d_webview.is_model_loaded:
+                return
+            
+            script = f"""
+            (function() {{
+                if (typeof window.toggleIdleMotion === 'function') {{
+                    return window.toggleIdleMotion({str(enabled).lower()});
+                }}
+                return false;
+            }})()
+            """
+            
+            self.live2d_webview.page().runJavaScript(script)
+            
+        except Exception as e:
+            print(f"❌ アイドルモーション状態適用エラー: {e}")
