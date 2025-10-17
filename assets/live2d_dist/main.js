@@ -1831,7 +1831,7 @@ window.toggleLive2DModelPause = function() {
 console.log('✅ モデル静止機能を追加');
 
 // =============================================================================
-// アイドルモーション制御機能（update制御版）
+// アイドルモーション制御機能（表情対応版・修正）
 // =============================================================================
 
 let idleMotionState = {
@@ -1859,15 +1859,24 @@ window.toggleIdleMotion = function(enabled) {
             }
             
         } else {
-            console.log('⏸️ アイドルモーション無効化');
+            console.log('⏸️ アイドルモーション無効化（表情は有効）');
             
             if (!idleMotionState.originalUpdate) {
                 idleMotionState.originalUpdate = internalModel.update.bind(internalModel);
             }
             
-            // パラメータ反映だけする最小限のupdate
+            // 🔥 修正：coreModelを渡す
             internalModel.update = function(model, now) {
-                // coreModelだけ更新（パラメータ反映）
+                // 1. 表情マネージャーを更新（coreModelを渡す）
+                if (this.motionManager && this.motionManager.expressionManager) {
+                    try {
+                        this.motionManager.expressionManager.update(this.coreModel, now);
+                    } catch (e) {
+                        console.warn('⚠️ 表情更新エラー:', e);
+                    }
+                }
+                
+                // 2. coreModelを更新（パラメータ反映）
                 if (this.coreModel && typeof this.coreModel.update === 'function') {
                     this.coreModel.update();
                 }

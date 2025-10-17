@@ -1011,6 +1011,19 @@ class CharacterDisplayWidget(QWidget):
         print("⚠️ Live2Dモデルが読み込まれていません（表情適用失敗）")
         return False
 
+    def apply_live2d_expression(self, expression_name: str) -> bool:
+        """Live2Dモデルに表情を適用"""
+        if (
+            hasattr(self, 'live2d_webview')
+            and self.live2d_webview
+            and self.live2d_webview.is_model_loaded
+        ):
+            self.live2d_webview.set_expression(expression_name)
+            return True
+
+        print("⚠️ Live2Dモデルが読み込まれていません（表情適用失敗）")
+        return False
+
     def reset_live2d_expression(self) -> bool:
         """Live2Dモデルの表情をデフォルトに戻す"""
         if (
@@ -1020,6 +1033,56 @@ class CharacterDisplayWidget(QWidget):
         ):
             script = "if (typeof window.resetExpression === 'function') { window.resetExpression(); }"
             self.live2d_webview.page().runJavaScript(script)
+            return True
+
+        print("⚠️ Live2Dモデルが読み込まれていません（表情リセット失敗）")
+        return False
+
+    def reset_live2d_expression(self) -> bool:
+        """Live2Dモデルの表情をデフォルトに戻す（アイドル停止対応版）"""
+        if (
+            hasattr(self, 'live2d_webview')
+            and self.live2d_webview
+            and self.live2d_webview.is_model_loaded
+        ):
+            # 1. 表情リセット
+            script = "if (typeof window.resetExpression === 'function') { window.resetExpression(); }"
+            self.live2d_webview.page().runJavaScript(script)
+            
+            # 2. 強制更新
+            force_update_script = """
+            (function() {
+                try {
+                    const model = window.currentModel;
+                    if (!model || !model.internalModel) return;
+                    
+                    const internalModel = model.internalModel;
+                    const motionManager = internalModel.motionManager;
+                    const expressionManager = motionManager?.expressionManager;
+                    const coreModel = internalModel.coreModel;
+                    
+                    const currentTime = Date.now() / 1000;
+                    
+                    for (let i = 0; i < 10; i++) {
+                        if (expressionManager && typeof expressionManager.update === 'function') {
+                            expressionManager.update(coreModel, currentTime + (i * 0.016));
+                        }
+                        
+                        if (coreModel && typeof coreModel.update === 'function') {
+                            coreModel.update();
+                        }
+                    }
+                    
+                    console.log('✅ 表情リセットを強制更新');
+                    
+                } catch (e) {
+                    console.error('❌ 表情リセット更新エラー:', e);
+                }
+            })();
+            """
+            
+            QTimer.singleShot(50, lambda: self.live2d_webview.page().runJavaScript(force_update_script))
+            
             return True
 
         print("⚠️ Live2Dモデルが読み込まれていません（表情リセット失敗）")
