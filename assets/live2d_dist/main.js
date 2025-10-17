@@ -1881,3 +1881,7 @@ window.toggleIdleMotion = function(enabled) {
         return false;
     }
 };
+
+window.isBaseIdleMotionEnabled = function() {
+    return !!idleMotionState.enabled;
+};

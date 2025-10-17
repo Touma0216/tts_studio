@@ -678,6 +678,13 @@ class TabbedModelingControl(QWidget):
         wind_param_layout.addWidget(self.wind_strength_label)
         idle_layout.addLayout(wind_param_layout)
         
+        # 呼吸
+        self.breath_checkbox = QCheckBox("🫁 呼吸")
+        self.breath_checkbox.setStyleSheet("font-size: 13px; font-weight: bold;")
+        self.breath_checkbox.setChecked(False)
+        self.breath_checkbox.toggled.connect(lambda checked: self._emit_idle_motion_toggle("breath", checked))
+        idle_layout.addWidget(self.breath_checkbox)
+
         content_layout.addWidget(idle_group)
         content_layout.addStretch()
         
@@ -1250,6 +1257,8 @@ class TabbedModelingControl(QWidget):
             idle_state["wind"] = self.wind_checkbox.isChecked()
         if hasattr(self, "wind_strength_slider"):
             idle_state["wind_strength"] = int(self.wind_strength_slider.value())
+        if hasattr(self, "breath_checkbox"):
+            idle_state["breath"] = self.breath_checkbox.isChecked()
         state["idle"] = idle_state
 
         if hasattr(self, "physics_weight_slider"):
@@ -1300,6 +1309,8 @@ class TabbedModelingControl(QWidget):
                 self.wind_checkbox.setChecked(bool(idle_state["wind"]))
             if "wind_strength" in idle_state and hasattr(self, "wind_strength_slider"):
                 self.wind_strength_slider.setValue(int(idle_state["wind_strength"]))
+            if "breath" in idle_state and hasattr(self, "breath_checkbox"):
+                self.breath_checkbox.setChecked(bool(idle_state["breath"]))
 
             if "physics_enabled" in state and hasattr(self, "physics_toggle_btn"):
                 self.physics_toggle_btn.setChecked(bool(state["physics_enabled"]))

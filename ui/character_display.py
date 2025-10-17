@@ -2156,11 +2156,11 @@ class CharacterDisplayWidget(QWidget):
         try:
             script = f"""
             (function() {{
-                if (typeof window.toggleIdleMotion === 'function') {{
-                    window.toggleIdleMotion('{motion_type}', {str(enabled).lower()});
+                if (typeof window.toggleIdleMotionFeature === 'function') {{
+                    window.toggleIdleMotionFeature('{motion_type}', {str(enabled).lower()});
                     return true;
                 }} else {{
-                    console.warn('⚠️ toggleIdleMotion関数が見つかりません');
+                    console.warn('⚠️ toggleIdleMotionFeature関数が見つかりません');
                     return false;
                 }}
             }})()
@@ -2178,8 +2178,8 @@ class CharacterDisplayWidget(QWidget):
         try:
             script = f"""
             (function() {{
-                if (typeof window.setIdleMotionParam === 'function') {{
-                    window.setIdleMotionParam('{param_name}', {value});
+                if (typeof window.setIdleMotionFeatureParam === 'function') {{
+                    window.setIdleMotionFeatureParam('{param_name}', {value});
                     return true;
                 }}
                 return false;

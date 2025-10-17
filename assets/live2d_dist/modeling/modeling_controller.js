@@ -188,12 +188,21 @@ class IdleMotionManager {
                 phase: 0,
                 frequency: 1.0,
                 isOverriding: false
+            },
+            breath: {
+                enabled: false,
+                amplitude: 0.12,
+                period: 1.0,
+                phase: 0,
+                lastUpdateTime: 0,
+                currentValue: 0
             }
         };
         
         this.animationFrameId = null;
         this.isRunning = false;
         this.physicsOriginalState = null;
+        this.breathParamCache = null;
     }
     
     start() {
@@ -217,6 +226,10 @@ class IdleMotionManager {
             this.restorePhysics();
         }
         
+        if (this.motions.breath) {
+            this.resetBreath();
+        }
+
         console.log('⏹️ アイドルモーション停止');
     }
     
@@ -237,6 +250,14 @@ class IdleMotionManager {
         
         this.motions[motionType].enabled = enabled;
         console.log(`🌟 ${motionType}: ${enabled ? 'ON' : 'OFF'}`);
+
+        if (motionType === 'breath') {
+            if (enabled) {
+                this.breathParamCache = null;
+            } else {
+                this.resetBreath();
+            }
+        }
         
         const anyEnabled = Object.values(this.motions).some(m => m.enabled);
         if (anyEnabled && !this.isRunning) {
@@ -253,6 +274,10 @@ class IdleMotionManager {
             this.motions.gaze.range = value;
         } else if (paramName === 'wind_strength') {
             this.motions.wind.strength = value;
+        } else if (paramName === 'breath_period') {
+            this.motions.breath.period = Math.max(0.2, value);
+        } else if (paramName === 'breath_amplitude') {
+            this.motions.breath.amplitude = Math.max(0, value);
         }
     }
     
@@ -273,6 +298,11 @@ class IdleMotionManager {
             if (this.motions.wind.enabled) {
                 this.updateWind(currentTime);
             }
+
+            if (this.motions.breath.enabled) {
+                this.updateBreath(currentTime);
+            }
+
             
         } catch (error) {
             console.error('❌ アイドルモーションエラー:', error);
@@ -339,6 +369,90 @@ class IdleMotionManager {
             window.setLive2DParameter('ParamBodyAngleX', windX * 0.3);
         }
     }
+
+    updateBreath(currentTime) {
+        const breath = this.motions.breath;
+        const baseIdleEnabled = this.isBaseIdleMotionEnabled();
+
+        if (baseIdleEnabled) {
+            if (breath.currentValue !== 0) {
+                this.applyBreathValue(0);
+                breath.currentValue = 0;
+            }
+            breath.lastUpdateTime = currentTime;
+            return;
+        }
+
+        if (!breath.lastUpdateTime) {
+            breath.lastUpdateTime = currentTime;
+        }
+
+        const delta = currentTime - breath.lastUpdateTime;
+        breath.lastUpdateTime = currentTime;
+
+        const period = Math.max(0.2, breath.period);
+        breath.phase = (breath.phase + (delta / period) * Math.PI * 2) % (Math.PI * 2);
+
+        const value = Math.sin(breath.phase) * breath.amplitude;
+        this.applyBreathValue(value);
+        breath.currentValue = value;
+    }
+
+    applyBreathValue(value) {
+        if (!window.setLive2DParameter) return;
+
+        if (!this.breathParamCache) {
+            this.breathParamCache = {
+                ParamBreath: null,
+                ParamBodyAngleX: null,
+                ParamBodyAngleY: null,
+                ParamBodyPositionY: null
+            };
+        }
+
+        const breathValue = Math.min(Math.max(0.5 + value * 0.5, 0), 1);
+        const bodyAngle = value * 5;
+        const bodyLift = value * 0.3;
+
+        const updates = [
+            ['ParamBreath', breathValue],
+            ['ParamBodyAngleX', bodyAngle],
+            ['ParamBodyAngleY', bodyAngle * 0.3],
+            ['ParamBodyPositionY', bodyLift]
+        ];
+
+        for (const [paramId, paramValue] of updates) {
+            if (this.breathParamCache[paramId] === false) continue;
+
+            const result = window.setLive2DParameter(paramId, paramValue);
+            if (result === false) {
+                this.breathParamCache[paramId] = false;
+            } else if (this.breathParamCache[paramId] === null) {
+                this.breathParamCache[paramId] = true;
+            }
+        }
+    }
+
+    resetBreath() {
+        const breath = this.motions.breath;
+        breath.phase = 0;
+        breath.lastUpdateTime = 0;
+        if (breath.currentValue !== 0) {
+            this.applyBreathValue(0);
+            breath.currentValue = 0;
+        }
+    }
+
+    isBaseIdleMotionEnabled() {
+        try {
+            if (typeof window.isBaseIdleMotionEnabled === 'function') {
+                return !!window.isBaseIdleMotionEnabled();
+            }
+        } catch (error) {
+            console.warn('⚠️ ベースアイドル状態取得に失敗:', error);
+        }
+        return true;
+    }
     
     setEyeOpen(value) {
         if (window.setLive2DParameter) {
@@ -404,11 +518,11 @@ class IdleMotionManager {
 window.idleMotionManager = new IdleMotionManager();
 
 /**
- * アイドルモーションのON/OFF切り替え（Python側から呼び出し）
+ * 個別アイドルモーションのON/OFF切り替え（Python側から呼び出し）
  */
-window.toggleIdleMotion = function(motionType, enabled) {
+window.toggleIdleMotionFeature = function(motionType, enabled) {
     try {
-        console.log(`🌟 toggleIdleMotion: ${motionType} = ${enabled}`);
+        console.log(`🌟 toggleIdleMotionFeature: ${motionType} = ${enabled}`);
         
         if (!window.idleMotionManager) {
             console.error('❌ idleMotionManager未初期化');
@@ -418,15 +532,15 @@ window.toggleIdleMotion = function(motionType, enabled) {
         window.idleMotionManager.toggleMotion(motionType, enabled);
         return true;
     } catch (error) {
-        console.error(`❌ toggleIdleMotionエラー:`, error);
+        console.error(`❌ toggleIdleMotionFeatureエラー:`, error);
         return false;
     }
 };
 
 /**
- * アイドルモーションパラメータ設定（Python側から呼び出し）
+ * 個別アイドルモーションのパラメータ設定（Python側から呼び出し）
  */
-window.setIdleMotionParam = function(paramName, value) {
+window.setIdleMotionFeatureParam = function(paramName, value) {
     try {
         if (!window.idleMotionManager) {
             console.error('❌ idleMotionManager未初期化');
@@ -436,7 +550,7 @@ window.setIdleMotionParam = function(paramName, value) {
         window.idleMotionManager.setMotionParam(paramName, value);
         return true;
     } catch (error) {
-        console.error(`❌ setIdleMotionParamエラー:`, error);
+        console.error(`❌ setIdleMotionFeatureParamエラー:`, error);
         return false;
     }
 };

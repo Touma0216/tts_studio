@@ -932,6 +932,10 @@ class TTSStudioMainWindow(QMainWindow):
                 if hasattr(modeling_control, 'wind_strength_slider'):
                     strength = modeling_control.wind_strength_slider.value() / 100.0
                     self.on_idle_motion_param_changed("wind_strength", strength)
+
+            if hasattr(modeling_control, 'breath_checkbox') and modeling_control.breath_checkbox.isChecked():
+                print("  → 呼吸ON")
+                self.on_idle_motion_toggled("breath", True)
                 
         except Exception as e:
             print(f"⚠️ アイドルモーション起動エラー: {e}")
