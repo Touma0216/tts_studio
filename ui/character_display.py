@@ -15,6 +15,7 @@ from typing import Dict, Optional, Any
 
 from core.image_manager import ImageManager
 from core.live2d_manager import Live2DManager
+from core.live2d_fixed_position_manager import Live2DFixedPositionManager
 from .live2d_history import Live2DHistoryWidget
 from .image_history import ImageHistoryWidget
 
@@ -517,6 +518,8 @@ class CharacterDisplayWidget(QWidget):
         self.image_manager = ImageManager()
         self.live2d_manager = Live2DManager()
         
+        self.live2d_fixed_position_manager = Live2DFixedPositionManager()
+        
         self.display_mode_manager = DisplayModeManager()
         
         self.current_image_path = None
@@ -533,6 +536,7 @@ class CharacterDisplayWidget(QWidget):
         self.current_live2d_v_position = 50
 
         self.current_idle_motion_enabled = True
+        self._cached_fixed_position_settings = None
 
         # Live2D背景設定
         self.live2d_background_settings = {
@@ -551,6 +555,7 @@ class CharacterDisplayWidget(QWidget):
         self.is_initializing = True
         
         self.init_ui()
+        self.update_fixed_position_button_state()
         self.resize_timer = QTimer(self)
         self.resize_timer.setSingleShot(True)
         self.resize_timer.timeout.connect(self.update_image_display)
@@ -613,6 +618,18 @@ class CharacterDisplayWidget(QWidget):
         self.idling_btn.setEnabled(False)
         self.idling_btn.toggled.connect(self.on_idling_toggled)
         button_layout.addWidget(self.idling_btn)
+
+        self.reset_position_btn = QPushButton("📍 定位置")
+        self.reset_position_btn.setToolTip("Live2Dモデルの定位置に戻す")
+        self.reset_position_btn.setEnabled(False)
+        self.reset_position_btn.setStyleSheet(
+            "QPushButton { background-color: #f8f9fa; border: 1px solid #ccc; border-radius: 4px; "
+            "font-size: 11px; padding: 4px 8px; } "
+            "QPushButton:hover:enabled { background-color: #e9ecef; } "
+            "QPushButton:disabled { color: #ccc; }"
+        )
+        self.reset_position_btn.clicked.connect(self.apply_live2d_fixed_position)
+        button_layout.addWidget(self.reset_position_btn)
 
         # 停止ボタン（ミニマップの左）
         self.pause_model_btn = QPushButton("⏸ 停止")
@@ -1338,6 +1355,7 @@ class CharacterDisplayWidget(QWidget):
 
         self._ensure_minimap_parent()
         self.update_minimap_position()
+        self.update_fixed_position_button_state()
         
         if not self.is_initializing:
             self.display_mode_manager.set_last_tab_index(index)
@@ -1356,9 +1374,11 @@ class CharacterDisplayWidget(QWidget):
             if last_tab_index == 0:
                 self.current_display_mode = "image"
                 self.toggle_minimap_btn.setVisible(True)
+                self.update_fixed_position_button_state()
             else:
                 self.current_display_mode = "live2d"
                 self.toggle_minimap_btn.setVisible(True)
+                self.update_fixed_position_button_state()
             
             self.is_initializing = False
             
@@ -1721,6 +1741,144 @@ class CharacterDisplayWidget(QWidget):
         if self.current_display_mode == "live2d":
             self.toggle_minimap_btn.setEnabled(self.original_pixmap is not None)
 
+        self.update_fixed_position_button_state()
+
+    def _resolve_live2d_identity(self):
+        model_data = None
+        if self.current_live2d_id:
+            model_data = self.live2d_manager.get_model_by_id(self.current_live2d_id)
+
+        folder_path = None
+        model_name = None
+        if model_data:
+            folder_path = model_data.get('model_folder_path') or self.current_live2d_folder
+            model_name = model_data.get('name')
+        else:
+            folder_path = self.current_live2d_folder
+
+        return folder_path, model_name
+
+    def update_fixed_position_button_state(self):
+        if not hasattr(self, 'reset_position_btn'):
+            return
+
+        if self.current_display_mode != "live2d":
+            self.reset_position_btn.setEnabled(False)
+            self.reset_position_btn.setToolTip("Live2Dタブで使用できます。")
+            self._cached_fixed_position_settings = None
+            return
+
+        folder_path, model_name = self._resolve_live2d_identity()
+        settings = self.live2d_fixed_position_manager.get_fixed_settings(
+            model_id=self.current_live2d_id,
+            model_folder_path=folder_path,
+            model_name=model_name,
+            reload=True,
+        )
+
+        self._cached_fixed_position_settings = settings if isinstance(settings, dict) else None
+
+        if self._cached_fixed_position_settings:
+            self.reset_position_btn.setEnabled(True)
+            self.reset_position_btn.setToolTip("登録された定位置にモデルを戻します。")
+        else:
+            self.reset_position_btn.setEnabled(False)
+            if not self.current_live2d_id:
+                tooltip = "Live2Dモデルが読み込まれていません。"
+            else:
+                tooltip = "定位置が設定されていません。live2d_fixed_positions.json を編集してください。"
+            self.reset_position_btn.setToolTip(tooltip)
+
+    @staticmethod
+    def _clamp_slider_value(value, *, minimum=0, maximum=100):
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return None
+        clamped = max(minimum, min(maximum, numeric))
+        return int(round(clamped))
+
+    def _extract_live2d_zoom(self, settings: Dict[str, Any]) -> Optional[int]:
+        if 'zoom_percent' in settings:
+            return self._clamp_slider_value(settings.get('zoom_percent'), minimum=1, maximum=500)
+        if 'scale' in settings:
+            try:
+                scale_value = float(settings['scale'])
+            except (TypeError, ValueError):
+                return None
+            return self._clamp_slider_value(scale_value * 100, minimum=1, maximum=500)
+        return None
+
+    def _extract_live2d_horizontal(self, settings: Dict[str, Any]) -> Optional[int]:
+        if 'h_position' in settings:
+            return self._clamp_slider_value(settings.get('h_position'))
+        if 'position_x' in settings:
+            try:
+                pos_x = float(settings['position_x'])
+            except (TypeError, ValueError):
+                return None
+            slider_value = 50 - (pos_x * 50)
+            return self._clamp_slider_value(slider_value)
+        return None
+
+    def _extract_live2d_vertical(self, settings: Dict[str, Any]) -> Optional[int]:
+        if 'v_position' in settings:
+            return self._clamp_slider_value(settings.get('v_position'))
+        if 'position_y' in settings:
+            try:
+                pos_y = float(settings['position_y'])
+            except (TypeError, ValueError):
+                return None
+            slider_value = (pos_y * 50) + 50
+            return self._clamp_slider_value(slider_value)
+        return None
+
+    def apply_live2d_fixed_position(self):
+        if not self.current_live2d_id:
+            QMessageBox.information(self, "定位置の適用", "Live2Dモデルが読み込まれていません。")
+            self.update_fixed_position_button_state()
+            return
+
+        folder_path, model_name = self._resolve_live2d_identity()
+        settings = self.live2d_fixed_position_manager.get_fixed_settings(
+            model_id=self.current_live2d_id,
+            model_folder_path=folder_path,
+            model_name=model_name,
+            reload=True,
+        )
+
+        if not settings:
+            QMessageBox.information(
+                self,
+                "定位置が未設定",
+                "live2d_fixed_positions.json に定位置が設定されていません。",
+            )
+            self.update_fixed_position_button_state()
+            return
+
+        self._cached_fixed_position_settings = settings
+
+        zoom_value = self._extract_live2d_zoom(settings)
+        if zoom_value is not None:
+            self.live2d_zoom_slider.setValue(zoom_value)
+
+        h_value = self._extract_live2d_horizontal(settings)
+        if h_value is not None:
+            self.live2d_h_position_slider.setValue(h_value)
+
+        v_value = self._extract_live2d_vertical(settings)
+        if v_value is not None:
+            self.live2d_v_position_slider.setValue(v_value)
+
+        if 'minimap_visible' in settings:
+            self.toggle_minimap_btn.setChecked(bool(settings['minimap_visible']))
+
+        print(
+            f"📍 定位置を適用: zoom={zoom_value}, h={h_value}, v={v_value}, minimap={settings.get('minimap_visible')}"
+        )
+
+        self.update_fixed_position_button_state()
+
     def restore_live2d_settings(self, ui_settings):
         """Live2D設定を復元（500%対応）"""
         zoom_percent = ui_settings.get('zoom_percent', 100)
@@ -1775,6 +1933,7 @@ class CharacterDisplayWidget(QWidget):
         if self.live2d_background_settings.get('mode') == 'chroma':
             self._update_chroma_color_input(self.live2d_background_settings.get('color'))
         QTimer.singleShot(0, lambda: self.apply_live2d_background())
+        self.update_fixed_position_button_state()
 
     def save_live2d_ui_settings(self):
         """Live2DのUI設定を保存（500%対応）"""

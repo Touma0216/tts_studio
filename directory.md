@@ -4,6 +4,7 @@ tts_studio/
 ├── user_settings.json                # ユーザー設定ファイル
 ├── image_history.json                # 画像履歴データ
 ├── live2d_history.json               # Live2Dモデル履歴データ
+├── live2d_fixed_positions.json       # Live2Dモデル定位置プリセット設定
 ├── __pycache__/                      # Pythonバイトコードキャッシュ
 ├── animations/                       # アニメーションJSONファイル
 │   ├── preset_look_around.json       # サンプルアニメーション
@@ -41,6 +42,7 @@ tts_studio/
 │   ├── tts_long_processor.py         # 長時間TTS処理エンジン
 │   ├── image_manager.py              # 画像履歴・UI設定管理システム
 │   ├── live2d_manager.py             # Live2Dモデル管理システム
+│   ├── live2d_fixed_position_manager.py # Live2D定位置プリセット管理
 │   ├── animation_manager.py          # アニメーション管理システム
 │   ├── lip_sync_engine.py            # メインリップシンクエンジン
 │   ├── phoneme_analyzer.py           # 音素解析・最適化エンジン
