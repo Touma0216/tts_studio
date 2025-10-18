@@ -2001,9 +2001,13 @@ window.toggleIdleMotion = function(enabled) {
                 const coreModel = this.coreModel;
 
                 // === Phase 1: パラメータ保存 ===
-                if (coreModel && typeof coreModel.saveParam === 'function') {
+                if (coreModel) {
                     try {
-                        coreModel.saveParam();
+                        if (typeof coreModel.saveParameters === 'function') {
+                            coreModel.saveParameters();
+                        } else if (typeof coreModel.saveParam === 'function') {
+                            coreModel.saveParam();
+                        }
                     } catch (e) {
                         console.warn('⚠️ パラメータ保存エラー:', e);
                     }
@@ -2053,12 +2057,14 @@ window.toggleIdleMotion = function(enabled) {
 
                     coreModel.update();
 
-                    if (typeof coreModel.loadParam === 'function') {
-                        try {
+                    try {
+                        if (typeof coreModel.loadParameters === 'function') {
+                            coreModel.loadParameters();
+                        } else if (typeof coreModel.loadParam === 'function') {
                             coreModel.loadParam();
-                        } catch (e) {
-                            console.warn('⚠️ パラメータ復元エラー:', e);
                         }
+                    } catch (e) {
+                        console.warn('⚠️ パラメータ復元エラー:', e);
                     }
                 }
             };
