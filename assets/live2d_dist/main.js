@@ -396,11 +396,8 @@ window.playMotion = function(motionName) {
 };
 
 // assets/live2d_dist/main.js
-// 📍 場所: window.setExpression と window.resetExpression を以下に置き換え
+// 📍 場所: window.setExpression 関数
 
-/**
- * 表情を設定（アイドリングストップ対応・描画重複完全修正版）
- */
 window.setExpression = function(expressionName) {
     if (!currentModel) {
         console.warn("⚠️ モデルが読み込まれていません");
@@ -418,46 +415,47 @@ window.setExpression = function(expressionName) {
         }
         
         const expressionManager = internalModel.motionManager.expressionManager;
+        const coreModel = internalModel.coreModel;
         
-        if (!expressionManager) {
-            console.warn("⚠️ 表情マネージャーが見つかりません");
+        if (!expressionManager || !coreModel) {
+            console.warn("⚠️ マネージャーにアクセスできません");
             return false;
         }
         
-        // 🔥 ステップ1: 古い表情を完全クリア
-        
-        // 内部パラメータ値をクリア
+        // ステップ1: 表情マネージャーをクリア
         if (expressionManager._expressionParameterValues) {
             expressionManager._expressionParameterValues = null;
         }
         
-        // フェードウェイトをリセット
         if (expressionManager.fadeWeights) {
-            expressionManager.fadeWeights = [];
+            expressionManager.fadeWeights.length = 0;
         }
         
-        // 表情キューをクリア
         if (expressionManager._expressionQueue) {
-            expressionManager._expressionQueue = [];
+            expressionManager._expressionQueue.length = 0;
         }
         
-        // 現在の表情をリセット
         expressionManager.currentIndex = -1;
         expressionManager.currentExpression = null;
         
-        // 表情配列をクリア
         if (expressionManager.expressions) {
-            expressionManager.expressions = [];
+            expressionManager.expressions.length = 0;
         }
         
-        // APIメソッドがあれば実行
         if (typeof expressionManager.resetExpression === 'function') {
             expressionManager.resetExpression();
         }
         
-        // 🔥 ステップ2: パラメータをデフォルトに戻す
-        const coreModel = internalModel.coreModel;
-        if (coreModel && coreModel._model && coreModel._model.parameters) {
+        // 🔥 ステップ2: _savedParameters をクリア（これが重要！）
+        if (coreModel._savedParameters) {
+            for (let i = 0; i < coreModel._savedParameters.length; i++) {
+                coreModel._savedParameters[i] = 0;
+            }
+            console.log('🧹 _savedParameters をクリア');
+        }
+        
+        // ステップ3: パラメータをデフォルトに戻す
+        if (coreModel._model && coreModel._model.parameters) {
             const model = coreModel._model;
             
             for (let i = 0; i < model.parameters.count; i++) {
@@ -467,21 +465,32 @@ window.setExpression = function(expressionName) {
             }
         }
         
-        // 🔥 ステップ3: 描画を一度更新してバッファクリア
-        if (coreModel && typeof coreModel.update === 'function') {
+        // モデル更新
+        if (typeof coreModel.update === 'function') {
             coreModel.update();
         }
         
-        // 🔥 ステップ4: 新しい表情を設定
-        // requestAnimationFrameを使って次の描画サイクルで設定
-        requestAnimationFrame(() => {
+        console.log('✅ 描画クリア完了');
+        
+        // ステップ4: 新しい表情を設定
+        setTimeout(() => {
             try {
                 currentModel.expression(expressionName);
-                console.log(`✅ 表情設定完了: ${expressionName}`);
+                
+                setTimeout(() => {
+                    if (expressionManager.expressions && expressionManager.expressions.length > 1) {
+                        const lastExpression = expressionManager.expressions[expressionManager.expressions.length - 1];
+                        expressionManager.expressions.length = 0;
+                        expressionManager.expressions.push(lastExpression);
+                    }
+                    
+                    console.log(`✅ 表情設定完了: ${expressionName}`);
+                }, 50);
+                
             } catch (e) {
                 console.error("❌ 表情設定エラー:", e);
             }
-        });
+        }, 100);
         
         return true;
         
