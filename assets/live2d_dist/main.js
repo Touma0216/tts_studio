@@ -419,22 +419,9 @@ window.setExpression = function(expressionName) {
             return false;
         }
         
-        // 🔥 追加：現在の表情を検出
+        // 🔥 現在の表情を検出
         const hasCurrentExpression = expressionManager.expressions && 
                                      expressionManager.expressions.length > 0;
-        
-        // 🔥 追加：風揺れ中のパラメータを保存
-        const windParams = {};
-        const isWindActive = window.idleMotionManager?.motions?.wind?.enabled;
-        if (isWindActive) {
-            const hairParamIds = ['ParamHairFront', 'ParamHairSide', 'ParamHairBack', 'ParamBodyAngleX'];
-            hairParamIds.forEach(paramId => {
-                const paramIndex = coreModel.getParameterIndex(paramId);
-                if (paramIndex >= 0) {
-                    windParams[paramId] = coreModel.getParameterValueByIndex(paramIndex);
-                }
-            });
-        }
         
         // アイドリング停止中かどうかを判定
         const isIdleStopped = !window.isBaseIdleMotionEnabled();
@@ -452,7 +439,7 @@ window.setExpression = function(expressionName) {
             
             // 🔥 修正：表情→表情の場合はリセットしない
             if (!hasCurrentExpression) {
-                console.log("💫 平常→表情：完全リセット実行");
+                console.log("💫 平常→表情：顔パラメータのみリセット");
                 
                 // 表情マネージャーをクリア
                 if (expressionManager._expressionParameterValues) {
@@ -485,23 +472,46 @@ window.setExpression = function(expressionName) {
                     }
                 }
                 
-                // パラメータをデフォルトに戻す（風揺れ除外）
+                // 🔥 重要：顔のパラメータだけをリセット（髪・体は触らない）
                 if (coreModel._model && coreModel._model.parameters) {
                     const model = coreModel._model;
                     
+                    // 顔パラメータのキーワード
+                    const faceKeywords = [
+                        'Angle', 'Eye', 'Brow', 'Mouth', 'Cheek', 
+                        'Face', 'Ear', 'Nose'
+                    ];
+                    
+                    // 除外するキーワード（髪・体）
+                    const excludeKeywords = [
+                        'Hair', 'Body', 'Breath', 'Arm', 'Bust'
+                    ];
+                    
                     for (let i = 0; i < model.parameters.count; i++) {
-                        // 風揺れ中は髪パラメータをスキップ
-                        if (isWindActive) {
-                            const paramId = model.parameters.ids[i];
-                            if (paramId.includes('Hair') || paramId.includes('Body')) {
-                                continue;
-                            }
+                        const paramId = model.parameters.ids[i];
+                        
+                        // 🔥 除外キーワードに該当したらスキップ
+                        const shouldExclude = excludeKeywords.some(keyword => 
+                            paramId.includes(keyword)
+                        );
+                        
+                        if (shouldExclude) {
+                            continue; // 髪・体はスキップ
                         }
                         
-                        const defaultVal = model.parameters.defaultValues ? 
-                            model.parameters.defaultValues[i] : 0;
-                        model.parameters.values[i] = defaultVal;
+                        // 🔥 顔パラメータのみリセット
+                        const isFaceParam = faceKeywords.some(keyword => 
+                            paramId.includes(keyword)
+                        );
+                        
+                        if (isFaceParam) {
+                            const defaultVal = model.parameters.defaultValues ? 
+                                model.parameters.defaultValues[i] : 0;
+                            model.parameters.values[i] = defaultVal;
+                        }
                     }
+                    
+                    console.log("✅ 顔パラメータのみリセット完了");
                 }
                 
                 // internalModel.update()を使用
@@ -509,16 +519,6 @@ window.setExpression = function(expressionName) {
                     internalModel.update(currentModel, Date.now());
                 } else if (typeof coreModel.update === 'function') {
                     coreModel.update();
-                }
-                
-                // 風揺れパラメータを復元
-                if (isWindActive && Object.keys(windParams).length > 0) {
-                    Object.entries(windParams).forEach(([paramId, value]) => {
-                        const paramIndex = coreModel.getParameterIndex(paramId);
-                        if (paramIndex >= 0) {
-                            coreModel.setParameterValueByIndex(paramIndex, value);
-                        }
-                    });
                 }
             } else {
                 console.log("🔄 表情→表情：リセットせず直接切り替え");
@@ -549,16 +549,6 @@ window.setExpression = function(expressionName) {
                             const lastExpression = expressionManager.expressions[expressionManager.expressions.length - 1];
                             expressionManager.expressions.length = 0;
                             expressionManager.expressions.push(lastExpression);
-                        }
-                        
-                        // 風揺れパラメータを最終復元
-                        if (isWindActive && Object.keys(windParams).length > 0) {
-                            Object.entries(windParams).forEach(([paramId, value]) => {
-                                const paramIndex = coreModel.getParameterIndex(paramId);
-                                if (paramIndex >= 0) {
-                                    coreModel.setParameterValueByIndex(paramIndex, value);
-                                }
-                            });
                         }
                         
                         currentModel.x = savedPosition.x;
