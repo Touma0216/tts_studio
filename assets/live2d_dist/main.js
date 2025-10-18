@@ -419,7 +419,7 @@ window.setExpression = function(expressionName) {
             return false;
         }
         
-        // 🔥 現在の表情を検出
+        // 現在の表情を検出
         const hasCurrentExpression = expressionManager.expressions && 
                                      expressionManager.expressions.length > 0;
         
@@ -437,7 +437,7 @@ window.setExpression = function(expressionName) {
                 scaleY: currentModel.scale.y
             };
             
-            // 🔥 修正：表情→表情の場合はリセットしない
+            // 表情→表情の場合はリセットしない
             if (!hasCurrentExpression) {
                 console.log("💫 平常→表情：顔パラメータのみリセット");
                 
@@ -472,25 +472,15 @@ window.setExpression = function(expressionName) {
                     }
                 }
                 
-                // 🔥 重要：顔のパラメータだけをリセット（髪・体は触らない）
+                // 🔥 髪・体以外をリセット
                 if (coreModel._model && coreModel._model.parameters) {
                     const model = coreModel._model;
                     
-                    // 顔パラメータのキーワード
-                    const faceKeywords = [
-                        'Angle', 'Eye', 'Brow', 'Mouth', 'Cheek', 
-                        'Face', 'Ear', 'Nose'
-                    ];
-                    
-                    // 除外するキーワード（髪・体）
-                    const excludeKeywords = [
-                        'Hair', 'Body', 'Breath', 'Arm', 'Bust'
-                    ];
+                    const excludeKeywords = ['Hair', 'Body', 'Breath', 'Arm', 'Bust'];
                     
                     for (let i = 0; i < model.parameters.count; i++) {
                         const paramId = model.parameters.ids[i];
                         
-                        // 🔥 除外キーワードに該当したらスキップ
                         const shouldExclude = excludeKeywords.some(keyword => 
                             paramId.includes(keyword)
                         );
@@ -499,22 +489,12 @@ window.setExpression = function(expressionName) {
                             continue; // 髪・体はスキップ
                         }
                         
-                        // 🔥 顔パラメータのみリセット
-                        const isFaceParam = faceKeywords.some(keyword => 
-                            paramId.includes(keyword)
-                        );
-                        
-                        if (isFaceParam) {
-                            const defaultVal = model.parameters.defaultValues ? 
-                                model.parameters.defaultValues[i] : 0;
-                            model.parameters.values[i] = defaultVal;
-                        }
+                        const defaultVal = model.parameters.defaultValues ? 
+                            model.parameters.defaultValues[i] : 0;
+                        model.parameters.values[i] = defaultVal;
                     }
-                    
-                    console.log("✅ 顔パラメータのみリセット完了");
                 }
                 
-                // internalModel.update()を使用
                 if (typeof internalModel.update === 'function') {
                     internalModel.update(currentModel, Date.now());
                 } else if (typeof coreModel.update === 'function') {
@@ -523,14 +503,12 @@ window.setExpression = function(expressionName) {
             } else {
                 console.log("🔄 表情→表情：リセットせず直接切り替え");
                 
-                // 既存の表情をクリア（パラメータはリセットしない）
                 if (expressionManager.expressions) {
                     expressionManager.expressions.length = 0;
                 }
                 expressionManager.currentIndex = -1;
             }
             
-            // 位置を復元
             currentModel.x = savedPosition.x;
             currentModel.y = savedPosition.y;
             currentModel.scale.set(savedPosition.scaleX, savedPosition.scaleY);
@@ -564,16 +542,14 @@ window.setExpression = function(expressionName) {
             }, 100);
             
         } else {
-            // === アイドリング中：シンプルに表情だけ変える ===
+            // === アイドリング中 ===
             console.log("▶️ アイドリング中：シンプル表情変更");
             
-            // 既存の表情をクリア
             if (expressionManager.expressions && expressionManager.expressions.length > 0) {
                 expressionManager.expressions.length = 0;
             }
             expressionManager.currentIndex = -1;
             
-            // 新しい表情を設定（アイドルモーションは継続）
             currentModel.expression(expressionName);
             console.log(`✅ 表情設定完了: ${expressionName}`);
         }
@@ -585,9 +561,7 @@ window.setExpression = function(expressionName) {
         return false;
     }
 };
-/**
- * 表情をデフォルトに戻す（完全リセット版）
- */
+
 window.resetExpression = function() {
     if (!currentModel) {
         console.warn("⚠️ モデル未読み込み");
@@ -611,14 +585,11 @@ window.resetExpression = function() {
             return false;
         }
         
-        // 🔥 完全リセット
-        
-        // API呼び出し
+        // 表情マネージャーをクリア
         if (typeof expressionManager.resetExpression === 'function') {
             expressionManager.resetExpression();
         }
         
-        // 内部状態をクリア
         if (expressionManager._expressionParameterValues) {
             expressionManager._expressionParameterValues = null;
         }
@@ -638,19 +609,30 @@ window.resetExpression = function() {
         expressionManager.currentIndex = -1;
         expressionManager.currentExpression = null;
         
-        // パラメータをデフォルトに戻す
+        // 🔥 髪・体以外をデフォルトに戻す
         const coreModel = internalModel.coreModel;
         if (coreModel && coreModel._model && coreModel._model.parameters) {
             const model = coreModel._model;
             
+            const excludeKeywords = ['Hair', 'Body', 'Breath', 'Arm', 'Bust'];
+            
             for (let i = 0; i < model.parameters.count; i++) {
+                const paramId = model.parameters.ids[i];
+                
+                const shouldExclude = excludeKeywords.some(keyword => 
+                    paramId.includes(keyword)
+                );
+                
+                if (shouldExclude) {
+                    continue;
+                }
+                
                 const defaultVal = model.parameters.defaultValues ? 
                     model.parameters.defaultValues[i] : 0;
                 model.parameters.values[i] = defaultVal;
             }
         }
         
-        // 描画更新
         if (coreModel && typeof coreModel.update === 'function') {
             coreModel.update();
         }
