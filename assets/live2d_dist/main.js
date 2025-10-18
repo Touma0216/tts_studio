@@ -2017,24 +2017,11 @@ window.toggleIdleMotion = function(enabled) {
                 if (this.motionManager && this.motionManager.expressionManager) {
                     const expMgr = this.motionManager.expressionManager;
                     
-                    // 🔥 重要：表情更新前に内部バッファをクリア
-                    // これにより、古い表情の描画データが残らない
-                    
-                    // 内部の表情パラメータ値をクリア
-                    if (expMgr._expressionParameterValues) {
-                        expMgr._expressionParameterValues = null;
-                    }
-                    
-                    // フェードウェイトをリセット（表情のブレンド状態）
-                    if (expMgr.fadeWeights && expMgr.fadeWeights.length > 0) {
-                        // 完全にクリアするのではなく、0にリセット
-                        expMgr.fadeWeights = expMgr.fadeWeights.map(() => 0);
-                    }
-                    
-                    // 表情キューをクリア（未使用の表情を削除）
-                    if (expMgr._expressionQueue && expMgr._expressionQueue.length > 1) {
-                        // 現在の表情以外を削除
-                        expMgr._expressionQueue = expMgr._expressionQueue.slice(0, 1);
+
+                    // 表情キューが肥大化すると描画が乱れるケースがあるため、
+                    // 直近の表情だけを残しつつフェード情報は維持する。
+                    if (expMgr._expressionQueue && expMgr._expressionQueue.length > 2) {
+                        expMgr._expressionQueue = expMgr._expressionQueue.slice(-2);
                     }
                 }
 
