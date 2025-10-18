@@ -419,6 +419,20 @@ window.setExpression = function(expressionName) {
             return false;
         }
         
+        // 🔥 追加：風揺れ中のパラメータを保存
+        const windParams = {};
+        const isWindActive = window.idleMotionManager?.motions?.wind?.enabled;
+        if (isWindActive) {
+            const hairParamIds = ['ParamHairFront', 'ParamHairSide', 'ParamHairBack', 'ParamBodyAngleX'];
+            hairParamIds.forEach(paramId => {
+                const paramIndex = coreModel.getParameterIndex(paramId);
+                if (paramIndex >= 0) {
+                    windParams[paramId] = coreModel.getParameterValueByIndex(paramIndex);
+                }
+            });
+            console.log("💨 風揺れパラメータ保存:", windParams);
+        }
+        
         // アイドリング停止中かどうかを判定
         const isIdleStopped = !window.isBaseIdleMotionEnabled();
         
@@ -465,11 +479,19 @@ window.setExpression = function(expressionName) {
                 }
             }
             
-            // パラメータをデフォルトに戻す
+            // 🔥 修正：パラメータをデフォルトに戻す（風揺れ除外）
             if (coreModel._model && coreModel._model.parameters) {
                 const model = coreModel._model;
                 
                 for (let i = 0; i < model.parameters.count; i++) {
+                    // 🔥 風揺れ中は髪パラメータをスキップ
+                    if (isWindActive) {
+                        const paramId = model.parameters.ids[i];
+                        if (paramId.includes('Hair') || paramId.includes('Body')) {
+                            continue; // スキップ
+                        }
+                    }
+                    
                     const defaultVal = model.parameters.defaultValues ? 
                         model.parameters.defaultValues[i] : 0;
                     model.parameters.values[i] = defaultVal;
@@ -481,6 +503,17 @@ window.setExpression = function(expressionName) {
                 internalModel.update(currentModel, Date.now());
             } else if (typeof coreModel.update === 'function') {
                 coreModel.update();
+            }
+            
+            // 🔥 追加：風揺れパラメータを復元
+            if (isWindActive && Object.keys(windParams).length > 0) {
+                Object.entries(windParams).forEach(([paramId, value]) => {
+                    const paramIndex = coreModel.getParameterIndex(paramId);
+                    if (paramIndex >= 0) {
+                        coreModel.setParameterValueByIndex(paramIndex, value);
+                    }
+                });
+                console.log("♻️ 風揺れパラメータ復元完了");
             }
             
             // 位置を復元
@@ -502,6 +535,16 @@ window.setExpression = function(expressionName) {
                             const lastExpression = expressionManager.expressions[expressionManager.expressions.length - 1];
                             expressionManager.expressions.length = 0;
                             expressionManager.expressions.push(lastExpression);
+                        }
+                        
+                        // 🔥 追加：最終的にもう一度復元
+                        if (isWindActive && Object.keys(windParams).length > 0) {
+                            Object.entries(windParams).forEach(([paramId, value]) => {
+                                const paramIndex = coreModel.getParameterIndex(paramId);
+                                if (paramIndex >= 0) {
+                                    coreModel.setParameterValueByIndex(paramIndex, value);
+                                }
+                            });
                         }
                         
                         currentModel.x = savedPosition.x;
@@ -538,6 +581,7 @@ window.setExpression = function(expressionName) {
         return false;
     }
 };
+
 /**
  * 表情をデフォルトに戻す（完全リセット版）
  */
