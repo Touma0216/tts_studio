@@ -396,7 +396,7 @@ window.playMotion = function(motionName) {
 };
 
 // assets/live2d_dist/main.js
-// 📍 場所: window.setExpression 関数
+// 📍 場所: window.setExpression 関数（位置保護強化版）
 
 window.setExpression = function(expressionName) {
     if (!currentModel) {
@@ -422,6 +422,15 @@ window.setExpression = function(expressionName) {
             return false;
         }
         
+        // 🔥 追加：表情変更前に位置を保護
+        const savedPosition = {
+            x: currentModel.x,
+            y: currentModel.y,
+            scaleX: currentModel.scale.x,
+            scaleY: currentModel.scale.y
+        };
+        console.log("💾 位置保存:", savedPosition);
+        
         // ステップ1: 表情マネージャーをクリア
         if (expressionManager._expressionParameterValues) {
             expressionManager._expressionParameterValues = null;
@@ -446,7 +455,7 @@ window.setExpression = function(expressionName) {
             expressionManager.resetExpression();
         }
         
-        // 🔥 ステップ2: _savedParameters をクリア（これが重要！）
+        // ステップ2: _savedParameters をクリア
         if (coreModel._savedParameters) {
             for (let i = 0; i < coreModel._savedParameters.length; i++) {
                 coreModel._savedParameters[i] = 0;
@@ -465,10 +474,18 @@ window.setExpression = function(expressionName) {
             }
         }
         
-        // モデル更新
-        if (typeof coreModel.update === 'function') {
+        // 🔥 修正：internalModel.update()を使用（アイドルモーション対応）
+        if (typeof internalModel.update === 'function') {
+            internalModel.update(currentModel, Date.now());
+        } else if (typeof coreModel.update === 'function') {
             coreModel.update();
         }
+        
+        // 🔥 追加：位置を即座に復元
+        currentModel.x = savedPosition.x;
+        currentModel.y = savedPosition.y;
+        currentModel.scale.set(savedPosition.scaleX, savedPosition.scaleY);
+        console.log("🔄 位置復元（即座）:", savedPosition);
         
         console.log('✅ 描画クリア完了');
         
@@ -477,12 +494,24 @@ window.setExpression = function(expressionName) {
             try {
                 currentModel.expression(expressionName);
                 
+                // 🔥 追加：表情設定後も位置を復元
+                currentModel.x = savedPosition.x;
+                currentModel.y = savedPosition.y;
+                currentModel.scale.set(savedPosition.scaleX, savedPosition.scaleY);
+                console.log("🔄 位置復元（表情設定後）:", savedPosition);
+                
                 setTimeout(() => {
                     if (expressionManager.expressions && expressionManager.expressions.length > 1) {
                         const lastExpression = expressionManager.expressions[expressionManager.expressions.length - 1];
                         expressionManager.expressions.length = 0;
                         expressionManager.expressions.push(lastExpression);
                     }
+                    
+                    // 🔥 追加：最終確認の位置復元
+                    currentModel.x = savedPosition.x;
+                    currentModel.y = savedPosition.y;
+                    currentModel.scale.set(savedPosition.scaleX, savedPosition.scaleY);
+                    console.log("🔄 位置復元（最終）:", savedPosition);
                     
                     console.log(`✅ 表情設定完了: ${expressionName}`);
                 }, 50);
@@ -499,7 +528,6 @@ window.setExpression = function(expressionName) {
         return false;
     }
 };
-
 /**
  * 表情をデフォルトに戻す（完全リセット版）
  */
